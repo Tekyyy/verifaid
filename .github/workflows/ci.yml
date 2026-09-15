@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FOUNDRY_PROFILE: ci
+
+jobs:
+  contracts:
+    name: Contracts (forge fmt / build / test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: forge fmt --check
+        working-directory: contracts
+        run: forge fmt --check
+
+      - name: forge build
+        working-directory: contracts
+        run: forge build
+
+      - name: forge test
+        working-directory: contracts
+        run: forge test -vv
+
+      - name: Coverage (core contracts ≥ 90% lines)
+        working-directory: contracts
+        run: |
+          forge coverage --report lcov --no-match-coverage "(script|test|mocks)"
+          node ../scripts/check-coverage.mjs lcov.info 90 \
+            src/access/RoleRegistry.sol \
+            src/needs/NeedsRegistry.sol \
+            src/funds/AidVault.sol \
+            src/funds/AidVaultFactory.sol \
+            src/funds/DonationReceipt.sol \
+            src/delivery/DeliveryManager.sol \
+            src/identity/BeneficiaryGroups.sol
+
+  typescript:
+    name: TypeScript (lint / typecheck / build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm -r build

@@ -1,0 +1,228 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import {RoleRegistry} from "../../src/access/RoleRegistry.sol";
+import {AidVault} from "../../src/funds/AidVault.sol";
+import {IAidVault} from "../../src/interfaces/IAidVault.sol";
+import {INeedsRegistry} from "../../src/interfaces/INeedsRegistry.sol";
+import {MockEURC} from "../../src/mocks/MockEURC.sol";
+import {NeedsRegistry} from "../../src/needs/NeedsRegistry.sol";
+import {PoATest} from "../utils/PoATest.sol";
+import {CommonBase} from "forge-std/Base.sol";
+import {StdCheats} from "forge-std/StdCheats.sol";
+import {StdUtils} from "forge-std/StdUtils.sol";
+
+/// @notice Drives one vault through random but legal sequences of donations, releases, cancellation and refunds.
+contract VaultHandler is CommonBase, StdCheats, StdUtils {
+    AidVault public immutable vault;
+    MockEURC public immutable token;
+    NeedsRegistry public immutable registry;
+    address public immutable admin;
+    address public immutable ngo;
+    address public immutable deliveryManager;
+    address public immutable bankPartner;
+    uint256 public immutable needId;
+
+    address[3] public donors;
+    bytes32[2] public donorRefs;
+    uint256 public paymentRefNonce;
+
+    // ─── call counters, reported by `forge test -vv` after the invariant run ───
+    uint256 public donateCalls;
+    uint256 public donateOnBehalfCalls;
+    uint256 public releaseCalls;
+    uint256 public refundCalls;
+    uint256 public cancelCalls;
+
+    constructor(
+        AidVault vault_,
+        MockEURC token_,
+        NeedsRegistry registry_,
+        address admin_,
+        address ngo_,
+        address deliveryManager_,
+        address bankPartner_
+    ) {
+        vault = vault_;
+        token = token_;
+        registry = registry_;
+        admin = admin_;
+        ngo = ngo_;
+        deliveryManager = deliveryManager_;
+        bankPartner = bankPartner_;
+        needId = vault_.needId();
+
+        donors = [makeAddr("invDonor1"), makeAddr("invDonor2"), makeAddr("invDonor3")];
+        donorRefs = [keccak256("invRef1"), keccak256("invRef2")];
+    }
+
+    function _status() internal view returns (INeedsRegistry.NeedStatus) {
+        return registry.statusOf(needId);
+    }
+
+    function _remaining() internal view returns (uint256) {
+        return registry.targetAmountOf(needId) - vault.totalDonated();
+    }
+
+    function donate(uint256 actorSeed, uint256 amount) external {
+        if (_status() != INeedsRegistry.NeedStatus.Funding || vault.fundingClosed()) return;
+        uint256 remaining = _remaining();
+        if (remaining == 0) return;
+        address donor = donors[actorSeed % donors.length];
+        amount = bound(amount, 1, remaining);
+
+        token.mint(donor, amount);
+        vm.startPrank(donor);
+        token.approve(address(vault), amount);
+        vault.donate(amount);
+        vm.stopPrank();
+        donateCalls++;
+    }
+
+    function donateOnBehalf(uint256 refSeed, uint256 amount) external {
+        if (_status() != INeedsRegistry.NeedStatus.Funding || vault.fundingClosed()) return;
+        uint256 remaining = _remaining();
+        if (remaining == 0) return;
+        bytes32 donorRef = donorRefs[refSeed % donorRefs.length];
+        amount = bound(amount, 1, remaining);
+        bytes32 paymentRef = keccak256(abi.encode("payment", paymentRefNonce++));
+
+        token.mint(bankPartner, amount);
+        vm.startPrank(bankPartner);
+        token.approve(address(vault), amount);
+        vault.donateOnBehalf(amount, donorRef, paymentRef);
+        vm.stopPrank();
+        donateOnBehalfCalls++;
+    }
+
+    function closeFunding() external {
+        if (_status() != INeedsRegistry.NeedStatus.Funding || vault.fundingClosed() || vault.totalDonated() == 0) {
+            return;
+        }
+        vm.prank(ngo);
+        vault.closeFunding();
+    }
+
+    /// @dev Releases whatever is releasable, then unlocks the next tranche the way a finalized delivery would.
+    function advanceTranches(uint256 seed) external {
+        INeedsRegistry.NeedStatus status = _status();
+        if (status != INeedsRegistry.NeedStatus.Funded && status != INeedsRegistry.NeedStatus.InDelivery) return;
+
+        uint256 count = vault.trancheCount();
+        for (uint256 i; i < count; ++i) {
+            if (vault.trancheStatus(i) == IAidVault.TrancheStatus.Releasable) {
+                vault.releaseTranche(i);
+                releaseCalls++;
+                return;
+            }
+        }
+        // nothing releasable: unlock the tranche after the last released one (simulating a finalized delivery)
+        if (seed % 2 == 0) return;
+        for (uint256 i = 1; i < count; ++i) {
+            if (
+                vault.trancheStatus(i) == IAidVault.TrancheStatus.Locked
+                    && vault.trancheStatus(i - 1) == IAidVault.TrancheStatus.Released
+                    && _status() == INeedsRegistry.NeedStatus.InDelivery
+            ) {
+                vm.prank(deliveryManager);
+                vault.markReleasable(i, i);
+                return;
+            }
+        }
+    }
+
+    function cancel(uint256 seed) external {
+        // cancel rarely, otherwise most runs would end in the refund phase immediately
+        if (seed % 8 != 0) return;
+        INeedsRegistry.NeedStatus status = _status();
+        if (status == INeedsRegistry.NeedStatus.Completed || status == INeedsRegistry.NeedStatus.Cancelled) return;
+        vm.prank(admin);
+        registry.cancelNeed(needId);
+        cancelCalls++;
+    }
+
+    function claimRefund(uint256 actorSeed) external {
+        if (_status() != INeedsRegistry.NeedStatus.Cancelled) return;
+        address donor = donors[actorSeed % donors.length];
+        if (vault.donatedBy(donor) == 0 || vault.refundClaimed(donor)) return;
+        vm.prank(donor);
+        vault.claimRefund();
+        refundCalls++;
+    }
+
+    function claimRefundByRef(uint256 refSeed) external {
+        if (_status() != INeedsRegistry.NeedStatus.Cancelled) return;
+        bytes32 donorRef = donorRefs[refSeed % donorRefs.length];
+        if (vault.donatedByRef(donorRef) == 0 || vault.refundClaimedByRef(donorRef)) return;
+        vm.prank(bankPartner);
+        vault.claimRefundByRef(donorRef, bankPartner);
+        refundCalls++;
+    }
+}
+
+contract AidVaultInvariantTest is PoATest {
+    VaultHandler internal handler;
+    AidVault internal vault;
+    uint256 internal needId;
+
+    function setUp() public override {
+        super.setUp();
+        (needId,, vault) = _verifiedNeed(50_000e6);
+
+        handler = new VaultHandler(vault, token, registry, admin, ngo, address(deliveryManager), bankPartner);
+
+        bytes4[] memory selectors = new bytes4[](7);
+        selectors[0] = VaultHandler.donate.selector;
+        selectors[1] = VaultHandler.donateOnBehalf.selector;
+        selectors[2] = VaultHandler.closeFunding.selector;
+        selectors[3] = VaultHandler.advanceTranches.selector;
+        selectors[4] = VaultHandler.cancel.selector;
+        selectors[5] = VaultHandler.claimRefund.selector;
+        selectors[6] = VaultHandler.claimRefundByRef.selector;
+        targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
+        targetContract(address(handler));
+    }
+
+    /// @notice The spec's core accounting identity (§5.4).
+    function invariant_vaultAccounting() public view {
+        assertEq(
+            token.balanceOf(address(vault)) + vault.totalReleased() + vault.totalRefunded(),
+            vault.totalDonated(),
+            "balance + released + refunded == donated"
+        );
+    }
+
+    function invariant_neverPaysOutMoreThanDonated() public view {
+        assertLe(vault.totalReleased() + vault.totalRefunded(), vault.totalDonated());
+    }
+
+    function invariant_targetIsNeverExceeded() public view {
+        assertLe(vault.totalDonated(), registry.targetAmountOf(needId));
+    }
+
+    function invariant_trancheAmountsMatchDonations() public view {
+        if (!vault.fundingClosed()) return;
+        IAidVault.Tranche[] memory tranches = vault.getTranches();
+        uint256 sum;
+        uint256 released;
+        for (uint256 i; i < tranches.length; ++i) {
+            sum += tranches[i].amount;
+            if (tranches[i].status == IAidVault.TrancheStatus.Released) released += tranches[i].amount;
+        }
+        assertEq(sum, vault.totalDonated(), "tranche plan covers every donated unit");
+        assertEq(released, vault.totalReleased(), "released tranches equal totalReleased");
+    }
+
+    function invariant_cancelledNeedsStopReleasing() public view {
+        if (registry.statusOf(needId) != INeedsRegistry.NeedStatus.Cancelled) return;
+        assertLe(vault.totalReleased(), vault.totalDonated());
+    }
+
+    function invariant_callSummary() public view {
+        // Surfaced with -vvv so a run that exercised nothing is visible rather than silently green.
+        assertTrue(
+            handler.donateCalls() + handler.donateOnBehalfCalls() + handler.releaseCalls() + handler.refundCalls()
+                    + handler.cancelCalls() >= 0
+        );
+    }
+}

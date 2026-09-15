@@ -1,0 +1,11 @@
+packages:
+  - contracts
+  - services/*
+  - indexer
+  - app
+  - demo
+
+# pnpm blocks dependency install scripts unless they are listed here.
+allowBuilds:
+  # native speed-up pulled in transitively by hardhat (via eas-contracts); pure-JS fallback is fine
+  keccak: false

@@ -1,0 +1,75 @@
+[profile.default]
+src = "src"
+out = "out"
+test = "test"
+script = "script"
+libs = ["lib", "node_modules"]
+solc = "0.8.24"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+# Deploy scripts write addresses + schema UIDs to ../deployments; tests read the committed Semaphore fixture
+# and the EAS artifacts (EAS pins solc 0.8.29, so we deploy its published bytecode instead of recompiling it).
+fs_permissions = [
+  { access = "read-write", path = "../deployments" },
+  { access = "read", path = "./test/fixtures" },
+  { access = "read", path = "./node_modules/@ethereum-attestation-service/eas-contracts/artifacts" },
+]
+remappings = [
+  "@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/",
+  "@ethereum-attestation-service/eas-contracts/=node_modules/@ethereum-attestation-service/eas-contracts/",
+  "@semaphore-protocol/contracts/=node_modules/@semaphore-protocol/contracts/",
+  # NOTE: no explicit entry for "@zk-kit/lean-imt.sol/" — Foundry strips the trailing slash from a remapping
+  # target ending in ".sol" (it reads it as a file), which breaks Semaphore's import. Foundry's auto-detected
+  # "@zk-kit/=node_modules/@zk-kit/" resolves it correctly.
+  "poseidon-solidity/=node_modules/poseidon-solidity/",
+  "forge-std/=node_modules/forge-std/src/",
+]
+
+[lint]
+ignore = ["test/**", "script/**", "src/mocks/**"]
+# Reviewed and intentionally excluded (see docs/DECISIONS.md, "Static analysis"):
+#  - reentrancy-events / reentrancy-no-eth: external calls only target trusted system contracts; every
+#    token-moving entry point is nonReentrant.
+#  - unsafe-oz-erc721-mint: receipts use _mint on purpose so minting cannot call back into the vault.
+#  - unsafe-typecast: uint64(block.timestamp) cannot overflow for ~584 billion years.
+#  - block-timestamp: the challenge window is a coarse, minutes-to-days timer.
+#  - missing-events-access-control / uninitialized-local / require-revert-in-loop: false positives here.
+exclude_lints = [
+  "reentrancy-events",
+  "reentrancy-no-eth",
+  "unsafe-oz-erc721-mint",
+  "unsafe-typecast",
+  "block-timestamp",
+  "missing-events-access-control",
+  "uninitialized-local",
+  "require-revert-in-loop",
+]
+
+[profile.ci]
+fuzz = { runs = 1000 }
+invariant = { runs = 256, depth = 50 }
+
+[rpc_endpoints]
+base_sepolia = "${BASE_SEPOLIA_RPC_URL}"
+anvil = "http://127.0.0.1:8545"
+
+[etherscan]
+base_sepolia = { key = "${BASESCAN_API_KEY}", chain = 84532 }
+
+[fuzz]
+runs = 1000
+
+[invariant]
+runs = 256
+depth = 50
+fail_on_revert = false
+
+[fmt]
+line_length = 120
+tab_width = 4
+bracket_spacing = false
+int_types = "long"
+quote_style = "double"
+number_underscore = "thousands"
+sort_imports = true

@@ -1,0 +1,40 @@
+# dependencies
+node_modules/
+
+# secrets — never commit
+.env
+.env.*
+!.env.example
+secrets/
+*.key
+
+# foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/**/31337/
+contracts/broadcast/**/dry-run/
+contracts/lcov.info
+contracts/report/
+
+# node / ts builds
+dist/
+*.tsbuildinfo
+coverage/
+
+# next
+app/.next/
+app/next-env.d.ts
+
+# ponder
+indexer/.ponder/
+indexer/generated/
+
+# local dev data
+.data/
+services/**/.data/
+deployments/anvil.json
+
+# misc
+*.log
+.DS_Store
+Thumbs.db
