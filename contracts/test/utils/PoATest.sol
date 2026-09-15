@@ -42,6 +42,11 @@ abstract contract PoATest is Test, SystemDeployer {
     uint32 internal constant MIN_EXPECTED_RECIPIENTS = 5;
     string internal constant DASHBOARD_BASE_URI = "https://proofofaid.example/needs/";
 
+    /// @dev Mirrors DeliveryManager.AID_RECEIVED_MESSAGE. Kept as a constant so building a proof never makes an
+    ///      external call (which would swallow a pending vm.prank / vm.expectRevert). Equality is asserted in
+    ///      DeliveryManagerTest.test_constants.
+    uint256 internal constant AID_RECEIVED_MESSAGE = uint256(keccak256("AID_RECEIVED"));
+
     bytes32 internal constant FOOD = keccak256("FOOD");
     bytes32 internal constant SHELTER = keccak256("SHELTER");
     bytes32 internal constant REGION = bytes32("ES-CM");
@@ -95,8 +100,15 @@ abstract contract PoATest is Test, SystemDeployer {
     bytes32 internal fiatDonationSchema;
     bytes32 internal impactReportSchema;
 
-    function setUp() public virtual {
+    /// @dev Which Semaphore implementation the system is deployed against. Overridden by the integration test
+    ///      that runs against real Semaphore v4 contracts with real proofs.
+    function _setUpSemaphore() internal virtual returns (address) {
         semaphore = new MockSemaphore();
+        return address(semaphore);
+    }
+
+    function setUp() public virtual {
+        address semaphoreAddress = _setUpSemaphore();
         (address schemaRegistry_, address eas_) = _deployLocalEAS();
         schemaRegistry = ISchemaRegistry(schemaRegistry_);
         eas = IEAS(eas_);
@@ -107,7 +119,7 @@ abstract contract PoATest is Test, SystemDeployer {
                 admin: admin,
                 token: address(0),
                 eas: eas_,
-                semaphore: address(semaphore),
+                semaphore: semaphoreAddress,
                 highValueThreshold: HIGH_VALUE_THRESHOLD,
                 confirmationThresholdBps: CONFIRMATION_THRESHOLD_BPS,
                 challengePeriod: CHALLENGE_PERIOD,
@@ -238,6 +250,13 @@ abstract contract PoATest is Test, SystemDeployer {
         _attestNeedVerified(verifier1, needId, true);
         if (verificationsRequired > 1) _attestNeedVerified(verifier2, needId, true);
         vault = AidVault(registry.vaultOf(needId));
+    }
+
+    /// @dev A fully funded need with tranche 0 released, i.e. ready for deliveries.
+    function _needInDelivery(uint256 target) internal returns (uint256 needId, uint256 programId, AidVault vault) {
+        (needId, programId, vault) = _verifiedNeed(target);
+        _donate(donor1, needId, target); // reaching the target closes funding
+        vault.releaseTranche(0); // pre-financing paid out → InDelivery
     }
 
     // ─── attestations ──────────────────────────────────────────────────────────
@@ -382,7 +401,7 @@ abstract contract PoATest is Test, SystemDeployer {
     /// @dev Builds a MockSemaphore-valid proof (points[0] == 1) with a unique nullifier.
     function _proof(uint256 deliveryId, uint256 nullifierSeed)
         internal
-        view
+        pure
         returns (ISemaphore.SemaphoreProof memory proof)
     {
         uint256[8] memory points;
@@ -391,17 +410,19 @@ abstract contract PoATest is Test, SystemDeployer {
             merkleTreeDepth: 3,
             merkleTreeRoot: uint256(keccak256("root")),
             nullifier: uint256(keccak256(abi.encode(deliveryId, nullifierSeed))),
-            message: deliveryManager.AID_RECEIVED_MESSAGE(),
+            message: AID_RECEIVED_MESSAGE,
             scope: deliveryId,
             points: points
         });
     }
 
-    /// @dev Submits `count` anonymous confirmations relayed by `relayer`.
+    /// @dev Submits `count` anonymous confirmations relayed by `relayer`. Nullifier seeds continue from the
+    ///      delivery's current count, so repeated calls never replay a nullifier.
     function _confirm(uint256 deliveryId, uint256 count) internal {
+        uint256 start = deliveryManager.getDelivery(deliveryId).confirmations;
         for (uint256 i; i < count; ++i) {
             vm.prank(relayer);
-            deliveryManager.confirmReceipt(deliveryId, _proof(deliveryId, i));
+            deliveryManager.confirmReceipt(deliveryId, _proof(deliveryId, start + i));
         }
     }
 
@@ -430,12 +451,27 @@ abstract contract PoATest is Test, SystemDeployer {
         assertEq(uint8(a), uint8(b), "need status");
     }
 
+    function assertEq(INeedsRegistry.NeedStatus a, INeedsRegistry.NeedStatus b, string memory err) internal pure {
+        assertEq(uint8(a), uint8(b), err);
+    }
+
     function assertEq(IDeliveryManager.DeliveryStatus a, IDeliveryManager.DeliveryStatus b) internal pure {
         assertEq(uint8(a), uint8(b), "delivery status");
     }
 
+    function assertEq(IDeliveryManager.DeliveryStatus a, IDeliveryManager.DeliveryStatus b, string memory err)
+        internal
+        pure
+    {
+        assertEq(uint8(a), uint8(b), err);
+    }
+
     function assertEq(IAidVault.TrancheStatus a, IAidVault.TrancheStatus b) internal pure {
         assertEq(uint8(a), uint8(b), "tranche status");
+    }
+
+    function assertEq(IAidVault.TrancheStatus a, IAidVault.TrancheStatus b, string memory err) internal pure {
+        assertEq(uint8(a), uint8(b), err);
     }
 
     /// @dev The core vault accounting invariant from the spec (§5.4).

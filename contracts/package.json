@@ -9,7 +9,8 @@
     "test": "forge test",
     "fmt": "forge fmt",
     "fmt:check": "forge fmt --check",
-    "coverage": "forge coverage --report summary --no-match-coverage \"(script|test|mocks)\""
+    "coverage": "forge coverage --report summary --no-match-coverage \"(script|test|mocks)\"",
+    "fixture:semaphore": "node test/fixtures/generate-semaphore-fixture.mjs"
   },
   "dependencies": {
     "@ethereum-attestation-service/eas-contracts": "1.9.0",
@@ -23,6 +24,7 @@
     "@semaphore-protocol/group": "4.14.3",
     "@semaphore-protocol/identity": "4.14.3",
     "@semaphore-protocol/proof": "4.14.3",
-    "@semaphore-protocol/utils": "4.14.3"
+    "@semaphore-protocol/utils": "4.14.3",
+    "ethers": "6.13.4"
   }
 }
