@@ -152,7 +152,28 @@ the one that moves the most money per call. The admin lifts the pause, or cancel
   that is still `Open`. It is deliberately *not* available to the NGO: an NGO could otherwise cancel deliveries
   whose confirmations were lagging and reopen them with a smaller `expectedRecipients` to game the threshold.
 
-## 9. Static analysis
+## 9. Off-chain stack
+
+- **viem everywhere, no ethers-based EAS SDK.** The spec lists `@ethereum-attestation-service/eas-sdk`, which
+  drags in ethers v6 alongside the viem the rest of the project uses. An EAS schema string is just a list of ABI
+  parameters, so `@poa/shared` parses it and encodes/decodes attestation data with viem directly, and derives
+  schema UIDs with the registry's own formula. A test asserts those derived UIDs equal the ones the on-chain
+  SchemaRegistry actually assigned, so the reimplementation is checked against reality rather than trusted.
+- **One Prisma schema in `@poa/shared`, exposed as `@poa/shared/db`.** Three services, one Postgres database,
+  one generated client — so there is a single `prisma generate` step, and pnpm's isolated `node_modules` cannot
+  end up with three schemas overwriting one generated client. The Prisma entry point is a separate export so the
+  browser bundle never pulls it in.
+- **Prisma 6.19, not 7.** Prisma 7 moves the datasource URL into `prisma.config.ts` and requires driver
+  adapters; `prisma@latest` currently resolves to an 8.0 release candidate. The previous stable line keeps the
+  setup boring, which is what a hackathon deadline wants.
+- **Beneficiary confirmations are relayed by default.** Not just a convenience for people without gas: if a
+  beneficiary submitted their own confirmation, their wallet address would sit on-chain next to it, and the
+  zero-knowledge proof would protect nothing. The relayer learns the delivery and the timing, never an identity
+  (see `docs/THREAT_MODEL.md` §3.5).
+- **Region codes are ASCII in `bytes32`** (`bytes32("ES-CM")`), so the chain stores a coarse, human-readable
+  subdivision rather than a hash nobody can reverse — and never coordinates.
+
+## 10. Static analysis
 
 `forge lint` runs on every build. These lints are excluded in `foundry.toml` after review:
 `reentrancy-events`, `reentrancy-no-eth` (external calls only ever target trusted system contracts, and every

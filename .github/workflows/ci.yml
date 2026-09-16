@@ -14,7 +14,7 @@ env:
 
 jobs:
   contracts:
-    name: Contracts (forge fmt / build / test)
+    name: Contracts (fmt / build / test / coverage)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +45,7 @@ jobs:
         working-directory: contracts
         run: forge test -vv
 
-      - name: Coverage (core contracts ≥ 90% lines)
+      - name: Coverage floor (90% lines on the core contracts)
         working-directory: contracts
         run: |
           forge coverage --report lcov --no-match-coverage "(script|test|mocks)"
@@ -59,8 +59,31 @@ jobs:
             src/identity/BeneficiaryGroups.sol
 
   typescript:
-    name: TypeScript (lint / typecheck / build)
+    name: TypeScript (lint / typecheck / build / test)
     runs-on: ubuntu-latest
+
+    # The services talk to a real database; nothing here is mocked.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: poa
+          POSTGRES_PASSWORD: poa
+          POSTGRES_DB: poa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://poa:poa@localhost:5432/poa
+      ANVIL_RPC_URL: http://127.0.0.1:8545
+      PONDER_NETWORK: anvil
+      NEXT_PUBLIC_CHAIN_ID: '31337'
+
     steps:
       - uses: actions/checkout@v4
 
@@ -74,6 +97,24 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      # A clean clone has no deployments/*.json, and the indexer and frontend are typed against real addresses.
+      # Deploying to a throwaway anvil chain keeps the code strict and exercises the deploy scripts on every push.
+      - name: Deploy to a local chain
+        run: |
+          anvil --chain-id 31337 --silent &
+          for _ in $(seq 1 30); do
+            cast block-number --rpc-url http://127.0.0.1:8545 >/dev/null 2>&1 && break
+            sleep 1
+          done
+          pnpm deploy:local
+
+      - name: Prepare the database schema
+        run: pnpm --filter @poa/shared db:push
+
       - name: Lint
         run: pnpm lint
 
@@ -82,3 +123,6 @@ jobs:
 
       - name: Build
         run: pnpm -r build
+
+      - name: Test
+        run: pnpm -r test
