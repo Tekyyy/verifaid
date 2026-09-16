@@ -92,6 +92,29 @@ services:
       BANK_REF_SALT: ${BANK_REF_SALT:-}
       BANK_WEBHOOK_SECRET: ${BANK_WEBHOOK_SECRET:-}
 
+  notifier:
+    <<: *service-base
+    build:
+      context: .
+      dockerfile: services/notifier/Dockerfile
+    ports:
+      - '${NOTIFIER_PORT:-4004}:4004'
+    environment:
+      <<: *service-env
+      PORT: '4004'
+      # The indexer runs on the host (pnpm indexer:dev).
+      INDEXER_URL: ${NOTIFIER_INDEXER_URL:-http://host.docker.internal:42069}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:4004}
+      NOTIFIER_KEK: ${NOTIFIER_KEK:-}
+      NOTIFIER_KEK_PATH: /run/secrets/notifier-kek.key
+      NOTIFIER_ADMIN_TOKEN: ${NOTIFIER_ADMIN_TOKEN:-}
+      NOTIFIER_WORKER: ${NOTIFIER_WORKER:-on}
+      NOTIFIER_POLL_MS: ${NOTIFIER_POLL_MS:-10000}
+      EMAIL_API_URL: ${EMAIL_API_URL:-}
+      EMAIL_API_KEY: ${EMAIL_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+
 volumes:
   poa-postgres:
   # The master KEK lives on a named volume shared by the services: losing it makes every stored record
