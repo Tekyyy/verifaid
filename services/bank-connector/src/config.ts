@@ -7,11 +7,12 @@ import { mnemonicToAccount } from 'viem/accounts'
 import { z } from 'zod'
 
 /**
- * Configuration for the mock bank connector.
+ * Configuration for the mock payment provider (bank connector).
  *
  * Three secrets matter here and each fails differently when it is missing: without `BANK_WEBHOOK_SECRET` the
- * webhook is unauthenticated (dev only, announced loudly), without `BANK_REF_SALT` the payment reference hashes
- * are guessable, and without `BANK_PARTNER_PRIVATE_KEY` nothing can be deposited on-chain at all.
+ * webhook, the CSV import and the settlement endpoint are unauthenticated (dev only, announced loudly), without
+ * `BANK_REF_SALT` the payment reference hashes are guessable, and without `BANK_PARTNER_PRIVATE_KEY` nothing can
+ * be deposited or attested on-chain at all.
  */
 
 const findRepoRoot = (start: string): string => {
@@ -34,6 +35,14 @@ const DEV_MNEMONIC = 'test test test test test test test test test test test jun
 const BANK_PARTNER_INDEX = 6
 const DEV_SALT_SEED = 'poa-dev-bank-ref-salt'
 
+/** Environment flags: "true"/"1"/"yes" and "false"/"0"/"no"; anything else is a configuration error. */
+const envFlag = z
+  .enum(['true', 'false', '1', '0', 'yes', 'no', ''])
+  .optional()
+  .transform((value) =>
+    value === undefined || value === '' ? undefined : ['true', '1', 'yes'].includes(value),
+  )
+
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4003),
   HOST: z.string().default('0.0.0.0'),
@@ -45,6 +54,16 @@ const EnvSchema = z.object({
   DEMO_MNEMONIC: z.string().optional(),
   BANK_REF_SALT: z.string().optional(),
   BANK_WEBHOOK_SECRET: z.string().optional(),
+  CHECKOUT_MOCK_ENABLED: envFlag,
+  CHECKOUT_CARD_FEE_BPS: z.coerce.number().int().min(0).max(10_000).default(140),
+  CHECKOUT_CARD_FEE_FIXED_CENTS: z.coerce.number().int().min(0).max(100_000).default(25),
+  CHECKOUT_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(0).default(30),
+  IMPORT_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(1024 * 1024),
+  IMPORT_MAX_ROWS: z.coerce.number().int().positive().default(5000),
 })
 
 export interface BankConfig {
@@ -61,6 +80,22 @@ export interface BankConfig {
   refSalt: Hex
   refSaltIsDevDefault: boolean
   webhookSecret?: string
+  checkout: {
+    /**
+     * The checkout mock records funding nobody actually paid, so it is off by default on Base mainnet and on
+     * everywhere else (anvil, Base Sepolia) where it is the sandbox for the card and bank giving flow.
+     */
+    enabled: boolean
+    /** Mock PSP card pricing: `cardFeeBps` of the amount plus a fixed fee, before the disclosure cap. */
+    cardFeeBps: number
+    cardFeeFixedCents: number
+    /** Requests per client IP per minute; 0 disables the limiter. */
+    rateLimitPerMinute: number
+  }
+  imports: {
+    maxBytes: number
+    maxRows: number
+  }
 }
 
 /** Accepts a 32-byte hex salt as-is, or derives one deterministically from any passphrase. */
@@ -99,5 +134,15 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): BankConfig => 
     refSalt: toSalt(value.BANK_REF_SALT?.trim() || DEV_SALT_SEED),
     refSaltIsDevDefault: !value.BANK_REF_SALT?.trim(),
     webhookSecret: value.BANK_WEBHOOK_SECRET?.trim() || undefined,
+    checkout: {
+      enabled: value.CHECKOUT_MOCK_ENABLED ?? network !== 'base',
+      cardFeeBps: value.CHECKOUT_CARD_FEE_BPS,
+      cardFeeFixedCents: value.CHECKOUT_CARD_FEE_FIXED_CENTS,
+      rateLimitPerMinute: value.CHECKOUT_RATE_LIMIT_PER_MINUTE,
+    },
+    imports: {
+      maxBytes: value.IMPORT_MAX_BYTES,
+      maxRows: value.IMPORT_MAX_ROWS,
+    },
   }
 }

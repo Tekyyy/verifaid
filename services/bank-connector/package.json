@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Mock SEPA webhook that converts fiat donations to stablecoin, deposits them on-chain and attests them",
+  "description": "Mock payment provider: SEPA webhook, card/bank checkout sandbox and CSV import that attest FundingRecorded (depositing stablecoin for on-chain needs), plus Settlement payouts for off-chain needs",
   "main": "./dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -17,6 +17,7 @@
     "@fastify/swagger": "9.8.1",
     "@fastify/swagger-ui": "6.1.1",
     "@poa/shared": "workspace:*",
+    "csv-parse": "7.0.2",
     "dotenv": "17.4.2",
     "fastify": "5.12.4",
     "fastify-type-provider-zod": "7.0.0",

@@ -23,13 +23,14 @@ import {
   stringToHex,
   type TransactionReceipt,
   type WalletClient,
+  zeroAddress,
   zeroHash,
 } from 'viem'
 import { RPC_URL } from './env.js'
 import { type RoleName, roleAccount } from './wallets.js'
 
 /**
- * Drives the on-chain lifecycle a delivery depends on (spec Â§7, steps 3â€“7). Every run creates a *new* need, so
+ * Drives the on-chain lifecycle a delivery depends on (spec §7, steps 3–7). Every run creates a *new* need, so
  * the suite is repeatable against a chain that already has state from previous runs or from the demo seed.
  */
 
@@ -70,7 +71,7 @@ export interface FundedNeed {
   dossierHash: Hex
 }
 
-/** Creates a need, has an independent verifier attest it, funds it and releases tranche 0 (â†’ `InDelivery`). */
+/** Creates a need, has an independent verifier attest it, funds it and releases tranche 0 (→ `InDelivery`). */
 export const createNeedInDelivery = async (
   harness: Harness,
   targetAmount = 1_000_000n,
@@ -92,6 +93,15 @@ export const createNeedInDelivery = async (
         metadataURI: 'ipfs://test-need',
         verificationsRequired: 1,
         trancheBps: [3000, 7000],
+        // v2 need terms: on-chain custody, open-ended, any amount raised may execute, no intermediary costs.
+        custodyMode: 0,
+        custodian: zeroAddress,
+        fundingDeadline: 0n,
+        executionDeadline: 0n,
+        minFundingBps: 1,
+        thirdPartyCostBps: 0,
+        expectedOutcomeHash: keccak256(stringToHex('outcome')),
+        costDisclosureHash: zeroHash,
       },
     ],
   } as never)
@@ -106,7 +116,7 @@ export const createNeedInDelivery = async (
   const needId = created?.args.needId
   if (needId === undefined) throw new Error('NeedCreated event missing from the receipt')
 
-  // NeedVerified â†’ resolver â†’ registry deploys the vault and opens funding.
+  // NeedVerified → resolver → registry deploys the vault and opens funding.
   await send(harness, 'verifier1', {
     address: deployment.external.EAS,
     abi: easAbi,

@@ -32,6 +32,21 @@ export const chainAvailable = async (): Promise<boolean> => {
   }
 }
 
+/**
+ * Why the chain + database suites must skip, or null when both are reachable. Written to the raw stream: vitest
+ * swallows `console` output produced while it is still collecting files, and a silent skip is indistinguishable
+ * from a suite that never existed.
+ */
+export const suiteSkipReason = async (suite: string): Promise<string | null> => {
+  const reason = !(await postgresAvailable()) ? POSTGRES_SKIP : !(await chainAvailable()) ? CHAIN_SKIP : null
+  if (reason)
+    process.stderr.write(`
+[bank-connector:${suite}] SKIPPING chain + database tests: ${reason}
+
+`)
+  return reason
+}
+
 export const testConfig = (overrides: Partial<NodeJS.ProcessEnv> = {}): BankConfig =>
   loadConfig({
     ...process.env,
@@ -44,5 +59,7 @@ export const testConfig = (overrides: Partial<NodeJS.ProcessEnv> = {}): BankConf
     LOG_LEVEL: 'silent',
     BANK_WEBHOOK_SECRET: WEBHOOK_SECRET,
     BANK_REF_SALT: REF_SALT,
+    CHECKOUT_MOCK_ENABLED: 'true',
+    CHECKOUT_RATE_LIMIT_PER_MINUTE: '1000',
     ...overrides,
   })

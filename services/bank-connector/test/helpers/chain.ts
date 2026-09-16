@@ -1,11 +1,16 @@
 import {
+  CUSTODY_MODE,
+  type CustodyMode,
   categoryHash,
   chainFor,
   type Deployment,
   easAbi,
   encodeSchemaData,
   getDeployment,
+  mockEURCAbi,
   needsRegistryAbi,
+  nonCustodialLedgerAbi,
+  proofOfAidResolverAbi,
   regionCode,
 } from '@poa/shared'
 import {
@@ -19,15 +24,11 @@ import {
   stringToHex,
   type TransactionReceipt,
   type WalletClient,
+  zeroAddress,
   zeroHash,
 } from 'viem'
 import { type HDAccount, mnemonicToAccount } from 'viem/accounts'
 import { RPC_URL } from './env.js'
-
-/**
- * Puts a brand new need into `Funding` so each run has a vault of its own; payment references are globally
- * unique on-chain, so a suite that reused one need would fail on its second run.
- */
 
 /**
  * These suites run against the local anvil deployment, which pnpm deploy:local always seeds with anvil's
@@ -36,11 +37,26 @@ import { RPC_URL } from './env.js'
  */
 export const DEMO_MNEMONIC = 'test test test test test test test test test test test junk'
 
-const ROLE_INDEX = { admin: 0, ngo: 1, fieldAgent: 3, verifier1: 4, bankPartner: 6, donor1: 7 } as const
+const ROLE_INDEX = {
+  admin: 0,
+  ngo: 1,
+  fieldAgent: 3,
+  verifier1: 4,
+  bankPartner: 6,
+  donor1: 7,
+  relayer: 9,
+} as const
 export type RoleName = keyof typeof ROLE_INDEX
 
 export const roleAccount = (role: RoleName): HDAccount =>
   mnemonicToAccount(DEMO_MNEMONIC, { addressIndex: ROLE_INDEX[role] })
+
+/** Private key of a role wallet, for building a second service instance that signs as someone else. */
+export const rolePrivateKey = (role: RoleName): `0x${string}` => {
+  const key = roleAccount(role).getHdKey().privateKey
+  if (!key) throw new Error(`no private key for ${role}`)
+  return `0x${Buffer.from(key).toString('hex')}`
+}
 
 export interface Harness {
   deployment: Deployment
@@ -52,12 +68,22 @@ export const createHarness = (): Harness => {
   const chain = chainFor('anvil')
   return {
     deployment: getDeployment('anvil'),
-    publicClient: createPublicClient({ chain, transport: http(RPC_URL) }) as PublicClient,
-    wallet: (role) => createWalletClient({ account: roleAccount(role), chain, transport: http(RPC_URL) }),
+    publicClient: createPublicClient({
+      chain,
+      transport: http(RPC_URL),
+      pollingInterval: 250,
+    }) as PublicClient,
+    wallet: (role) =>
+      createWalletClient({
+        account: roleAccount(role),
+        chain,
+        transport: http(RPC_URL),
+        pollingInterval: 250,
+      }),
   }
 }
 
-const send = async (
+export const send = async (
   harness: Harness,
   role: RoleName,
   request: Parameters<WalletClient['writeContract']>[0],
@@ -68,17 +94,35 @@ const send = async (
   return receipt
 }
 
-export interface FundingNeed {
-  needId: bigint
-  vault: Address
+export interface NeedOptions {
+  /** Base units (6 decimals). Default 100 EUR. */
+  targetAmount?: bigint
+  custodyMode?: CustodyMode
+  /** Disclosed intermediary cost cap; a non-zero value gets a cost disclosure hash, as the registry requires. */
+  thirdPartyCostBps?: number
+  trancheBps?: number[]
+  /** Leave the need Pending (no NeedVerified attestation, so no ledger and no funding). */
+  verify?: boolean
 }
 
-/** Creates a need and has an independent verifier approve it, which deploys the vault and opens funding. */
+export interface FundingNeed {
+  needId: bigint
+  /** AidVault (OnChain) or NonCustodialLedger (OffChain); zero address when left unverified. */
+  vault: Address
+  custodyMode: CustodyMode
+}
+
+/**
+ * Creates a brand new need with the full v2 terms and has an independent verifier approve it, which deploys its
+ * ledger and opens funding. Each test gets a need of its own, because other suites share the chain.
+ */
 export const createNeedInFunding = async (
   harness: Harness,
-  targetAmount = 100_000_000n,
+  options: NeedOptions = {},
 ): Promise<FundingNeed> => {
   const { deployment } = harness
+  const custodyMode = options.custodyMode ?? 'OnChain'
+  const thirdPartyCostBps = options.thirdPartyCostBps ?? 0
   const dossierHash = keccak256(stringToHex(`bank-dossier-${Date.now()}-${Math.random()}`))
 
   const receipt = await send(harness, 'ngo', {
@@ -89,12 +133,21 @@ export const createNeedInFunding = async (
       {
         programId: 1n,
         category: categoryHash('CASH'),
-        targetAmount,
+        targetAmount: options.targetAmount ?? 100_000_000n,
         regionCode: regionCode('ES-CM'),
         dossierHash,
         metadataURI: 'ipfs://bank-connector-test-need',
         verificationsRequired: 1,
-        trancheBps: [5000, 5000],
+        trancheBps: options.trancheBps ?? [5000, 5000],
+        custodyMode: CUSTODY_MODE.indexOf(custodyMode),
+        // An off-chain need names its custodian up front: the payment provider this service signs as.
+        custodian: custodyMode === 'OffChain' ? roleAccount('bankPartner').address : zeroAddress,
+        fundingDeadline: 0n,
+        executionDeadline: 0n,
+        minFundingBps: 1,
+        thirdPartyCostBps,
+        expectedOutcomeHash: keccak256(stringToHex('outcome')),
+        costDisclosureHash: thirdPartyCostBps > 0 ? keccak256(stringToHex('cost-disclosure')) : zeroHash,
       },
     ],
   } as never)
@@ -104,6 +157,7 @@ export const createNeedInFunding = async (
   const [created] = parseEventLogs({ abi: needsRegistryAbi, eventName: 'NeedCreated', logs: receipt.logs })
   const needId = created?.args.needId
   if (needId === undefined) throw new Error('NeedCreated event missing from the receipt')
+  if (options.verify === false) return { needId, vault: zeroAddress, custodyMode }
 
   await send(harness, 'verifier1', {
     address: deployment.external.EAS,
@@ -130,6 +184,66 @@ export const createNeedInFunding = async (
     functionName: 'vaultOf',
     args: [needId],
   })
-  if (vault === '0x0000000000000000000000000000000000000000') throw new Error('vault was not created')
-  return { needId, vault }
+  if (vault === zeroAddress) throw new Error('ledger was not created')
+  return { needId, vault, custodyMode }
 }
+
+export const totalDonated = (harness: Harness, ledger: Address): Promise<bigint> =>
+  harness.publicClient.readContract({
+    address: ledger,
+    abi: nonCustodialLedgerAbi,
+    functionName: 'totalDonated',
+  })
+
+export const tokenBalanceOf = (harness: Harness, owner: Address): Promise<bigint> =>
+  harness.publicClient.readContract({
+    address: harness.deployment.external.Token,
+    abi: mockEURCAbi,
+    functionName: 'balanceOf',
+    args: [owner],
+  })
+
+export const needStatus = (harness: Harness, needId: bigint): Promise<number> =>
+  harness.publicClient.readContract({
+    address: harness.deployment.contracts.NeedsRegistry,
+    abi: needsRegistryAbi,
+    functionName: 'statusOf',
+    args: [needId],
+  })
+
+export const tranchesOf = (harness: Harness, ledger: Address) =>
+  harness.publicClient.readContract({
+    address: ledger,
+    abi: nonCustodialLedgerAbi,
+    functionName: 'getTranches',
+  })
+
+export const resolverFees = async (
+  harness: Harness,
+  needId: bigint,
+): Promise<{ fundingFees: bigint; settlementFees: bigint }> => {
+  const resolver = harness.deployment.contracts.ProofOfAidResolver
+  const [fundingFees, settlementFees] = await Promise.all([
+    harness.publicClient.readContract({
+      address: resolver,
+      abi: proofOfAidResolverAbi,
+      functionName: 'fundingFeesOf',
+      args: [needId],
+    }),
+    harness.publicClient.readContract({
+      address: resolver,
+      abi: proofOfAidResolverAbi,
+      functionName: 'settlementFeesOf',
+      args: [needId],
+    }),
+  ])
+  return { fundingFees, settlementFees }
+}
+
+export const readAttestation = (harness: Harness, uid: `0x${string}`) =>
+  harness.publicClient.readContract({
+    address: harness.deployment.external.EAS,
+    abi: easAbi,
+    functionName: 'getAttestation',
+    args: [uid],
+  })
