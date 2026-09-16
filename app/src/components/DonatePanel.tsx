@@ -1,11 +1,12 @@
 'use client'
 
-import { aidVaultAbi, mockEURCAbi, type NeedStatus } from '@poa/shared'
+import { aidVaultAbi, mockEURCAbi } from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
-import type { Address } from 'viem'
+import { type Address, parseEventLogs } from 'viem'
 import { useAccount } from 'wagmi'
 import { TxStatus } from '@/components/TxStatus'
+import { Link } from '@/i18n/navigation'
 import { deployment } from '@/lib/config'
 import { amount as formatAmountValue, parseAmount } from '@/lib/format'
 import { useTx, useWrongChain } from '@/lib/hooks'
@@ -16,12 +17,13 @@ import { useTx, useWrongChain } from '@/lib/hooks'
  */
 export function DonatePanel({
   vault,
-  status,
+  fundingOpen,
   targetAmount,
   totalDonated,
 }: {
   vault: Address | null
-  status: NeedStatus
+  /** Status is Funding and no deadline has passed, as computed by the page. */
+  fundingOpen: boolean
   targetAmount: string
   totalDonated: string
 }) {
@@ -34,9 +36,10 @@ export function DonatePanel({
   const donate = useTx()
   const [value, setValue] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
+  const [receiptId, setReceiptId] = useState<string | null>(null)
 
   const token = deployment?.external.Token
-  const open = status === 'Funding' && vault !== null
+  const open = fundingOpen && vault !== null
   const remaining = BigInt(targetAmount) - BigInt(totalDonated)
 
   const parsed = parseAmount(value)
@@ -55,12 +58,17 @@ export function DonatePanel({
   const runDonate = async () => {
     if (!parsed || !vault) return setFormError(tErrors('invalidAmount'))
     setFormError(null)
-    await donate.run({
+    setReceiptId(null)
+    const result = await donate.run({
       address: vault,
       abi: aidVaultAbi,
       functionName: 'donate',
       args: [parsed],
     })
+    if (!result) return
+    // The receipt id is the donor's tracking reference; read it from the event rather than guessing it.
+    const [donated] = parseEventLogs({ abi: aidVaultAbi, eventName: 'Donated', logs: result.logs })
+    if (donated) setReceiptId(donated.args.receiptId.toString())
   }
 
   return (
@@ -128,7 +136,14 @@ export function DonatePanel({
                 <TxStatus state={donate} />
               </div>
               {donate.phase === 'success' ? (
-                <p className="text-sm font-medium text-emerald-800">{t('donateSuccess')}</p>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-emerald-800">{t('donateSuccess')}</p>
+                  {receiptId ? (
+                    <Link className="btn-secondary" href={`/track/${receiptId}`}>
+                      {t('trackThisDonation', { id: receiptId })}
+                    </Link>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           )}

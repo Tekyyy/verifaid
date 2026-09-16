@@ -6,14 +6,16 @@ import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { type Address, type Hex, keccak256, toHex } from 'viem'
 import { useReadContract } from 'wagmi'
+import { CustodyBadge } from '@/components/CustodyBadge'
+import { Deadline } from '@/components/Deadline'
 import { FormError, TextField } from '@/components/form'
 import { EmptyState, MissingDeployment } from '@/components/Notice'
 import { DeliveryStatusBadge } from '@/components/StatusBadge'
 import { TxStatus } from '@/components/TxStatus'
 import { Link } from '@/i18n/navigation'
 import { deployment } from '@/lib/config'
-import { attestationRequest } from '@/lib/eas'
-import { amount, shorten } from '@/lib/format'
+import { attestationRequest, schemaRecipient } from '@/lib/eas'
+import { amount, bpsPercent, shorten } from '@/lib/format'
 import { useTx } from '@/lib/hooks'
 import { isZeroUid } from '@/lib/links'
 import { dossierViewUrl, evidenceViewUrl } from '@/lib/services'
@@ -83,6 +85,12 @@ function NeedRow({ need }: { need: NeedSummary }) {
     args: [BigInt(need.id)],
   })
 
+  // Verification reverts once a deadline has passed (the need can only expire then).
+  const now = Math.floor(Date.now() / 1000)
+  const deadlinePassed = [need.fundingDeadline, need.executionDeadline].some(
+    (deadline) => deadline && deadline <= now,
+  )
+
   const attest = (approved: boolean) =>
     tx.run({
       address: deployment?.external.EAS as Address,
@@ -91,7 +99,7 @@ function NeedRow({ need }: { need: NeedSummary }) {
       args: [
         attestationRequest({
           name: 'NeedVerified',
-          recipient: deployment?.contracts.NeedsRegistry as Address,
+          recipient: schemaRecipient('NeedVerified') as Address,
           values: [BigInt(need.id), (dossierHash as Hex) ?? ZERO_BYTES32, approved, hashOf(report)],
         }),
       ],
@@ -109,6 +117,9 @@ function NeedRow({ need }: { need: NeedSummary }) {
           {need.categoryLabel} · {need.regionLabel} · {amount(need.targetAmount)} {tCommon('amountUnit')}
         </span>
       </div>
+
+      <NeedTerms need={need} />
+      {deadlinePassed ? <FormError message={t('deadlinePassed')} /> : null}
 
       <p className="text-xs">
         <a
@@ -148,6 +159,46 @@ function NeedRow({ need }: { need: NeedSummary }) {
   )
 }
 
+/** Verifiers attest the terms as much as the need: custody, deadlines, the funding threshold and the cost cap. */
+function NeedTerms({ need }: { need: NeedSummary }) {
+  const tTerms = useTranslations('terms')
+  return (
+    <dl className="grid gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
+      <div className="flex flex-wrap items-center gap-1 sm:col-span-2">
+        <dt className="sr-only">{tTerms('custody')}</dt>
+        <dd>
+          <CustodyBadge mode={need.custodyMode} />
+        </dd>
+        {need.custodian ? (
+          <dd className="font-mono text-slate-700" title={need.custodian}>
+            {shorten(need.custodian)}
+          </dd>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap gap-1">
+        <dt className="text-slate-600">{tTerms('fundingDeadline')}</dt>
+        <dd>
+          <Deadline seconds={need.fundingDeadline} none={tTerms('openEnded')} />
+        </dd>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        <dt className="text-slate-600">{tTerms('executionDeadline')}</dt>
+        <dd>
+          <Deadline seconds={need.executionDeadline} none={tTerms('noDeadline')} />
+        </dd>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        <dt className="text-slate-600">{tTerms('minFunding')}</dt>
+        <dd className="text-slate-800">{bpsPercent(need.minFundingBps)}%</dd>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        <dt className="text-slate-600">{tTerms('costCap')}</dt>
+        <dd className="text-slate-800">{bpsPercent(need.thirdPartyCostBps)}%</dd>
+      </div>
+    </dl>
+  )
+}
+
 function DeliveryRow({ delivery }: { delivery: DeliveryView }) {
   const t = useTranslations('verifier')
   const tNeed = useTranslations('need')
@@ -165,7 +216,7 @@ function DeliveryRow({ delivery }: { delivery: DeliveryView }) {
       args: [
         attestationRequest({
           name: 'DeliveryVerified',
-          recipient: deployment?.contracts.DeliveryManager as Address,
+          recipient: schemaRecipient('DeliveryVerified') as Address,
           // Required by the schema resolver: the sign-off must point at the evidence it reviewed.
           refUID: evidenceUid,
           values: [BigInt(delivery.id), approved, hashOf(report)],

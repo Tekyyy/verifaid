@@ -90,7 +90,6 @@ export const NEED_STATUS_VALUE = Object.fromEntries(NEED_STATUS.map((name, i) =>
   NeedStatus,
   number
 >
-export const DELIVERY_STATUS_VALUE = Object.fromEntries(DELIVERY_STATUS.map((name, i) => [name, i])) as Record<
-  DeliveryStatus,
-  number
->
+export const DELIVERY_STATUS_VALUE = Object.fromEntries(
+  DELIVERY_STATUS.map((name, i) => [name, i]),
+) as Record<DeliveryStatus, number>

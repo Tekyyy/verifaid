@@ -8,7 +8,7 @@ import { FormError, Panel, TextField } from '@/components/form'
 import { MissingDeployment, Notice } from '@/components/Notice'
 import { TxStatus } from '@/components/TxStatus'
 import { deployment } from '@/lib/config'
-import { attestationRequest } from '@/lib/eas'
+import { attestationRequest, schemaRecipient } from '@/lib/eas'
 import { useTx } from '@/lib/hooks'
 import { uploadEvidence } from '@/lib/services'
 
@@ -134,7 +134,7 @@ function UploadEvidence() {
       args: [
         attestationRequest({
           name: 'DeliveryEvidence',
-          recipient: deployment?.contracts.DeliveryManager as Address,
+          recipient: schemaRecipient('DeliveryEvidence') as Address,
           values: [BigInt(deliveryId), evidenceHash as Hex, cid, Number(items), toBytes32String(region)],
         }),
       ],

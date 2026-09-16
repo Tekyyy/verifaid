@@ -75,7 +75,9 @@ describe('schemas', () => {
     const resolver = deployment.contracts.ProofOfAidResolver
     for (const name of SCHEMA_NAMES) {
       const definition = SCHEMAS[name]
-      expect(computeSchemaUid(definition.schema, resolver, definition.revocable)).toBe(deployment.schemas[name])
+      expect(computeSchemaUid(definition.schema, resolver, definition.revocable)).toBe(
+        deployment.schemas[name],
+      )
     }
   })
 

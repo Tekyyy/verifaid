@@ -1,0 +1,223 @@
+import type { NeedDetail, TimelineEvent } from '@poa/shared'
+import { chain, deployment, network } from '../config'
+import { amount, bpsOf, bpsPercent, timestamp } from '../format'
+import { isZeroUid } from '../links'
+import { PdfReport } from './pdf'
+
+/**
+ * The donor / funder / audit report for one need (gap plan C2). It is a rendering of indexer data that is
+ * itself derived from chain events, so every row carries the transaction hash or attestation UID an auditor
+ * needs to check it independently. English only: it is an audit artefact, not a localized page.
+ */
+
+const UNIT = 'EURC'
+const money = (value: string | bigint | null | undefined): string =>
+  value === null || value === undefined ? '-' : `${amount(value)} ${UNIT}`
+
+const CUSTODY_LABEL = {
+  OnChain: 'Model B - on-chain escrow (AidVault)',
+  OffChain: 'Model A - payment provider custody (NonCustodialLedger)',
+} as const
+
+const deadline = (seconds: number | null, none: string): string => (seconds ? timestamp(seconds) : none)
+
+const eventDetails = (event: TimelineEvent): string =>
+  Object.entries(event.data)
+    .filter(([, value]) => value !== null && value !== '')
+    .map(([key, value]) => `${key}=${value}`)
+    .join(', ')
+
+export const renderNeedReport = async (need: NeedDetail, timeline: TimelineEvent[]): Promise<Uint8Array> => {
+  const report = await PdfReport.create({
+    title: `Proof of Aid - Need #${need.id}`,
+    subject: 'Donor, funder and audit report',
+  })
+
+  report.title(
+    `Proof of Aid - Need #${need.id}`,
+    `${need.categoryLabel} - ${need.regionLabel}${need.ngoName ? ` - ${need.ngoName}` : ''}`,
+  )
+  report.keyValues([
+    ['Generated at', timestamp(Math.floor(Date.now() / 1000))],
+    ['Source', 'Indexer view of on-chain events and EAS attestations'],
+  ])
+
+  report.heading('Chain and contracts')
+  report.keyValues([
+    ['Network', `${chain.name} (chain id ${chain.id}, ${network})`],
+    ['NeedsRegistry', deployment?.contracts.NeedsRegistry],
+    ['DeliveryManager', deployment?.contracts.DeliveryManager],
+    ['ProofOfAidResolver', deployment?.contracts.ProofOfAidResolver],
+    ['EAS', deployment?.external.EAS],
+    ['Stablecoin', deployment?.external.Token],
+    [need.custodyMode === 'OffChain' ? 'Ledger (non-custodial)' : 'Vault', need.vault],
+    ['NGO', need.ngo],
+  ])
+
+  report.heading('Need')
+  report.keyValues([
+    ['Status', need.status],
+    ['Category', need.categoryLabel],
+    ['Region', `${need.regionLabel} (country ${need.country})`],
+    ['Program', `#${need.programId}`],
+    ['Verifications', `${need.verificationCount} of ${need.verificationsRequired}`],
+    ['Created', timestamp(need.createdAt)],
+    ['Metadata URI', need.metadataURI],
+    ...(need.expiredAt ? ([['Expired', timestamp(need.expiredAt)]] as [string, string][]) : []),
+  ])
+
+  report.heading('Terms committed at creation')
+  report.keyValues([
+    ['Custody', CUSTODY_LABEL[need.custodyMode]],
+    ...(need.custodyMode === 'OffChain'
+      ? ([['Custodian', need.custodian]] as [string, string | null][])
+      : []),
+    ['Funding deadline', deadline(need.fundingDeadline, 'Open-ended')],
+    ['Execution deadline', deadline(need.executionDeadline, 'None')],
+    [
+      'Minimum funding',
+      need.minFundingBps >= 10_000
+        ? '100% - all or nothing'
+        : `${bpsPercent(need.minFundingBps)}% - partial execution allowed, tranches scale to what was raised`,
+    ],
+    ['Third-party cost cap', `${bpsPercent(need.thirdPartyCostBps)}% of what donors paid`],
+    ['Cost disclosure hash', need.costDisclosureHash],
+    ['Expected outcome hash', need.expectedOutcomeHash],
+  ])
+
+  const fees = BigInt(need.fundingFees) + BigInt(need.settlementFees)
+  const paidByDonors = BigInt(need.totalDonated) + BigInt(need.fundingFees)
+  report.heading('Funding summary')
+  report.keyValues([
+    ['Target', money(need.targetAmount)],
+    ['Raised (counts toward target)', money(need.totalDonated)],
+    ['Funding gap', money(need.fundingGap)],
+    ['Fees on the way in', money(need.fundingFees)],
+    ['Fees on the way out', money(need.settlementFees)],
+    ['Fees in total', `${money(fees)} (${bpsPercent(bpsOf(fees, paidByDonors))}% of what donors paid)`],
+    ['Released to the NGO', money(need.totalReleased)],
+    ['Refunded to donors', money(need.totalRefunded)],
+  ])
+
+  report.heading('Tranches')
+  report.table(
+    [
+      { header: '#', width: 0.05 },
+      { header: 'Share', width: 0.08, align: 'right' },
+      { header: 'Amount', width: 0.16, align: 'right' },
+      { header: 'Status', width: 0.1 },
+      { header: 'Delivery', width: 0.08 },
+      { header: 'Released at', width: 0.16 },
+      { header: 'Release tx', width: 0.37, mono: true },
+    ],
+    need.tranches.map((tranche) => [
+      tranche.index,
+      `${bpsPercent(tranche.bps)}%`,
+      amount(tranche.amount),
+      tranche.status,
+      tranche.deliveryId ? `#${tranche.deliveryId}` : null,
+      tranche.releasedAt ? timestamp(tranche.releasedAt) : null,
+      tranche.releaseTxHash,
+    ]),
+    'No tranches yet: they are fixed when funding closes.',
+  )
+
+  report.heading('Settlements')
+  report.table(
+    [
+      { header: 'Tranche', width: 0.08 },
+      { header: 'Gross', width: 0.12, align: 'right' },
+      { header: 'Fee', width: 0.1, align: 'right' },
+      { header: 'Net', width: 0.12, align: 'right' },
+      { header: 'Supplier ref hash / attestation UID', width: 0.43, mono: true },
+      { header: 'Recorded', width: 0.15 },
+    ],
+    need.settlements.map((settlement) => [
+      settlement.trancheIndex,
+      amount(settlement.gross),
+      amount(settlement.fee),
+      amount(settlement.net),
+      `${settlement.supplierRefHash} ${settlement.uid}`,
+      timestamp(settlement.timestamp),
+    ]),
+    'No Settlement attestations yet.',
+  )
+
+  report.heading('Donations')
+  report.table(
+    [
+      { header: 'Kind', width: 0.09 },
+      { header: 'Counted', width: 0.12, align: 'right' },
+      { header: 'Paid / fee', width: 0.15, align: 'right' },
+      { header: 'Receipt / payment ref', width: 0.2, mono: true },
+      { header: 'Transaction', width: 0.29, mono: true },
+      { header: 'When', width: 0.15 },
+    ],
+    need.donations.map((donation) => [
+      donation.kind,
+      amount(donation.amount),
+      donation.gross === null ? null : `${amount(donation.gross)} / ${amount(donation.fee ?? '0')}`,
+      donation.receiptId ? `#${donation.receiptId}` : donation.paymentRefHash,
+      donation.txHash,
+      timestamp(donation.timestamp),
+    ]),
+    'No donations yet.',
+  )
+
+  report.heading('Deliveries')
+  if (need.deliveries.length === 0) report.paragraph('No deliveries opened yet.', { size: 8.5 })
+  for (const delivery of need.deliveries) {
+    report.paragraph(
+      `Delivery #${delivery.id} - unlocks tranche ${delivery.trancheIndex} - ${delivery.status}`,
+      {
+        bold: true,
+      },
+    )
+    report.keyValues([
+      [
+        'Confirmations',
+        `${delivery.confirmations} of ${delivery.expectedRecipients} (${Math.round(delivery.confirmationRatio * 100)}%)`,
+      ],
+      ['Field agent', delivery.fieldAgent],
+      ['Verifier', delivery.verifier],
+      ['Evidence attestation', isZeroUid(delivery.evidenceUID) ? null : delivery.evidenceUID],
+      ['Verifier attestation', isZeroUid(delivery.verifierUID) ? null : delivery.verifierUID],
+      ['Evidence CID', delivery.evidenceCID],
+      ['Challenge window closes', delivery.challengeDeadline ? timestamp(delivery.challengeDeadline) : null],
+    ])
+    report.spacer(4)
+  }
+
+  report.heading('Impact report')
+  if (need.impactReport) {
+    report.keyValues([
+      ['Beneficiaries served', need.impactReport.beneficiariesServed],
+      ['Attestation UID', need.impactReport.uid],
+      ['KPI hash', need.impactReport.kpiHash],
+      ['Report CID', need.impactReport.reportCID],
+      ['Published', timestamp(need.impactReport.timestamp)],
+      ['Revoked', need.impactReport.revoked ? 'Yes' : 'No'],
+    ])
+  } else {
+    report.paragraph('No impact report published yet.', { size: 8.5 })
+  }
+
+  report.heading('Full timeline')
+  report.table(
+    [
+      { header: 'When / block', width: 0.14 },
+      { header: 'Event', width: 0.21 },
+      { header: 'Details', width: 0.28 },
+      { header: 'Tx hash / attestation UID', width: 0.37, mono: true },
+    ],
+    timeline.map((event) => [
+      `${timestamp(event.timestamp)} #${event.blockNumber}`,
+      event.type,
+      eventDetails(event),
+      isZeroUid(event.attestationUID) ? event.txHash : `${event.txHash} ${event.attestationUID}`,
+    ]),
+    'No events indexed yet.',
+  )
+
+  return report.finish(`Proof of Aid - Need #${need.id} - Every figure is verifiable on-chain`)
+}

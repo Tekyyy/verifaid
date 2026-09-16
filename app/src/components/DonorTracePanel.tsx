@@ -8,7 +8,7 @@ import { EmptyState, IndexerNotice, Notice } from '@/components/Notice'
 import { TrancheBar } from '@/components/TrancheBar'
 import { Link } from '@/i18n/navigation'
 import { amount } from '@/lib/format'
-import { useMounted } from '@/lib/hooks'
+import { useMounted } from '@/lib/mounted'
 import { getDonorTrace } from '@/lib/indexer'
 
 /** "Follow my money": the receipts this wallet holds and what each one paid for. */
@@ -52,9 +52,14 @@ export function DonorTracePanel() {
         <section key={receipt.receiptId} className="card space-y-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="section-title">{t('receipt', { id: receipt.receiptId })}</h2>
-            <Link className="link text-sm" href={`/needs/${receipt.needId}`}>
-              {t('need', { id: receipt.needId })}
-            </Link>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              <Link className="link" href={`/track/${receipt.receiptId}`}>
+                {t('track')}
+              </Link>
+              <Link className="link" href={`/needs/${receipt.needId}`}>
+                {t('need', { id: receipt.needId })}
+              </Link>
+            </div>
           </div>
 
           <dl className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">

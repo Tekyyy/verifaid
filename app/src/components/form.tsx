@@ -56,6 +56,27 @@ export function TextField({ label, value, onChange, hint, placeholder, inputMode
   )
 }
 
+/** A calendar date (`YYYY-MM-DD`); empty means "not set". */
+export function DateField({ label, value, onChange, hint, min }: BaseProps & { min?: string }) {
+  const id = useId()
+  return (
+    <div>
+      <label className="label" htmlFor={id}>
+        {label}
+      </label>
+      <input
+        id={id}
+        className="input"
+        type="date"
+        value={value}
+        min={min}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      {hint ? <p className="hint">{hint}</p> : null}
+    </div>
+  )
+}
+
 export function TextArea({
   label,
   value,

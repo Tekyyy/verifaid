@@ -1,15 +1,23 @@
+import type { NeedStatus } from '@poa/shared'
 import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
+import { CustodyBadge } from '@/components/CustodyBadge'
 import { DeliveryCard } from '@/components/DeliveryCard'
 import { DonatePanel } from '@/components/DonatePanel'
+import { DonationList } from '@/components/DonationList'
+import { ExpireButton } from '@/components/ExpireButton'
 import { ExplorerLink } from '@/components/ExplorerLink'
+import { GiveFiatPanel } from '@/components/GiveFiatPanel'
 import { IndexerNotice, Notice } from '@/components/Notice'
 import { ProgressBar } from '@/components/ProgressBar'
+import { RefundPanel } from '@/components/RefundPanel'
+import { SettlementList } from '@/components/SettlementList'
 import { NeedStatusBadge } from '@/components/StatusBadge'
+import { TermsPanel } from '@/components/TermsPanel'
 import { Timeline } from '@/components/Timeline'
 import { TrancheBar } from '@/components/TrancheBar'
 import { amount, percent, timestamp } from '@/lib/format'
-import { getNeed, getTimeline } from '@/lib/indexer'
+import { getNeed, getTimeline, needFeedPath } from '@/lib/indexer'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,11 +30,15 @@ export async function generateMetadata({
   return { title: t('title', { id: params.id }) }
 }
 
+const EXPIRABLE_BEFORE_FUNDING: NeedStatus[] = ['Pending', 'Funding']
+const EXPIRABLE_AFTER_FUNDING: NeedStatus[] = ['Funded', 'InDelivery']
+
 export default async function NeedPage({ params }: { params: { id: string } }) {
   const t = await getTranslations('need')
   const tCommon = await getTranslations('common')
   const tTimeline = await getTranslations('timeline')
   const tErrors = await getTranslations('errors')
+  const tSettlements = await getTranslations('settlements')
 
   const [need, timeline] = await Promise.all([getNeed(params.id), getTimeline(params.id)])
 
@@ -43,6 +55,18 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
   const data = need.data
   const progress = percent(data.totalDonated, data.targetAmount)
 
+  // Rendered per request, so "now" is the moment the page was served; the contract re-checks on submit.
+  const now = Math.floor(Date.now() / 1000)
+  const passed = (deadline: number | null) => Boolean(deadline) && (deadline as number) <= now
+  const deadlineReached =
+    (EXPIRABLE_BEFORE_FUNDING.includes(data.status) &&
+      (passed(data.fundingDeadline) || passed(data.executionDeadline))) ||
+    (EXPIRABLE_AFTER_FUNDING.includes(data.status) && passed(data.executionDeadline))
+  const fundingOpen =
+    data.status === 'Funding' && !passed(data.fundingDeadline) && !passed(data.executionDeadline)
+  const refundable =
+    data.custodyMode === 'OnChain' && (data.status === 'Cancelled' || data.status === 'Expired')
+
   return (
     <div className="space-y-8">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -52,8 +76,23 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
             {data.categoryLabel} · {data.regionLabel}
             {data.ngoName ? ` · ${data.ngoName}` : ''}
           </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <a
+              className="btn-secondary text-xs"
+              href={`/api/reports/${encodeURIComponent(data.id)}`}
+              download
+            >
+              {t('downloadReport')}
+            </a>
+            <a className="btn-secondary text-xs" href={needFeedPath(data.id)} type="application/rss+xml">
+              {t('rss')}
+            </a>
+          </div>
         </div>
-        <NeedStatusBadge status={data.status} />
+        <div className="flex flex-wrap items-center gap-2">
+          <CustodyBadge mode={data.custodyMode} />
+          <NeedStatusBadge status={data.status} />
+        </div>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -81,7 +120,9 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-600">{t('vault')}</dt>
+                <dt className="text-slate-600">
+                  {data.custodyMode === 'OffChain' ? t('ledger') : t('vault')}
+                </dt>
                 <dd>
                   <ExplorerLink kind="address" value={data.vault} />
                 </dd>
@@ -107,8 +148,18 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
                 <dt className="text-slate-600">{t('released')}</dt>
                 <dd className="text-slate-800 tabular-nums">{amount(data.totalReleased)}</dd>
               </div>
+              <div>
+                <dt className="text-slate-600">{t('fundingGap')}</dt>
+                <dd className="text-slate-800 tabular-nums">{amount(data.fundingGap)}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-600">{t('refunded')}</dt>
+                <dd className="text-slate-800 tabular-nums">{amount(data.totalRefunded)}</dd>
+              </div>
             </dl>
           </section>
+
+          <TermsPanel need={data} />
 
           <section className="card" aria-labelledby="tranches">
             <h2 id="tranches" className="section-title">
@@ -121,6 +172,16 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
               ) : (
                 <p className="text-sm text-slate-600">{tErrors('empty')}</p>
               )}
+            </div>
+          </section>
+
+          <section className="card" aria-labelledby="settlements">
+            <h2 id="settlements" className="section-title">
+              {tSettlements('title')}
+            </h2>
+            <p className="mt-1 text-sm text-slate-700">{tSettlements('note')}</p>
+            <div className="mt-3">
+              <SettlementList settlements={data.settlements} />
             </div>
           </section>
 
@@ -158,42 +219,30 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
         </div>
 
         <aside className="space-y-6">
-          <DonatePanel
-            vault={data.vault}
-            status={data.status}
-            targetAmount={data.targetAmount}
-            totalDonated={data.totalDonated}
+          {deadlineReached ? <ExpireButton needId={data.id} /> : null}
+          {refundable ? <RefundPanel vault={data.vault} /> : null}
+
+          {data.custodyMode === 'OnChain' ? (
+            <DonatePanel
+              vault={data.vault}
+              fundingOpen={fundingOpen}
+              targetAmount={data.targetAmount}
+              totalDonated={data.totalDonated}
+            />
+          ) : null}
+
+          <GiveFiatPanel
+            needId={data.id}
+            custodyMode={data.custodyMode}
+            open={fundingOpen}
+            thirdPartyCostBps={data.thirdPartyCostBps}
           />
 
           <section className="card" aria-labelledby="donations">
             <h2 id="donations" className="section-title">
               {t('donationsTitle')}
             </h2>
-            {data.donations.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-600">{t('noDonations')}</p>
-            ) : (
-              <ul className="mt-3 space-y-2">
-                {data.donations.map((donation) => (
-                  <li key={donation.id} className="rounded-md border border-slate-200 px-3 py-2 text-xs">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-semibold tabular-nums">
-                        {amount(donation.amount)} {tCommon('amountUnit')}
-                      </span>
-                      <span className="text-slate-600">
-                        {donation.kind === 'DIRECT' ? t('donationDirect') : t('donationFiat')}
-                      </span>
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                      <ExplorerLink kind="tx" value={donation.txHash} />
-                      {donation.attestationUID ? (
-                        <ExplorerLink kind="attestation" value={donation.attestationUID} />
-                      ) : null}
-                      <span className="text-slate-500">{timestamp(donation.timestamp)}</span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <DonationList donations={data.donations} />
           </section>
 
           {data.impactReport ? (

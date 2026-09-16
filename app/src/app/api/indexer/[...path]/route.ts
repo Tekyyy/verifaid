@@ -12,9 +12,13 @@ const ALLOWED = [
   /^needs$/,
   /^needs\/[^/]+$/,
   /^needs\/[^/]+\/timeline$/,
+  /^needs\/[^/]+\/feed\.rss$/,
+  /^donations\/[^/]+$/,
+  /^donations\/[^/]+\/feed\.rss$/,
   /^donors\/0x[a-fA-F0-9]{40}\/trace$/,
   /^impact\/summary$/,
   /^programs\/[^/]+\/members$/,
+  /^providers$/,
   /^deliveries$/,
 ]
 
@@ -28,7 +32,7 @@ export async function GET(request: NextRequest, { params }: { params: { path: st
   try {
     const response = await fetch(`${indexerUrl}/${path}${search}`, {
       cache: 'no-store',
-      headers: { accept: 'application/json' },
+      headers: { accept: path.endsWith('.rss') ? 'application/rss+xml' : 'application/json' },
       signal: AbortSignal.timeout(6_000),
     })
     const body = await response.text()

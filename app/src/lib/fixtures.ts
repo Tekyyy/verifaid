@@ -1,16 +1,22 @@
 import type {
   DeliveryView,
+  DonationTrack,
+  DonationView,
+  DonorStage,
+  DonorStageView,
   DonorTrace,
   DonorTrancheSlice,
   ImpactSummary,
   NeedDetail,
   NeedSummary,
   ProgramMembersResponse,
+  ProviderView,
+  SettlementView,
   TimelineEvent,
   TrancheView,
 } from '@poa/shared'
-import { categoryHash, categoryLabel, regionLabel } from '@poa/shared'
-import { type Address, type Hex, stringToHex } from 'viem'
+import { categoryHash, categoryLabel, countryOf, DONOR_STAGES, regionLabel } from '@poa/shared'
+import { type Address, type Hex, keccak256, stringToHex } from 'viem'
 import type { NeedFilters, Result } from './indexer'
 
 /**
@@ -23,12 +29,37 @@ const NGO = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8' as Address
 const FIELD_AGENT = '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC' as Address
 const VERIFIER = '0x90F79bf6EB2c4f870365E785982E1f101E93b906' as Address
 const DONOR = '0x976EA74026E726554dB657fA54763abd0C3a0aa9' as Address
+const PROVIDER = '0x14dC79964da2C08b23698B3D3cc7Ca32193d9955' as Address
+const PROVIDER_RETIRED = '0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f' as Address
 const VAULT_1 = '0x5FC8d32690cc91D4c39d9d3abcBD16989F875707' as Address
 const VAULT_2 = '0xa513E6E4b8f2a923D98304ec87F64353C4D5C853' as Address
+const VAULT_4 = '0x8A791620dd6260079BF849Dc5567aDC3F2FdC318' as Address
+const LEDGER_5 = '0x610178dA211FEF7D417bC0e6FeD39F05609AD788' as Address
+const VAULT_6 = '0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e' as Address
+const VAULT_7 = '0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82' as Address
 
 const region = (code: string): Hex => stringToHex(code, { size: 32 })
 const tx = (n: number): Hex => `0x${n.toString(16).padStart(64, 'a')}` as Hex
 const uid = (n: number): Hex => `0x${n.toString(16).padStart(64, 'e')}` as Hex
+const hashText = (text: string): Hex => keccak256(stringToHex(text))
+
+/** The payment reference the sandbox checkout would return for the card donation to need #5. */
+export const FIXTURE_PAYMENT_REF = hashText('fixture-payment-ref-need-5-card')
+
+interface Terms {
+  custodyMode?: NeedSummary['custodyMode']
+  custodian?: Address | null
+  fundingDeadline?: number | null
+  executionDeadline?: number | null
+  minFundingBps?: number
+  thirdPartyCostBps?: number
+  fundingFees?: string
+  settlementFees?: string
+  totalRefunded?: string
+  expiredAt?: number | null
+}
+
+const OPEN_STATUSES: NeedSummary['status'][] = ['Pending', 'Verified', 'Funding']
 
 const summary = (
   id: string,
@@ -40,25 +71,43 @@ const summary = (
   status: NeedSummary['status'],
   vault: Address | null,
   createdAt: number,
-): NeedSummary => ({
-  id,
-  ngo: NGO,
-  ngoName: 'Aurora Relief',
-  programId: '1',
-  category: categoryHash(category),
-  categoryLabel: categoryLabel(categoryHash(category)),
-  regionCode: region(regionText),
-  regionLabel: regionLabel(region(regionText)),
-  targetAmount: target,
-  totalDonated: donated,
-  totalReleased: released,
-  status,
-  vault,
-  metadataURI: `ipfs://demo/need-${id}.json`,
-  verificationsRequired: 1,
-  verificationCount: status === 'Pending' ? 0 : 1,
-  createdAt,
-})
+  terms: Terms = {},
+): NeedSummary => {
+  const costBps = terms.thirdPartyCostBps ?? 0
+  return {
+    id,
+    ngo: NGO,
+    ngoName: 'Aurora Relief',
+    programId: '1',
+    category: categoryHash(category),
+    categoryLabel: categoryLabel(categoryHash(category)),
+    regionCode: region(regionText),
+    regionLabel: regionLabel(region(regionText)),
+    country: countryOf(regionText),
+    targetAmount: target,
+    totalDonated: donated,
+    totalReleased: released,
+    totalRefunded: terms.totalRefunded ?? '0',
+    fundingGap: OPEN_STATUSES.includes(status) ? (BigInt(target) - BigInt(donated)).toString() : '0',
+    status,
+    custodyMode: terms.custodyMode ?? 'OnChain',
+    vault,
+    metadataURI: `ipfs://demo/need-${id}.json`,
+    verificationsRequired: 1,
+    verificationCount: status === 'Pending' ? 0 : 1,
+    fundingDeadline: terms.fundingDeadline ?? null,
+    executionDeadline: terms.executionDeadline ?? null,
+    minFundingBps: terms.minFundingBps ?? 10_000,
+    thirdPartyCostBps: costBps,
+    expectedOutcomeHash: hashText(`Expected outcome of need ${id}`),
+    costDisclosureHash: costBps > 0 ? hashText(`Cost disclosure of need ${id}`) : null,
+    custodian: terms.custodian ?? null,
+    fundingFees: terms.fundingFees ?? '0',
+    settlementFees: terms.settlementFees ?? '0',
+    createdAt,
+    expiredAt: terms.expiredAt ?? null,
+  }
+}
 
 const NEEDS: NeedSummary[] = [
   summary(
@@ -71,9 +120,21 @@ const NEEDS: NeedSummary[] = [
     'InDelivery',
     VAULT_1,
     1_757_000_000,
+    {
+      fundingDeadline: 1_757_600_000,
+      executionDeadline: 1_795_000_000,
+      thirdPartyCostBps: 150,
+      settlementFees: '18000000',
+    },
   ),
-  summary('2', 'WATER', 'ES-AN', '6000000000', '2400000000', '0', 'Funding', VAULT_2, 1_757_300_000),
-  summary('3', 'MEDICAL', 'MA-07', '9000000000', '0', '0', 'Pending', null, 1_757_600_000),
+  summary('2', 'WATER', 'ES-AN', '6000000000', '2400000000', '0', 'Funding', VAULT_2, 1_757_300_000, {
+    fundingDeadline: 1_792_000_000,
+    executionDeadline: 1_800_000_000,
+    minFundingBps: 6000,
+  }),
+  summary('3', 'MEDICAL', 'MA-07', '9000000000', '0', '0', 'Pending', null, 1_757_600_000, {
+    fundingDeadline: 1_794_000_000,
+  }),
   summary(
     '4',
     'SHELTER',
@@ -82,10 +143,32 @@ const NEEDS: NeedSummary[] = [
     '4000000000',
     '4000000000',
     'Completed',
-    VAULT_1,
+    VAULT_4,
     1_756_100_000,
   ),
+  summary('5', 'CASH', 'PT-11', '5000000000', '1450000000', '0', 'Funding', LEDGER_5, 1_758_000_000, {
+    custodyMode: 'OffChain',
+    custodian: PROVIDER,
+    fundingDeadline: 1_791_000_000,
+    executionDeadline: 1_799_000_000,
+    minFundingBps: 8000,
+    thirdPartyCostBps: 300,
+    fundingFees: '7250000',
+  }),
+  summary('6', 'EDUCATION', 'ES-CM', '8000000000', '1200000000', '0', 'Expired', VAULT_6, 1_755_000_000, {
+    fundingDeadline: 1_760_000_000,
+    totalRefunded: '400000000',
+    expiredAt: 1_760_010_000,
+  }),
+  summary('7', 'FOOD', 'MA-04', '3000000000', '2100000000', '0', 'Funding', VAULT_7, 1_770_000_000, {
+    fundingDeadline: 1_780_000_000,
+    executionDeadline: 1_800_000_000,
+    minFundingBps: 7000,
+    thirdPartyCostBps: 100,
+  }),
 ]
+
+const needAt = (index: number): NeedSummary => NEEDS[index] as NeedSummary
 
 const tranche = (
   index: number,
@@ -136,64 +219,116 @@ const DELIVERIES: DeliveryView[] = [
   },
 ]
 
+const SETTLEMENTS_1: SettlementView[] = [
+  {
+    uid: uid(42),
+    needId: '1',
+    trancheIndex: 0,
+    attester: NGO,
+    gross: '3600000000',
+    fee: '18000000',
+    net: '3582000000',
+    supplierRefHash: hashText('INV-2025-0917 Harinas del Sur'),
+    fxRef: hashText('EUR/EUR'),
+    txHash: tx(15),
+    timestamp: 1_757_150_000,
+  },
+]
+
+const donation = (
+  fields: Partial<DonationView> & Pick<DonationView, 'id' | 'needId' | 'kind' | 'amount'>,
+) => ({
+  donor: null,
+  donorRefHash: null,
+  paymentRefHash: null,
+  gross: null,
+  fee: null,
+  currency: null,
+  receiptId: null,
+  attestationUID: null,
+  txHash: tx(Number(fields.id)),
+  timestamp: 1_757_010_000,
+  ...fields,
+})
+
+const DONATIONS_1: DonationView[] = [
+  donation({ id: '1', needId: '1', kind: 'DIRECT', donor: DONOR, amount: '9000000000', receiptId: '1' }),
+  donation({
+    id: '2',
+    needId: '1',
+    kind: 'FIAT',
+    donorRefHash: uid(7),
+    paymentRefHash: uid(8),
+    amount: '3000000000',
+    gross: '3000000000',
+    fee: '0',
+    currency: 'EUR',
+    attestationUID: uid(9),
+    timestamp: 1_757_020_000,
+  }),
+]
+
+const DONATIONS_5: DonationView[] = [
+  donation({
+    id: '50',
+    needId: '5',
+    kind: 'OFFCHAIN',
+    donorRefHash: uid(51),
+    paymentRefHash: FIXTURE_PAYMENT_REF,
+    amount: '492750000',
+    gross: '500000000',
+    fee: '7250000',
+    currency: 'EUR',
+    attestationUID: uid(52),
+    timestamp: 1_758_100_000,
+  }),
+  donation({
+    id: '53',
+    needId: '5',
+    kind: 'OFFCHAIN',
+    donorRefHash: uid(54),
+    paymentRefHash: uid(55),
+    amount: '957250000',
+    gross: '957250000',
+    fee: '0',
+    currency: 'EUR',
+    attestationUID: uid(56),
+    timestamp: 1_758_200_000,
+  }),
+]
+
+const DONATIONS_6: DonationView[] = [
+  donation({ id: '60', needId: '6', kind: 'DIRECT', donor: DONOR, amount: '800000000', receiptId: '7' }),
+  donation({ id: '61', needId: '6', kind: 'DIRECT', donor: NGO, amount: '400000000', receiptId: '8' }),
+]
+
+const detail = (index: number, rest: Partial<NeedDetail>): NeedDetail => ({
+  ...needAt(index),
+  tranches: [],
+  deliveries: [],
+  donations: [],
+  settlements: [],
+  impactReport: null,
+  ...rest,
+})
+
 const DETAILS: Record<string, NeedDetail> = {
-  '1': {
-    ...(NEEDS[0] as NeedSummary),
+  '1': detail(0, {
     tranches: [
       tranche(0, 3000, '3600000000', 'Released', null),
       tranche(1, 4000, '4800000000', 'Releasable', '1'),
       tranche(2, 3000, '3600000000', 'Locked', null),
     ],
     deliveries: DELIVERIES,
-    donations: [
-      {
-        id: '1',
-        needId: '1',
-        kind: 'DIRECT',
-        donor: DONOR,
-        donorRefHash: null,
-        paymentRefHash: null,
-        amount: '9000000000',
-        receiptId: '1',
-        attestationUID: null,
-        txHash: tx(1),
-        timestamp: 1_757_010_000,
-      },
-      {
-        id: '2',
-        needId: '1',
-        kind: 'FIAT',
-        donor: null,
-        donorRefHash: uid(7),
-        paymentRefHash: uid(8),
-        amount: '3000000000',
-        receiptId: null,
-        attestationUID: uid(9),
-        txHash: tx(2),
-        timestamp: 1_757_020_000,
-      },
-    ],
-    impactReport: null,
-  },
-  '2': {
-    ...(NEEDS[1] as NeedSummary),
+    donations: DONATIONS_1,
+    settlements: SETTLEMENTS_1,
+  }),
+  '2': detail(1, {
     tranches: [tranche(0, 5000, '0', 'Locked', null), tranche(1, 5000, '0', 'Locked', null)],
-    deliveries: [],
-    donations: [],
-    impactReport: null,
-  },
-  '3': {
-    ...(NEEDS[2] as NeedSummary),
-    tranches: [],
-    deliveries: [],
-    donations: [],
-    impactReport: null,
-  },
-  '4': {
-    ...(NEEDS[3] as NeedSummary),
+  }),
+  '3': detail(2, {}),
+  '4': detail(3, {
     tranches: [tranche(0, 10000, '4000000000', 'Released', null)],
-    deliveries: [],
-    donations: [],
     impactReport: {
       needId: '4',
       uid: uid(20),
@@ -203,131 +338,153 @@ const DETAILS: Record<string, NeedDetail> = {
       revoked: false,
       timestamp: 1_756_900_000,
     },
-  },
+  }),
+  '5': detail(4, {
+    tranches: [tranche(0, 2000, '0', 'Locked', null), tranche(1, 8000, '0', 'Locked', null)],
+    donations: DONATIONS_5,
+  }),
+  '6': detail(5, {
+    tranches: [tranche(0, 10000, '0', 'Locked', null)],
+    donations: DONATIONS_6,
+  }),
+  '7': detail(6, {
+    tranches: [tranche(0, 4000, '0', 'Locked', null), tranche(1, 6000, '0', 'Locked', null)],
+  }),
 }
+
+const event = (
+  needId: string,
+  n: number,
+  type: TimelineEvent['type'],
+  data: TimelineEvent['data'],
+  blockNumber: number,
+  timestamp: number,
+  attestationUID: Hex | null = null,
+): TimelineEvent => ({
+  id: `${needId}-${n}`,
+  needId,
+  type,
+  data,
+  attestationUID,
+  txHash: tx(blockNumber),
+  blockNumber,
+  logIndex: n % 3,
+  timestamp,
+})
 
 const TIMELINES: Record<string, TimelineEvent[]> = {
   '1': [
-    {
-      id: '1-1',
-      needId: '1',
-      type: 'NeedCreated',
-      data: { ngo: NGO, targetAmount: '12000000000', category: 'FOOD' },
-      attestationUID: null,
-      txHash: tx(1),
-      blockNumber: 150,
-      timestamp: 1_757_000_000,
-    },
-    {
-      id: '1-2',
-      needId: '1',
-      type: 'NeedVerified',
-      data: { verifier: VERIFIER, approved: true },
-      attestationUID: uid(30),
-      txHash: tx(3),
-      blockNumber: 161,
-      timestamp: 1_757_004_000,
-    },
-    {
-      id: '1-3',
-      needId: '1',
-      type: 'Donated',
-      data: { donor: DONOR, amount: '9000000000', receiptId: '1' },
-      attestationUID: null,
-      txHash: tx(4),
-      blockNumber: 178,
-      timestamp: 1_757_010_000,
-    },
-    {
-      id: '1-4',
-      needId: '1',
-      type: 'DonatedOnBehalf',
-      data: { amount: '3000000000', kind: 'FIAT' },
-      attestationUID: uid(9),
-      txHash: tx(5),
-      blockNumber: 180,
-      timestamp: 1_757_020_000,
-    },
-    {
-      id: '1-5',
-      needId: '1',
-      type: 'FundingClosed',
-      data: { totalDonated: '12000000000' },
-      attestationUID: null,
-      txHash: tx(6),
-      blockNumber: 184,
-      timestamp: 1_757_030_000,
-    },
-    {
-      id: '1-6',
-      needId: '1',
-      type: 'TrancheReleased',
-      data: { index: 0, amount: '3600000000', to: NGO },
-      attestationUID: null,
-      txHash: tx(10),
-      blockNumber: 190,
-      timestamp: 1_757_100_000,
-    },
-    {
-      id: '1-7',
-      needId: '1',
-      type: 'DeliveryOpened',
-      data: { deliveryId: '1', trancheIndex: 1, expectedRecipients: 120 },
-      attestationUID: null,
-      txHash: tx(11),
-      blockNumber: 201,
-      timestamp: 1_757_200_000,
-    },
-    {
-      id: '1-8',
-      needId: '1',
-      type: 'DeliveryEvidenceLinked',
-      data: { deliveryId: '1', itemsDelivered: 120 },
-      attestationUID: uid(1),
-      txHash: tx(12),
-      blockNumber: 205,
-      timestamp: 1_757_210_000,
-    },
-    {
-      id: '1-9',
-      needId: '1',
-      type: 'ReceiptConfirmed',
-      data: { deliveryId: '1', confirmations: 97 },
-      attestationUID: null,
-      txHash: tx(13),
-      blockNumber: 240,
-      timestamp: 1_757_300_000,
-    },
-    {
-      id: '1-10',
-      needId: '1',
-      type: 'DeliveryVerifiedLinked',
-      data: { deliveryId: '1', verifier: VERIFIER, approved: true },
-      attestationUID: uid(2),
-      txHash: tx(14),
-      blockNumber: 250,
-      timestamp: 1_757_400_000,
-    },
-    {
-      id: '1-11',
-      needId: '1',
-      type: 'DeliveryChallengeable',
-      data: { deliveryId: '1', challengeDeadline: 1_757_900_000 },
-      attestationUID: null,
-      txHash: tx(14),
-      blockNumber: 250,
-      timestamp: 1_757_400_000,
-    },
+    event(
+      '1',
+      1,
+      'NeedCreated',
+      { ngo: NGO, targetAmount: '12000000000', category: 'FOOD' },
+      150,
+      1_757_000_000,
+    ),
+    event('1', 2, 'NeedVerified', { verifier: VERIFIER, approved: true }, 161, 1_757_004_000, uid(30)),
+    event('1', 3, 'Donated', { donor: DONOR, amount: '9000000000', receiptId: '1' }, 178, 1_757_010_000),
+    event('1', 4, 'DonatedOnBehalf', { amount: '3000000000', kind: 'FIAT' }, 180, 1_757_020_000, uid(9)),
+    event('1', 5, 'FundingClosed', { totalDonated: '12000000000' }, 184, 1_757_030_000),
+    event('1', 6, 'TrancheReleased', { index: 0, amount: '3600000000', to: NGO }, 190, 1_757_100_000),
+    event(
+      '1',
+      7,
+      'SettlementRecorded',
+      { trancheIndex: 0, gross: '3600000000', fee: '18000000', net: '3582000000' },
+      196,
+      1_757_150_000,
+      uid(42),
+    ),
+    event(
+      '1',
+      8,
+      'DeliveryOpened',
+      { deliveryId: '1', trancheIndex: 1, expectedRecipients: 120 },
+      201,
+      1_757_200_000,
+    ),
+    event(
+      '1',
+      9,
+      'DeliveryEvidenceLinked',
+      { deliveryId: '1', itemsDelivered: 120 },
+      205,
+      1_757_210_000,
+      uid(1),
+    ),
+    event('1', 10, 'ReceiptConfirmed', { deliveryId: '1', confirmations: 97 }, 240, 1_757_300_000),
+    event(
+      '1',
+      11,
+      'DeliveryVerifiedLinked',
+      { deliveryId: '1', verifier: VERIFIER, approved: true },
+      250,
+      1_757_400_000,
+      uid(2),
+    ),
+    event(
+      '1',
+      12,
+      'DeliveryChallengeable',
+      { deliveryId: '1', challengeDeadline: 1_757_900_000 },
+      250,
+      1_757_400_000,
+    ),
+  ],
+  '5': [
+    event(
+      '5',
+      1,
+      'NeedCreated',
+      { ngo: NGO, targetAmount: '5000000000', category: 'CASH' },
+      300,
+      1_758_000_000,
+    ),
+    event('5', 2, 'NeedVerified', { verifier: VERIFIER, approved: true }, 305, 1_758_050_000, uid(57)),
+    event(
+      '5',
+      3,
+      'FundingRecorded',
+      { provider: PROVIDER, gross: '500000000', fee: '7250000', net: '492750000', currency: 'EUR' },
+      310,
+      1_758_100_000,
+      uid(52),
+    ),
+    event(
+      '5',
+      4,
+      'FundingRecorded',
+      { provider: PROVIDER, gross: '957250000', fee: '0', net: '957250000', currency: 'EUR' },
+      320,
+      1_758_200_000,
+      uid(56),
+    ),
+  ],
+  '6': [
+    event(
+      '6',
+      1,
+      'NeedCreated',
+      { ngo: NGO, targetAmount: '8000000000', category: 'EDUCATION' },
+      90,
+      1_755_000_000,
+    ),
+    event('6', 2, 'NeedVerified', { verifier: VERIFIER, approved: true }, 95, 1_755_100_000, uid(61)),
+    event('6', 3, 'Donated', { donor: DONOR, amount: '800000000', receiptId: '7' }, 100, 1_755_200_000),
+    event('6', 4, 'Donated', { donor: NGO, amount: '400000000', receiptId: '8' }, 101, 1_755_300_000),
+    event('6', 5, 'NeedExpired', { from: 'Funding', raised: '1200000000' }, 130, 1_760_010_000),
+    event('6', 6, 'Refunded', { account: NGO, amount: '400000000' }, 131, 1_760_020_000),
   ],
 }
 
 export const impactSummary: ImpactSummary = {
   totals: {
-    needs: 4,
+    needs: NEEDS.length,
     needsCompleted: 1,
-    donated: '18400000000',
+    donated: '24150000000',
     released: '7600000000',
-    refunded: '0',
+    refunded: '400000000',
     deliveriesFinalized: 1,
     confirmations: 111,
     beneficiariesServed: 340,
@@ -336,8 +493,8 @@ export const impactSummary: ImpactSummary = {
     {
       key: categoryHash('FOOD'),
       label: 'FOOD',
-      needs: 1,
-      donated: '12000000000',
+      needs: 2,
+      donated: '14100000000',
       released: '3600000000',
       deliveriesFinalized: 1,
       beneficiariesServed: 0,
@@ -361,6 +518,24 @@ export const impactSummary: ImpactSummary = {
       beneficiariesServed: 340,
     },
     {
+      key: categoryHash('CASH'),
+      label: 'CASH',
+      needs: 1,
+      donated: '1450000000',
+      released: '0',
+      deliveriesFinalized: 0,
+      beneficiariesServed: 0,
+    },
+    {
+      key: categoryHash('EDUCATION'),
+      label: 'EDUCATION',
+      needs: 1,
+      donated: '1200000000',
+      released: '0',
+      deliveriesFinalized: 0,
+      beneficiariesServed: 0,
+    },
+    {
       key: categoryHash('MEDICAL'),
       label: 'MEDICAL',
       needs: 1,
@@ -374,8 +549,8 @@ export const impactSummary: ImpactSummary = {
     {
       key: region('ES-CM'),
       label: 'ES-CM',
-      needs: 2,
-      donated: '16000000000',
+      needs: 3,
+      donated: '17200000000',
       released: '7600000000',
       deliveriesFinalized: 1,
       beneficiariesServed: 340,
@@ -385,6 +560,24 @@ export const impactSummary: ImpactSummary = {
       label: 'ES-AN',
       needs: 1,
       donated: '2400000000',
+      released: '0',
+      deliveriesFinalized: 0,
+      beneficiariesServed: 0,
+    },
+    {
+      key: region('PT-11'),
+      label: 'PT-11',
+      needs: 1,
+      donated: '1450000000',
+      released: '0',
+      deliveriesFinalized: 0,
+      beneficiariesServed: 0,
+    },
+    {
+      key: region('MA-04'),
+      label: 'MA-04',
+      needs: 1,
+      donated: '2100000000',
       released: '0',
       deliveriesFinalized: 0,
       beneficiariesServed: 0,
@@ -413,19 +606,43 @@ const MEMBERS = [
   '18446744073709551616123456789012345678901234567890123456789012345678901234567',
 ]
 
-export const filterNeeds = (filters: NeedFilters): NeedSummary[] =>
-  NEEDS.filter(
+const isOpen = (need: NeedSummary, now: number): boolean =>
+  need.status === 'Funding' &&
+  (need.fundingDeadline === null || need.fundingDeadline > now) &&
+  (need.executionDeadline === null || need.executionDeadline > now)
+
+const byGapDesc = (a: NeedSummary, b: NeedSummary): number => {
+  const diff = BigInt(b.fundingGap) - BigInt(a.fundingGap)
+  return diff > 0n ? 1 : diff < 0n ? -1 : 0
+}
+
+const SORTS: Record<NonNullable<NeedFilters['sort']>, (a: NeedSummary, b: NeedSummary) => number> = {
+  urgency: (a, b) =>
+    (a.fundingDeadline ?? Number.POSITIVE_INFINITY) - (b.fundingDeadline ?? Number.POSITIVE_INFINITY) ||
+    byGapDesc(a, b),
+  gap: byGapDesc,
+  newest: (a, b) => b.createdAt - a.createdAt,
+}
+
+export const filterNeeds = (filters: NeedFilters): NeedSummary[] => {
+  const now = Math.floor(Date.now() / 1000)
+  const matches = NEEDS.filter(
     (need) =>
       (!filters.status || need.status === filters.status) &&
       (!filters.category || need.category === filters.category || need.categoryLabel === filters.category) &&
-      (!filters.region || need.regionCode === filters.region || need.regionLabel === filters.region),
+      (!filters.region || need.regionCode === filters.region || need.regionLabel === filters.region) &&
+      (!filters.country || need.country === filters.country.toUpperCase()) &&
+      (!filters.custody || need.custodyMode === filters.custody) &&
+      (!filters.open || isOpen(need, now)),
   )
+  return filters.sort ? [...matches].sort(SORTS[filters.sort]) : matches
+}
+
+const notFound = { ok: false, error: { kind: 'http', status: 404, detail: 'Not found' } } as const
 
 export const needDetail = (id: string): Result<NeedDetail> => {
-  const detail = DETAILS[id]
-  return detail
-    ? { ok: true, data: detail }
-    : { ok: false, error: { kind: 'http', status: 404, detail: 'Not found' } }
+  const found = DETAILS[id]
+  return found ? { ok: true, data: found } : notFound
 }
 
 export const timeline = (id: string): TimelineEvent[] => TIMELINES[id] ?? []
@@ -433,18 +650,18 @@ export const timeline = (id: string): TimelineEvent[] => TIMELINES[id] ?? []
 export const filterDeliveries = (status?: string): DeliveryView[] =>
   status ? DELIVERIES.filter((delivery) => delivery.status === status) : DELIVERIES
 
-/** This demo donor funded 75% of need #1, so every slice is 7500 bps of the full tranche. */
-const DONOR_SHARE_BPS = 7500n
-
-const withDonorShare = (tranches: TrancheView[]): DonorTrancheSlice[] =>
-  tranches.map((tranche) => ({
-    ...tranche,
-    donorShare: ((BigInt(tranche.amount) * DONOR_SHARE_BPS) / 10_000n).toString(),
+const withDonorShare = (tranches: TrancheView[], shareBps: number): DonorTrancheSlice[] =>
+  tranches.map((item) => ({
+    ...item,
+    donorShare: ((BigInt(item.amount) * BigInt(shareBps)) / 10_000n).toString(),
   }))
+
+/** This demo donor funded 75% of need #1, so every slice is 7500 bps of the full tranche. */
+const DONOR_SHARE_BPS = 7500
 
 export const donorTrace = (address: string): DonorTrace => ({
   donor: address as Address,
-  totalDonated: '9000000000',
+  totalDonated: '9800000000',
   receipts: [
     {
       receiptId: '1',
@@ -453,11 +670,24 @@ export const donorTrace = (address: string): DonorTrace => ({
       category: categoryHash('FOOD'),
       regionCode: region('ES-CM'),
       amount: '9000000000',
-      shareBps: Number(DONOR_SHARE_BPS),
+      shareBps: DONOR_SHARE_BPS,
       releasedToNgo: '2700000000',
       refunded: '0',
-      tranches: withDonorShare(DETAILS['1']?.tranches ?? []),
+      tranches: withDonorShare(DETAILS['1']?.tranches ?? [], DONOR_SHARE_BPS),
       deliveries: DELIVERIES,
+    },
+    {
+      receiptId: '7',
+      needId: '6',
+      needStatus: 'Expired',
+      category: categoryHash('EDUCATION'),
+      regionCode: region('ES-CM'),
+      amount: '800000000',
+      shareBps: 6666,
+      releasedToNgo: '0',
+      refunded: '0',
+      tranches: withDonorShare(DETAILS['6']?.tranches ?? [], 6666),
+      deliveries: [],
     },
   ],
 })
@@ -466,3 +696,109 @@ export const programMembers = (programId: string): Result<ProgramMembersResponse
   ok: true,
   data: { programId, groupId: '0', memberCount: MEMBERS.length, members: MEMBERS, merkleTreeDepth: 3 },
 })
+
+export const providers: ProviderView[] = [
+  { address: PROVIDER, active: true, registeredAt: 1_756_000_000 },
+  { address: PROVIDER_RETIRED, active: false, registeredAt: 1_755_000_000 },
+]
+
+const stages = (reached: Partial<Record<DonorStage, Omit<DonorStageView, 'stage'>>>): DonorStageView[] =>
+  DONOR_STAGES.map(
+    (stage) =>
+      ({
+        stage,
+        reached: false,
+        at: null,
+        txHash: null,
+        attestationUID: null,
+        pending: null,
+        ...reached[stage],
+      }) satisfies DonorStageView,
+  )
+
+const reachedAt = (at: number, txHash: Hex, attestationUID: Hex | null = null) => ({
+  reached: true,
+  at,
+  txHash,
+  attestationUID,
+  pending: null,
+})
+
+const TRACKS: Record<string, DonationTrack> = {
+  '1': {
+    ref: '1',
+    refKind: 'receipt',
+    donation: DONATIONS_1[0] as DonationView,
+    need: needAt(0),
+    shareBps: DONOR_SHARE_BPS,
+    stages: stages({
+      Verified: reachedAt(1_757_004_000, tx(161), uid(30)),
+      Funded: reachedAt(1_757_030_000, tx(184)),
+      Settled: reachedAt(1_757_150_000, tx(196), uid(42)),
+      Delivered: {
+        reached: false,
+        at: null,
+        txHash: null,
+        attestationUID: null,
+        pending: 'Delivery #1 was verified and is in its challenge window until 2025-09-15 01:33 UTC.',
+      },
+    }),
+    currentStage: 'Settled',
+    outcome: 'InProgress',
+    releasedToNgo: '2700000000',
+    refunded: '0',
+    tranches: withDonorShare(DETAILS['1']?.tranches ?? [], DONOR_SHARE_BPS),
+    deliveries: DELIVERIES,
+    settlements: SETTLEMENTS_1,
+    impactReport: null,
+    updatedAt: 1_757_400_000,
+  },
+  [FIXTURE_PAYMENT_REF.toLowerCase()]: {
+    ref: FIXTURE_PAYMENT_REF,
+    refKind: 'payment',
+    donation: DONATIONS_5[0] as DonationView,
+    need: needAt(4),
+    shareBps: 3398,
+    stages: stages({
+      Verified: reachedAt(1_758_050_000, tx(305), uid(57)),
+      Funded: {
+        reached: false,
+        at: null,
+        txHash: null,
+        attestationUID: null,
+        pending: '1,450.00 of 5,000.00 raised; funding closes when the target or the deadline is reached.',
+      },
+    }),
+    currentStage: 'Verified',
+    outcome: 'InProgress',
+    releasedToNgo: '0',
+    refunded: '0',
+    tranches: withDonorShare(DETAILS['5']?.tranches ?? [], 3398),
+    deliveries: [],
+    settlements: [],
+    impactReport: null,
+    updatedAt: 1_758_200_000,
+  },
+  '7': {
+    ref: '7',
+    refKind: 'receipt',
+    donation: DONATIONS_6[0] as DonationView,
+    need: needAt(5),
+    shareBps: 6666,
+    stages: stages({ Verified: reachedAt(1_755_100_000, tx(95), uid(61)) }),
+    currentStage: 'Verified',
+    outcome: 'Refundable',
+    releasedToNgo: '0',
+    refunded: '0',
+    tranches: withDonorShare(DETAILS['6']?.tranches ?? [], 6666),
+    deliveries: [],
+    settlements: [],
+    impactReport: null,
+    updatedAt: 1_760_010_000,
+  },
+}
+
+export const donationTrack = (ref: string): Result<DonationTrack> => {
+  const found = TRACKS[ref.toLowerCase()]
+  return found ? { ok: true, data: found } : notFound
+}

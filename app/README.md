@@ -12,20 +12,36 @@ preferred locale, and the language switcher in the header keeps the current path
 | Route | Rendering | Where the data comes from |
 |---|---|---|
 | `/` | server, dynamic | `GET /impact/summary` for the live totals; the rest is static copy |
-| `/needs` | server, dynamic | `GET /needs?status=&category=&region=`; the filters are URL query parameters |
-| `/needs/[id]` | server, dynamic | `GET /needs/:id` and `GET /needs/:id/timeline`; the donate panel is a client island that writes to `MockEURC.approve` then `AidVault.donate` |
+| `/needs` | server, dynamic | `GET /needs?status=&category=&region=&country=&custody=&open=&sort=`; the filters are URL query parameters, and the country list comes from an unfiltered `GET /needs` |
+| `/needs/[id]` | server, dynamic | `GET /needs/:id` and `GET /needs/:id/timeline`. Terms panel (custody model, deadlines, minimum funding, cost cap), settlements, donations by kind, "Apply deadline" (`NeedsRegistry.expire`) once a deadline has passed, refund guidance (`AidVault.claimRefund`) for cancelled or expired on-chain needs, PDF report and RSS links. Wallet donations (`MockEURC.approve` then `AidVault.donate`) only for on-chain custody; the card / bank sandbox checkout for both |
+| `/track`, `/track/[ref]` | server, dynamic | `GET /donations/:ref` (a receipt id or a payment reference hash). Five-stage stepper, outcome banner, the donation's share, tranches, settlements, deliveries, impact report; alerts form, RSS, copy link and the embed snippet. No login, `noindex` |
+| `/embed/track/[ref]` | server, dynamic | The same data as a chrome-less widget (own layout, no wallet provider), light/dark from `prefers-color-scheme`, refreshed every 60 s. The only route allowed in a third-party iframe (`Content-Security-Policy: frame-ancestors *`, set in `next.config.mjs`) |
+| `/alerts/unsubscribe` | client | Removes an alert subscription; the id and token arrive in the URL fragment and are wiped from the address bar |
 | `/donor` | client | `GET /donors/:address/trace` for the connected wallet, through the same-origin proxy |
-| `/ngo` | client | writes only: `BeneficiaryGroups.createProgram` / `addMembers`, `NeedsRegistry.createNeed`, `AidVault.closeFunding` / `releaseTranche`, and an `ImpactReport` EAS attestation. The vault address is read on chain with `NeedsRegistry.vaultOf` |
+| `/ngo` | client | writes only: `BeneficiaryGroups.createProgram` / `addMembers`, `NeedsRegistry.createNeed` (with the v2 terms: custody model and custodian from `GET /providers`, deadlines, minimum funding, cost cap and the hashed disclosure and expected outcome, summarized in plain words before signing), `closeFunding` (explains the minimum threshold) / `releaseTranche`, and `Settlement` and `ImpactReport` EAS attestations. The ledger address is read on chain with `NeedsRegistry.vaultOf` |
 | `/verifier` | server shell, client forms | `GET /needs?status=Pending` and `GET /deliveries`; the dossier hash is read on chain with `NeedsRegistry.dossierHashOf`. Attests `NeedVerified` and `DeliveryVerified` (whose `refUID` is forced to the delivery's evidence attestation) and calls `DeliveryManager.challenge` |
 | `/field` | client | `POST /evidence` (multipart) to the evidence service, then a `DeliveryEvidence` attestation with the hash and CID it returned; `DeliveryManager.openDelivery` |
 | `/confirm/[deliveryId]` | server shell, client island | the delivery and its program are read **on chain** (so the page works while the indexer catches up); the group members come from `GET /programs/:id/members` |
 | `/impact` | server, dynamic | `GET /impact/summary` plus `GET /needs?status=Completed` and up to 12 `GET /needs/:id` lookups for the published impact reports |
 
-Two route handlers back these pages:
+Route handlers back these pages:
 
-- `GET /api/indexer/*` — a read-only, allow-listed proxy to the indexer, so client components do not depend
-  on it serving CORS headers.
+- `GET /api/indexer/*` — a read-only, allow-listed proxy to the indexer (including the RSS feeds and
+  `/providers`), so client components do not depend on it serving CORS headers.
 - `POST /api/relay/confirm` — the beneficiary relayer (below).
+- `POST /api/checkout` — validates a sandbox card / bank donation and forwards it to the bank connector's
+  `POST /checkout/sessions`; the donor is redirected to `/track/<trackingRef>`. No card data exists anywhere.
+- `POST /api/alerts`, `DELETE /api/alerts/:id` — validate and forward alert subscriptions to the notifier.
+- `GET /api/reports/:needId` — the need's donor / funder / audit report as an A4 PDF (pdf-lib, standard fonts),
+  rendered from the indexer on every request; 404 for an unknown need, 502 when the indexer is down.
+
+## Sponsored gas
+
+When `NEXT_PUBLIC_PAYMASTER_URL` is set and the connected wallet reports the ERC-7677 `paymasterService`
+capability for the configured chain (Coinbase Smart Wallet does), `useTx` sends each write as an EIP-5792
+`wallet_sendCalls` batch with that paymaster and waits for the batch status; the transaction status then shows a
+"Gas sponsored" badge. Any other wallet falls back to a normal transaction. Role checks are unaffected: the smart
+account is still `msg.sender`.
 
 ## The beneficiary page
 
@@ -62,6 +78,9 @@ See `.env.example`. Everything has a working default except the relayer key.
 | `NEXT_PUBLIC_USE_FIXTURES` | unset | `1` renders `src/lib/fixtures.ts` instead of calling the indexer |
 | `NEXT_PUBLIC_EVIDENCE_SERVICE_URL` | `http://localhost:4001` | Evidence upload and decryption links |
 | `NEXT_PUBLIC_PII_VAULT_URL` | `http://localhost:4002` | Dossier storage and decryption links |
+| `BANK_CONNECTOR_URL` | `http://localhost:4003` | Server only (the `NEXT_PUBLIC_` name is also read). Sandbox checkout |
+| `NOTIFIER_URL` | `http://localhost:4004` | Server only (the `NEXT_PUBLIC_` name is also read). Alert subscriptions |
+| `NEXT_PUBLIC_PAYMASTER_URL` | unset | ERC-7677 paymaster for gas-sponsored writes (see above) |
 | `RELAYER_PRIVATE_KEY` | — | **Server only.** Pays for beneficiary confirmations |
 
 If no deployment is bundled for the configured chain (`deployments/*.json` is gitignored, so a fresh clone has

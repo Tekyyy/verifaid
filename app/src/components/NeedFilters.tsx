@@ -1,39 +1,39 @@
 'use client'
 
-import { CATEGORIES, NEED_STATUS } from '@poa/shared'
+import { CATEGORIES, CUSTODY_MODE, NEED_SORTS, NEED_STATUS } from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import { useRouter } from '@/i18n/navigation'
+import { flagEmoji } from '@/lib/format'
+import type { NeedFilters as NeedFilterValues } from '@/lib/indexer'
 
-export interface NeedFilterValues {
-  status?: string
-  category?: string
-  region?: string
-}
+const TEXT_KEYS = ['status', 'category', 'region', 'country', 'custody', 'sort'] as const
 
 /**
  * A plain form: it submits on "Apply" and works with the keyboard alone. Filters live in the URL so a
  * filtered list can be linked to and read by the server component that renders it.
  */
-export function NeedFilters({ values }: { values: NeedFilterValues }) {
+export function NeedFilters({ values, countries }: { values: NeedFilterValues; countries: string[] }) {
   const t = useTranslations('needs')
   const tCommon = useTranslations('common')
   const tStatus = useTranslations('needStatus')
+  const tCustody = useTranslations('custody')
   const router = useRouter()
 
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     const params = new URLSearchParams()
-    for (const key of ['status', 'category', 'region'] as const) {
+    for (const key of TEXT_KEYS) {
       const value = String(form.get(key) ?? '').trim()
       if (value) params.set(key, value)
     }
+    if (form.get('open') === 'true') params.set('open', 'true')
     const query = params.toString()
     router.push(`/needs${query ? `?${query}` : ''}`)
   }
 
   return (
-    <form className="card grid gap-3 sm:grid-cols-4" onSubmit={submit}>
+    <form className="card grid gap-3 sm:grid-cols-2 lg:grid-cols-4" onSubmit={submit}>
       <div>
         <label className="label" htmlFor="filter-status">
           {t('filterStatus')}
@@ -63,6 +63,20 @@ export function NeedFilters({ values }: { values: NeedFilterValues }) {
       </div>
 
       <div>
+        <label className="label" htmlFor="filter-country">
+          {t('filterCountry')}
+        </label>
+        <select id="filter-country" name="country" className="input" defaultValue={values.country ?? ''}>
+          <option value="">{tCommon('all')}</option>
+          {countries.map((country) => (
+            <option key={country} value={country}>
+              {`${flagEmoji(country)} ${country}`.trim()}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
         <label className="label" htmlFor="filter-region">
           {t('filterRegion')}
         </label>
@@ -73,6 +87,41 @@ export function NeedFilters({ values }: { values: NeedFilterValues }) {
           defaultValue={values.region ?? ''}
           placeholder={t('filterRegionPlaceholder')}
         />
+      </div>
+
+      <div>
+        <label className="label" htmlFor="filter-custody">
+          {t('filterCustody')}
+        </label>
+        <select id="filter-custody" name="custody" className="input" defaultValue={values.custody ?? ''}>
+          <option value="">{tCommon('all')}</option>
+          {CUSTODY_MODE.map((mode) => (
+            <option key={mode} value={mode}>
+              {tCustody(mode)}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="label" htmlFor="filter-sort">
+          {t('sort')}
+        </label>
+        <select id="filter-sort" name="sort" className="input" defaultValue={values.sort ?? ''}>
+          <option value="">{t('sortDefault')}</option>
+          {NEED_SORTS.map((sort) => (
+            <option key={sort} value={sort}>
+              {t(`sort_${sort}`)}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="flex items-end">
+        <label className="flex min-h-[44px] items-center gap-2 text-sm font-medium text-slate-700">
+          <input type="checkbox" name="open" value="true" defaultChecked={values.open ?? false} />
+          {t('filterOpen')}
+        </label>
       </div>
 
       <div className="flex items-end gap-2">

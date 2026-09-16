@@ -7,6 +7,21 @@ const nextConfig = {
   reactStrictMode: true,
   // Biome lints the whole monorepo from the root; Next's own ESLint pass is not configured here.
   eslint: { ignoreDuringBuilds: true },
+  // The tracking widget is meant to be embedded on NGO and donor sites, so only its routes may be framed.
+  // Every other page refuses framing (clickjacking on the wallet-connected consoles). The two sources must not
+  // overlap: two frame-ancestors policies on one response are intersected, which would block the widget too.
+  async headers() {
+    return [
+      {
+        source: '/:locale(en|es)/embed/:path*',
+        headers: [{ key: 'Content-Security-Policy', value: 'frame-ancestors *' }],
+      },
+      {
+        source: '/:path((?!(?:en|es)/embed(?:/|$)).*)',
+        headers: [{ key: 'Content-Security-Policy', value: "frame-ancestors 'self'" }],
+      },
+    ]
+  },
   webpack: (config, { isServer, webpack }) => {
     // `wagmi/connectors` is a barrel that also pulls in the Base Account connector, whose dependency chain
     // (@base-org/account → @coinbase/cdp-sdk → @x402/*) is not installed. This app only uses the Coinbase

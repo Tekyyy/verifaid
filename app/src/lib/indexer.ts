@@ -1,10 +1,14 @@
 import type {
+  CustodyMode,
   DeliveryView,
+  DonationTrack,
   DonorTrace,
   ImpactSummary,
   NeedDetail,
+  NeedSort,
   NeedSummary,
   ProgramMembersResponse,
+  ProviderView,
   TimelineEvent,
 } from '@poa/shared'
 import { indexerUrl, useFixtures } from './config'
@@ -55,6 +59,12 @@ export interface NeedFilters {
   status?: string
   category?: string
   region?: string
+  /** ISO 3166-1 alpha-2, e.g. "ES". */
+  country?: string
+  custody?: CustodyMode
+  /** Only needs that accept money right now. */
+  open?: boolean
+  sort?: NeedSort
 }
 
 const query = (filters: NeedFilters): string => {
@@ -62,6 +72,10 @@ const query = (filters: NeedFilters): string => {
   if (filters.status) params.set('status', filters.status)
   if (filters.category) params.set('category', filters.category)
   if (filters.region) params.set('region', filters.region)
+  if (filters.country) params.set('country', filters.country)
+  if (filters.custody) params.set('custody', filters.custody)
+  if (filters.open) params.set('open', 'true')
+  if (filters.sort) params.set('sort', filters.sort)
   const serialized = params.toString()
   return serialized ? `?${serialized}` : ''
 }
@@ -96,3 +110,15 @@ export const getDeliveries = async (status?: string): Promise<Result<DeliveryVie
   useFixtures
     ? { ok: true, data: fixtures.filterDeliveries(status) }
     : get<DeliveryView[]>(`/deliveries${status ? `?status=${encodeURIComponent(status)}` : ''}`)
+
+/** `ref` is a receipt id ("12") or a payment reference hash ("0x…"); the caller validates its shape first. */
+export const getDonationTrack = async (ref: string): Promise<Result<DonationTrack>> =>
+  useFixtures ? fixtures.donationTrack(ref) : get<DonationTrack>(`/donations/${encodeURIComponent(ref)}`)
+
+export const getProviders = async (): Promise<Result<ProviderView[]>> =>
+  useFixtures ? { ok: true, data: fixtures.providers } : get<ProviderView[]>('/providers')
+
+/** Same-origin RSS feeds (proxied), so a reader subscribes to this site rather than to the indexer's port. */
+export const needFeedPath = (id: string): string => `/api/indexer/needs/${encodeURIComponent(id)}/feed.rss`
+export const donationFeedPath = (ref: string): string =>
+  `/api/indexer/donations/${encodeURIComponent(ref)}/feed.rss`

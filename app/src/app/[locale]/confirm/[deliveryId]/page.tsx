@@ -1,4 +1,9 @@
-import { AID_RECEIVED_MESSAGE, deliveryManagerAbi, needsRegistryAbi } from '@poa/shared'
+import {
+  AID_RECEIVED_MESSAGE,
+  DELIVERY_STATUS_VALUE,
+  deliveryManagerAbi,
+  needsRegistryAbi,
+} from '@poa/shared'
 import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
 import { ConfirmClient } from '@/components/ConfirmClient'
@@ -83,7 +88,7 @@ export default async function ConfirmPage({ params }: { params: { deliveryId: st
         programId={programId}
         message={AID_RECEIVED_MESSAGE.toString()}
         members={inline}
-        deliveryOpen={status === 0}
+        deliveryOpen={status === DELIVERY_STATUS_VALUE.Open}
       />
     </>
   )

@@ -1,31 +1,19 @@
 'use client'
 
-import {
-  aidVaultAbi,
-  beneficiaryGroupsAbi,
-  CATEGORIES,
-  categoryHash,
-  easAbi,
-  needsRegistryAbi,
-} from '@poa/shared'
+import { aidVaultAbi, beneficiaryGroupsAbi, CUSTODY_MODE, easAbi, needsRegistryAbi } from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
-import { type Address, type Hex, keccak256, stringToHex, toHex } from 'viem'
+import { type Address, type Hex, keccak256, toHex } from 'viem'
 import { useReadContract } from 'wagmi'
-import { FormError, Panel, SelectField, TextArea, TextField } from '@/components/form'
-import { MissingDeployment } from '@/components/Notice'
+import { CreateNeedPanel } from '@/components/CreateNeedPanel'
+import { FormError, Panel, TextArea, TextField } from '@/components/form'
+import { MissingDeployment, Notice } from '@/components/Notice'
+import { SettlementPanel } from '@/components/SettlementPanel'
 import { TxStatus } from '@/components/TxStatus'
 import { deployment } from '@/lib/config'
-import { attestationRequest } from '@/lib/eas'
-import { parseAmount } from '@/lib/format'
-import { useTx } from '@/lib/hooks'
-import { storeDossier } from '@/lib/services'
-
-const ZERO_BYTES32 = `0x${'00'.repeat(32)}` as Hex
-const isBytes32 = (value: string): value is Hex => /^0x[0-9a-fA-F]{64}$/.test(value)
-
-/** bytes32 from a short ASCII code, right-padded — the same encoding the contracts use for region codes. */
-const toBytes32String = (value: string): Hex => stringToHex(value, { size: 32 })
+import { attestationRequest, schemaRecipient } from '@/lib/eas'
+import { amount, bpsPercent, isBytes32, isZeroHash, ZERO_BYTES32 } from '@/lib/format'
+import { useLedger, useTx } from '@/lib/hooks'
 
 export function NgoConsole() {
   if (!deployment) return <MissingDeployment />
@@ -34,9 +22,10 @@ export function NgoConsole() {
     <div className="space-y-6">
       <CreateProgram />
       <AddMembers />
-      <CreateNeed />
+      <CreateNeedPanel />
       <CloseFunding />
       <ReleaseTranche />
+      <SettlementPanel />
       <PublishImpactReport />
     </div>
   )
@@ -120,157 +109,71 @@ function AddMembers() {
   )
 }
 
-function CreateNeed() {
-  const t = useTranslations('ngo')
-  const tCommon = useTranslations('common')
-  const tErrors = useTranslations('errors')
-  const tx = useTx()
-
-  const [programId, setProgramId] = useState('')
-  const [category, setCategory] = useState<string>(CATEGORIES[0])
-  const [target, setTarget] = useState('')
-  const [region, setRegion] = useState('')
-  const [metadataUri, setMetadataUri] = useState('')
-  const [verifications, setVerifications] = useState('1')
-  const [tranches, setTranches] = useState('30,40,30')
-  const [dossierText, setDossierText] = useState('')
-  const [dossierHash, setDossierHash] = useState('')
-  const [serviceError, setServiceError] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const parts = tranches
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean)
-  const sum = parts.reduce((total, part) => total + (Number(part) || 0), 0)
-
-  const store = async () => {
-    setServiceError(null)
-    const result = await storeDossier(dossierText)
-    if (result.ok) setDossierHash(result.data.hash)
-    else setServiceError(tErrors('serviceUnavailable', { detail: result.error }))
-  }
-
-  const submit = async () => {
-    const amount = parseAmount(target)
-    if (!/^\d+$/.test(programId) || !amount || !region) return setError(tErrors('required'))
-    if (parts.length < 1 || parts.length > 5 || Math.round(sum) !== 100) {
-      return setError(tErrors('invalidTranches'))
-    }
-    if (dossierHash && !isBytes32(dossierHash)) return setError(tErrors('required'))
-    setError(null)
-
-    // Percent in the form, basis points on chain.
-    const bps = parts.map((part) => Math.round(Number(part) * 100))
-    const drift = 10_000 - bps.reduce((total, value) => total + value, 0)
-    if (drift !== 0 && bps.length > 0) bps[bps.length - 1] = (bps.at(-1) as number) + drift
-
-    await tx.run({
-      address: deployment?.contracts.NeedsRegistry as Address,
-      abi: needsRegistryAbi,
-      functionName: 'createNeed',
-      args: [
-        {
-          programId: BigInt(programId),
-          category: categoryHash(category),
-          targetAmount: amount,
-          regionCode: toBytes32String(region),
-          dossierHash: (dossierHash || ZERO_BYTES32) as Hex,
-          metadataURI: metadataUri,
-          verificationsRequired: Number(verifications),
-          trancheBps: bps,
-        },
-      ],
-    })
-  }
-
-  return (
-    <Panel title={t('needTitle')} description={t('needBody')}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <TextField label={t('programId')} value={programId} onChange={setProgramId} inputMode="numeric" />
-        <SelectField label={t('category')} value={category} onChange={setCategory} options={CATEGORIES} />
-        <TextField
-          label={t('targetAmount', { unit: tCommon('amountUnit') })}
-          value={target}
-          onChange={setTarget}
-          inputMode="decimal"
-        />
-        <TextField label={t('region')} value={region} onChange={setRegion} placeholder="ES-CM" />
-        <TextField
-          label={t('metadataUri')}
-          value={metadataUri}
-          onChange={setMetadataUri}
-          placeholder="ipfs://…"
-        />
-        <TextField
-          label={t('verificationsRequired')}
-          value={verifications}
-          onChange={setVerifications}
-          inputMode="numeric"
-        />
-      </div>
-
-      <TextField
-        label={t('tranchePlan')}
-        value={tranches}
-        onChange={setTranches}
-        hint={t('tranchePlanHint', { sum })}
-        inputMode="numeric"
-      />
-
-      <TextArea label={t('dossier')} value={dossierText} onChange={setDossierText} rows={3} />
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn-secondary" onClick={store}>
-          {t('dossierStore')}
-        </button>
-        <span className="mono">{dossierHash || ZERO_BYTES32}</span>
-      </div>
-      <TextField label={t('dossierHash')} value={dossierHash} onChange={setDossierHash} placeholder="0x…" />
-      <FormError message={serviceError} />
-      <FormError message={error} />
-
-      <button
-        type="button"
-        className="btn-primary"
-        disabled={tx.phase === 'signing' || tx.phase === 'pending'}
-        onClick={submit}
-      >
-        {t('createNeed')}
-      </button>
-      <TxStatus state={tx} />
-    </Panel>
-  )
-}
-
-/** Resolves a need id to its vault address, which is where funding and tranche calls actually go. */
-function useVault(needId: string): Address | undefined {
+/** Whether the need's money is held on chain; `undefined` while unknown. */
+function useCustody(needId: string) {
   const enabled = /^\d+$/.test(needId)
   const { data } = useReadContract({
     address: deployment?.contracts.NeedsRegistry as Address,
     abi: needsRegistryAbi,
-    functionName: 'vaultOf',
+    functionName: 'custodyModeOf',
     args: enabled ? [BigInt(needId)] : undefined,
     query: { enabled },
   })
-  return data as Address | undefined
+  return data === undefined ? undefined : CUSTODY_MODE[data]
 }
 
+/**
+ * Closing early must respect the terms donors were shown: the ledger reverts below `minFundingBps` of the
+ * target, so the panel reads both numbers and explains the threshold instead of letting the NGO hit a revert.
+ */
 function CloseFunding() {
   const t = useTranslations('ngo')
+  const tCommon = useTranslations('common')
   const tx = useTx()
   const [needId, setNeedId] = useState('')
-  const vault = useVault(needId)
+  const enabled = /^\d+$/.test(needId)
+  const ledger = useLedger(needId)
+
+  const { data: terms } = useReadContract({
+    address: deployment?.contracts.NeedsRegistry as Address,
+    abi: needsRegistryAbi,
+    functionName: 'fundingTermsOf',
+    args: enabled ? [BigInt(needId)] : undefined,
+    query: { enabled },
+  })
+  const { data: raised } = useReadContract({
+    address: ledger,
+    abi: aidVaultAbi,
+    functionName: 'totalDonated',
+    query: { enabled: Boolean(ledger) },
+  })
+
+  const [, target, minFundingBps, open] = terms ?? [undefined, 0n, 0, false]
+  const minimum = terms ? (target * BigInt(minFundingBps) + 9_999n) / 10_000n : 0n
+  const belowMinimum =
+    raised !== undefined && terms !== undefined && raised * 10_000n < target * BigInt(minFundingBps)
+  const unit = tCommon('amountUnit')
 
   return (
     <Panel title={t('closeTitle')} description={t('closeBody')}>
       <TextField label={t('needId')} value={needId} onChange={setNeedId} inputMode="numeric" />
-      <p className="hint mono">{vault ?? '—'}</p>
+      <p className="hint mono">{ledger ?? '—'}</p>
+      {terms && raised !== undefined ? (
+        <div className="space-y-1 text-sm text-slate-800">
+          <p>
+            {t('closeProgress', { raised: amount(raised), target: amount(target), unit })}{' '}
+            {t('closeMinimum', { minimum: amount(minimum), percent: bpsPercent(minFundingBps), unit })}
+          </p>
+          {!open ? <p className="text-amber-800">{t('closeNotOpen')}</p> : null}
+          {open && belowMinimum ? <p className="text-amber-800">{t('closeBelowMinimum')}</p> : null}
+        </div>
+      ) : null}
       <button
         type="button"
         className="btn-primary"
-        disabled={!vault || tx.phase === 'signing' || tx.phase === 'pending'}
+        disabled={!ledger || !open || belowMinimum || tx.phase === 'signing' || tx.phase === 'pending'}
         onClick={() =>
-          vault && tx.run({ address: vault, abi: aidVaultAbi, functionName: 'closeFunding', args: [] })
+          ledger && tx.run({ address: ledger, abi: aidVaultAbi, functionName: 'closeFunding', args: [] })
         }
       >
         {t('closeFunding')}
@@ -285,7 +188,8 @@ function ReleaseTranche() {
   const tx = useTx()
   const [needId, setNeedId] = useState('')
   const [index, setIndex] = useState('0')
-  const vault = useVault(needId)
+  const vault = useLedger(needId)
+  const offChain = useCustody(needId) === 'OffChain'
 
   return (
     <Panel title={t('releaseTitle')} description={t('releaseBody')}>
@@ -294,10 +198,13 @@ function ReleaseTranche() {
         <TextField label={t('trancheIndex')} value={index} onChange={setIndex} inputMode="numeric" />
       </div>
       <p className="hint mono">{vault ?? '—'}</p>
+      {offChain ? <Notice tone="info" title={t('releaseOffChain')} /> : null}
       <button
         type="button"
         className="btn-primary"
-        disabled={!vault || !/^\d+$/.test(index) || tx.phase === 'signing' || tx.phase === 'pending'}
+        disabled={
+          !vault || offChain || !/^\d+$/.test(index) || tx.phase === 'signing' || tx.phase === 'pending'
+        }
         onClick={() =>
           vault &&
           tx.run({
@@ -325,11 +232,16 @@ function PublishImpactReport() {
   const [reportCid, setReportCid] = useState('')
   const [refUid, setRefUid] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const vault = useVault(needId)
+  const ledger = useLedger(needId)
+  const minimum = deployment?.params.minExpectedRecipients ?? 5
 
   const submit = async () => {
-    if (!vault || !/^\d+$/.test(needId) || !/^\d+$/.test(served)) return setError(tErrors('required'))
-    if (kpiHash && !isBytes32(kpiHash)) return setError(tErrors('required'))
+    if (!ledger || !/^\d+$/.test(needId) || !/^\d+$/.test(served) || !reportCid.trim()) {
+      return setError(tErrors('required'))
+    }
+    // The resolver rejects a zero KPI hash and small counts (a k-anonymity floor), so say so up front.
+    if (!isBytes32(kpiHash) || isZeroHash(kpiHash)) return setError(t('errorKpiHash'))
+    if (Number(served) < minimum) return setError(t('errorServed', { minimum }))
     if (refUid && !isBytes32(refUid)) return setError(tErrors('required'))
     setError(null)
 
@@ -340,9 +252,9 @@ function PublishImpactReport() {
       args: [
         attestationRequest({
           name: 'ImpactReport',
-          recipient: vault,
+          recipient: schemaRecipient('ImpactReport', ledger) as Address,
           refUID: (refUid || undefined) as Hex | undefined,
-          values: [BigInt(needId), Number(served), (kpiHash || ZERO_BYTES32) as Hex, reportCid],
+          values: [BigInt(needId), Number(served), kpiHash as Hex, reportCid.trim()],
         }),
       ],
     })
@@ -352,7 +264,13 @@ function PublishImpactReport() {
     <Panel title={t('impactTitle')} description={t('impactBody')}>
       <div className="grid gap-3 sm:grid-cols-2">
         <TextField label={t('needId')} value={needId} onChange={setNeedId} inputMode="numeric" />
-        <TextField label={t('beneficiariesServed')} value={served} onChange={setServed} inputMode="numeric" />
+        <TextField
+          label={t('beneficiariesServed')}
+          value={served}
+          onChange={setServed}
+          inputMode="numeric"
+          hint={`≥ ${minimum}`}
+        />
         <TextField label={t('kpiHash')} value={kpiHash} onChange={setKpiHash} placeholder="0x…" />
         <TextField label={t('reportCid')} value={reportCid} onChange={setReportCid} placeholder="bafy…" />
       </div>
@@ -361,7 +279,7 @@ function PublishImpactReport() {
       <button
         type="button"
         className="btn-primary"
-        disabled={!vault || tx.phase === 'signing' || tx.phase === 'pending'}
+        disabled={!ledger || tx.phase === 'signing' || tx.phase === 'pending'}
         onClick={submit}
       >
         {t('publishReport')}

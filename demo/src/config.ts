@@ -70,13 +70,15 @@ export const createContext = (networkArg?: string): DemoContext => {
     chain.rpcUrls.default.http[0] ??
     'http://127.0.0.1:8545'
 
-  const mnemonic = process.env.DEMO_MNEMONIC?.trim() || DEFAULT_MNEMONIC
+  // Locally the seed always uses anvil's public wallets (deploy-local forces it), even when .env carries the
+  // mnemonic and deployer key of a public testnet deployment.
+  const mnemonic = (!isLocal && process.env.DEMO_MNEMONIC?.trim()) || DEFAULT_MNEMONIC
   const accounts = {} as Record<RoleName, Account>
   for (const [role, index] of Object.entries(ROLE_INDEX) as [RoleName, number][]) {
     accounts[role] = mnemonicToAccount(mnemonic, { addressIndex: index })
   }
   // On a public testnet the deployer key funds and administers everything, so prefer it when present.
-  if (process.env.DEPLOYER_PRIVATE_KEY) {
+  if (!isLocal && process.env.DEPLOYER_PRIVATE_KEY) {
     accounts.admin = privateKeyToAccount(process.env.DEPLOYER_PRIVATE_KEY as `0x${string}`)
   }
 

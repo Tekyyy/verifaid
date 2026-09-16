@@ -20,6 +20,11 @@ export function TxStatus({ state }: { state: TxState }) {
   return (
     <p className={`mt-2 flex flex-wrap items-center gap-2 text-xs ${TONE[state.phase]}`} aria-live="polite">
       <span className="font-semibold">{t(state.phase)}</span>
+      {state.sponsored ? (
+        <span className="badge bg-emerald-100 text-emerald-900" title={t('sponsoredHint')}>
+          {t('sponsored')}
+        </span>
+      ) : null}
       {state.hash ? (
         <span className="flex items-center gap-1">
           <span>{t('hash')}</span>

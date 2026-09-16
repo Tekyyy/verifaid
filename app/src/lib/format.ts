@@ -38,3 +38,35 @@ export const timestamp = (seconds: number | null | undefined): string => {
 
 export const shorten = (value: string, head = 6, tail = 4): string =>
   value.length <= head + tail + 1 ? value : `${value.slice(0, head)}…${value.slice(-tail)}`
+
+/** Basis points → a compact percentage string: 10000 → "100", 250 → "2.5". */
+export const bpsPercent = (bps: number | bigint): string => String(Number((Number(bps) / 100).toFixed(2)))
+
+/** Share of `part` in `whole`, in basis points (0 when `whole` is zero). */
+export const bpsOf = (part: bigint | string, whole: bigint | string): number => {
+  const bottom = BigInt(whole)
+  return bottom === 0n ? 0 : Number((BigInt(part) * 10_000n) / bottom)
+}
+
+/** ISO 3166-1 alpha-2 code → flag emoji ("ES" → 🇪🇸); empty for anything that is not two ASCII letters. */
+export const flagEmoji = (country: string): string =>
+  /^[A-Za-z]{2}$/.test(country)
+    ? String.fromCodePoint(...[...country.toUpperCase()].map((letter) => 0x1f1e6 + letter.charCodeAt(0) - 65))
+    : ''
+
+/**
+ * A `<input type="date">` value → unix seconds at the end of that day in UTC, so "the deadline is the 30th"
+ * means the whole of the 30th everywhere. Empty input is "no deadline" (0).
+ */
+export const dateInputToUnix = (value: string): number | null => {
+  if (!value) return 0
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
+  const millis = Date.parse(`${value}T23:59:59Z`)
+  return Number.isNaN(millis) ? null : Math.floor(millis / 1000)
+}
+
+export const isBytes32 = (value: string): boolean => /^0x[0-9a-fA-F]{64}$/.test(value)
+
+export const ZERO_BYTES32 = `0x${'00'.repeat(32)}` as const
+
+export const isZeroHash = (value: string | null | undefined): boolean => !value || /^0x0{64}$/i.test(value)

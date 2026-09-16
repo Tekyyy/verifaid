@@ -38,12 +38,16 @@ const run = (script) => {
   console.log(`\n▸ forge script ${script}`)
   // --slow: one transaction at a time, each confirmed before the next. Without it anvil can silently drop the
   // tail of a long batch, leaving a half-wired deployment behind.
-  const result = spawnSync('forge', ['script', `script/${script}`, '--rpc-url', rpcUrl, '--broadcast', '--slow'], {
-    cwd: contracts,
-    env,
-    stdio: 'inherit',
-    shell: process.platform === 'win32',
-  })
+  const result = spawnSync(
+    'forge',
+    ['script', `script/${script}`, '--rpc-url', rpcUrl, '--broadcast', '--slow'],
+    {
+      cwd: contracts,
+      env,
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    },
+  )
   if (result.status !== 0) {
     console.error(`\n${script} failed. Is anvil running at ${rpcUrl}? Start it with: pnpm chain`)
     process.exit(result.status ?? 1)
