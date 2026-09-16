@@ -43,6 +43,7 @@ interface IDeliveryManager {
     event DeliveryChallengeable(uint256 indexed deliveryId, uint64 challengeDeadline);
     event DeliveryChallenged(uint256 indexed deliveryId, address indexed challenger, bytes32 reasonHash);
     event DisputeResolved(uint256 indexed deliveryId, bool upheld);
+    event DeliveryCancelled(uint256 indexed deliveryId, address indexed by);
     event DeliveryFinalized(uint256 indexed deliveryId, uint256 indexed needId, uint256 trancheIndex);
     event DeliveryRejected(uint256 indexed deliveryId, uint256 indexed needId, uint256 trancheIndex);
     event Wired(address evidenceResolver, address verifiedResolver);
@@ -64,6 +65,9 @@ interface IDeliveryManager {
 
     /// @notice Resolves a dispute. `uphold = true` rejects the delivery. Admin only.
     function resolveDispute(uint256 deliveryId, bool uphold) external;
+
+    /// @notice Closes an abandoned delivery so its tranche can be attempted again. Admin only.
+    function cancelDelivery(uint256 deliveryId) external;
 
     /// @notice Finalizes a delivery after its challenge period and unlocks the tranche. Callable by anyone.
     function finalize(uint256 deliveryId) external;

@@ -145,6 +145,12 @@ the one that moves the most money per call. The admin lifts the pause, or cancel
   tranche. A finalized one does not.
 - **Deliveries are bound to the need's `InDelivery` state** at every step, so a cancelled need cannot keep
   accumulating confirmations or be finalized.
+- **`cancelDelivery` (admin only) exists because of a liveness hole found in review.** A tranche's slot only
+  frees when its delivery is rejected, and a rejection comes from a verifier attestation — which requires
+  evidence to review. So a delivery whose field agent vanished before filing evidence would have blocked its
+  tranche permanently (funds recoverable only by cancelling the whole need). The admin can now close a delivery
+  that is still `Open`. It is deliberately *not* available to the NGO: an NGO could otherwise cancel deliveries
+  whose confirmations were lagging and reopen them with a smaller `expectedRecipients` to game the threshold.
 
 ## 9. Static analysis
 

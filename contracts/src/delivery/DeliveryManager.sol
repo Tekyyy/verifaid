@@ -198,6 +198,19 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
     // ─── admin ─────────────────────────────────────────────────────────────────
 
     /// @inheritdoc IDeliveryManager
+    /// @dev Escape hatch for a delivery that can never progress — typically one whose field agent disappeared
+    ///      before filing evidence, which would otherwise block its tranche forever (a verifier cannot reject a
+    ///      delivery that has no evidence to review). Restricted to the admin and to deliveries that are still
+    ///      `Open`: an NGO could otherwise cancel deliveries whose confirmations are lagging and reopen them
+    ///      with a smaller `expectedRecipients` to game the threshold.
+    function cancelDelivery(uint256 deliveryId) external onlyAdmin {
+        Delivery storage d = _delivery(deliveryId);
+        if (d.status != DeliveryStatus.Open) revert Errors.InvalidDeliveryStatus();
+        emit DeliveryCancelled(deliveryId, msg.sender);
+        _reject(d);
+    }
+
+    /// @inheritdoc IDeliveryManager
     function resolveDispute(uint256 deliveryId, bool uphold) external onlyAdmin {
         Delivery storage d = _delivery(deliveryId);
         if (d.status != DeliveryStatus.Disputed) revert Errors.InvalidDeliveryStatus();

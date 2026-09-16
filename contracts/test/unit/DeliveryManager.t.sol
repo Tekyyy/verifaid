@@ -470,6 +470,39 @@ contract DeliveryManagerTest is PoATest {
         assertGt(d.challengeDeadline, firstDeadline, "fresh deadline");
     }
 
+    /// @dev A delivery whose field agent never files evidence cannot be rejected by a verifier (there is nothing
+    ///      to review), so without this escape hatch its tranche would be locked forever.
+    function test_cancelDelivery_unblocksAnAbandonedDelivery() public {
+        uint256 deliveryId = _open();
+
+        vm.prank(ngo);
+        vm.expectRevert(Errors.Unauthorized.selector);
+        deliveryManager.cancelDelivery(deliveryId);
+
+        // the tranche is blocked: a second delivery cannot be opened while this one is active
+        vm.prank(fieldAgent);
+        vm.expectRevert(Errors.DeliveryAlreadyActive.selector);
+        deliveryManager.openDelivery(needId, 1, EXPECTED);
+
+        vm.expectEmit(true, true, false, false, address(deliveryManager));
+        emit IDeliveryManager.DeliveryCancelled(deliveryId, admin);
+        vm.prank(admin);
+        deliveryManager.cancelDelivery(deliveryId);
+        assertEq(deliveryManager.getDelivery(deliveryId).status, IDeliveryManager.DeliveryStatus.Rejected);
+
+        // the field agent can now start over, and the tranche can still be earned
+        uint256 redone = _runDelivery(needId, 1, EXPECTED);
+        assertEq(deliveryManager.getDelivery(redone).status, IDeliveryManager.DeliveryStatus.Finalized);
+        assertEq(vault.trancheStatus(1), IAidVault.TrancheStatus.Releasable);
+    }
+
+    function test_cancelDelivery_onlyWhileOpen() public {
+        uint256 deliveryId = _challengeable();
+        vm.prank(admin);
+        vm.expectRevert(Errors.InvalidDeliveryStatus.selector);
+        deliveryManager.cancelDelivery(deliveryId);
+    }
+
     function test_resolveDispute_revertsWhenNotDisputed() public {
         uint256 deliveryId = _challengeable();
         vm.prank(admin);
