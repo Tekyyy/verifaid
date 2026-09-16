@@ -62,7 +62,9 @@ pnpm deploy:local   # deploy + register schemas + seed demo data
 pnpm demo:run       # execute the full lifecycle and print explorer links
 ```
 
-Deploy to Base Sepolia (needs `DEPLOYER_PRIVATE_KEY` and `BASESCAN_API_KEY` in `.env`):
+Deploy to Base Sepolia (needs `DEPLOYER_PRIVATE_KEY` and `BASESCAN_API_KEY` in `.env`). A dry run against live
+Base Sepolia state estimates **~0.0003 ETH** for the whole system, and the script reuses the EAS and Semaphore
+contracts already deployed there rather than deploying its own:
 
 ```bash
 cd contracts
