@@ -28,6 +28,26 @@ field agent delivers aid, uploads encrypted evidence ─► beneficiaries confir
 Money only moves forward when three independent signals agree: field evidence, anonymous beneficiary
 confirmations above a threshold, and an approving verifier who is provably unrelated to the NGO.
 
+## Live on Base Sepolia
+
+The system is deployed, source-verified on Basescan, and has run the full lifecycle end to end. Need #5 is the
+one to look at: funded with crypto **and** a fiat transfer through a bank partner, two deliveries confirmed by
+real zero-knowledge proofs, every tranche released, and an impact report chained to the last verified delivery.
+
+| | |
+|---|---|
+| `NeedsRegistry` | [`0x3664a0fb745452a3fC7ed75ed221D2132fde471E`](https://sepolia.basescan.org/address/0x3664a0fb745452a3fC7ed75ed221D2132fde471E) |
+| `DeliveryManager` | [`0xfd4108300Df609043Ba263307179Cc987531f2f5`](https://sepolia.basescan.org/address/0xfd4108300Df609043Ba263307179Cc987531f2f5) |
+| `RoleRegistry` | [`0xC71df0E329f8b304447644a2496Fe6D3b920242e`](https://sepolia.basescan.org/address/0xC71df0E329f8b304447644a2496Fe6D3b920242e) |
+| `AidVaultFactory` | [`0xe4970edD5FB64908a69a3B1a17e608C6402644DA`](https://sepolia.basescan.org/address/0xe4970edD5FB64908a69a3B1a17e608C6402644DA) |
+| `BeneficiaryGroups` | [`0xA4AcaC78d404783349E58061f7E0EC227d89Fd42`](https://sepolia.basescan.org/address/0xA4AcaC78d404783349E58061f7E0EC227d89Fd42) |
+| `DonationReceipt` | [`0x1025Cd8Ba38F95FAE1F4672B7fF379Ab4161fFDB`](https://sepolia.basescan.org/address/0x1025Cd8Ba38F95FAE1F4672B7fF379Ab4161fFDB) |
+| test token (mEURC) | [`0xdF3430bCF730A1D065d04FD70d11Aa93dd990e71`](https://sepolia.basescan.org/address/0xdF3430bCF730A1D065d04FD70d11Aa93dd990e71) |
+
+Every address, resolver and schema UID is in [`deployments/base-sepolia.json`](deployments/base-sepolia.json);
+the five schemas are browsable on the [Base Sepolia EAS explorer](https://base-sepolia.easscan.org). EAS and
+Semaphore v4 are the ones already deployed on Base Sepolia — this project deploys neither.
+
 ## Repository layout
 
 ```

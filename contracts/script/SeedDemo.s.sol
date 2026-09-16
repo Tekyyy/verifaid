@@ -139,8 +139,7 @@ contract SeedDemo is Script, DeploymentIO {
     /// @dev Tops up the role wallets that will have to send their own transactions during the demo — including
     ///      the relayer, which submits every beneficiary confirmation so their wallets never appear on-chain.
     function _fundGas(Actors memory a) internal {
-        address[7] memory needsGas =
-            [a.ngo, a.fieldAgent, a.verifier1, a.verifier2, a.bankPartner, a.donor1, a.relayer];
+        address[7] memory needsGas = [a.ngo, a.fieldAgent, a.verifier1, a.verifier2, a.bankPartner, a.donor1, a.relayer];
         uint256 budget = a.admin.balance;
         vm.startBroadcast(a.adminKey);
         for (uint256 i; i < needsGas.length; ++i) {

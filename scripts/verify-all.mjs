@@ -42,7 +42,7 @@ const steps = [
     name: 'coverage floor (90% lines)',
     cwd: contracts,
     cmd: ['forge', ['coverage', '--report', 'lcov', '--no-match-coverage', '(script|test|mocks)']],
-    then: {
+    andThen: {
       cwd: contracts,
       cmd: [
         'node',
@@ -96,7 +96,9 @@ for (const step of steps) {
   console.log(`\n--- ${step.name}\n`)
   const started = Date.now()
   let result = run(step.cmd[0], step.cmd[1], step.cwd)
-  if (result.status === 0 && step.then) result = run(step.then.cmd[0], step.then.cmd[1], step.then.cwd)
+  if (result.status === 0 && step.andThen) {
+    result = run(step.andThen.cmd[0], step.andThen.cmd[1], step.andThen.cwd)
+  }
   results.push({
     name: step.name,
     status: result.status === 0 ? 'pass' : 'FAIL',

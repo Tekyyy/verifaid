@@ -8,14 +8,14 @@
       "**/*.mjs",
       "**/*.js",
       "**/*.json",
-      "!**/node_modules/**",
-      "!**/dist/**",
-      "!**/.next/**",
-      "!**/.ponder/**",
-      "!**/generated/**",
-      "!contracts/out/**",
-      "!contracts/cache/**",
-      "!**/src/abis/**"
+      "!**/node_modules",
+      "!**/dist",
+      "!**/.next",
+      "!**/.ponder",
+      "!**/generated",
+      "!contracts/out",
+      "!contracts/cache",
+      "!**/src/abis"
     ]
   },
   "formatter": {
