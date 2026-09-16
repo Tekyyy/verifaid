@@ -77,7 +77,7 @@ interface INeedsRegistry is IRoleAware {
     /// @notice Handles revocation of a NeedVerified attestation. Callable only by the NeedVerifiedResolver.
     function onVerificationRevoked(uint256 needId, address verifier, bytes32 attestationUID) external;
 
-    /// @notice Moves a need forward (Funding→Funded→InDelivery→Completed). Callable by the need's vault or the DeliveryManager.
+    /// @notice Moves a need forward (Funding→Funded→InDelivery→Completed). Callable only by the need's vault.
     function setStatus(uint256 needId, NeedStatus next) external;
 
     /// @notice Cancels a need. The NGO may cancel before `Funded`; the admin at any time before `Completed`.

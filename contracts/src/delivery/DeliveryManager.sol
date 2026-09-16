@@ -19,6 +19,10 @@ import {ISemaphore} from "@semaphore-protocol/contracts/interfaces/ISemaphore.so
 contract DeliveryManager is IDeliveryManager, RoleAware {
     uint16 public constant BPS_DENOMINATOR = 10_000;
 
+    /// @notice Hard floor under the configurable `minExpectedRecipients`, so no deployment can silently switch
+    ///         off the protection that stops a confirmation count from identifying individuals (spec §8.2).
+    uint32 public constant ABSOLUTE_MIN_RECIPIENTS = 5;
+
     /// @notice Semaphore message every beneficiary signs: "I received this aid".
     uint256 public constant AID_RECEIVED_MESSAGE = uint256(keccak256("AID_RECEIVED"));
 
@@ -45,6 +49,11 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
     /// @notice deliveryId => verifier => already challenged (one challenge per verifier per delivery).
     mapping(uint256 => mapping(address => bool)) public hasChallenged;
 
+    /// @notice needId => trancheIndex => verifier => already rejected an attempt at this tranche.
+    /// @dev Rejection is terminal for a delivery and needs no admin, so without this a single verifier could
+    ///      reject every retry of a tranche forever — a cheaper veto than the rate-limited challenge path.
+    mapping(uint256 => mapping(uint256 => mapping(address => bool))) public hasRejectedTranche;
+
     mapping(uint256 => Delivery) private _deliveries;
 
     constructor(
@@ -61,7 +70,7 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
         if (confirmationThresholdBps_ == 0 || confirmationThresholdBps_ > BPS_DENOMINATOR) {
             revert Errors.InvalidParameter();
         }
-        if (minExpectedRecipients_ == 0) revert Errors.InvalidParameter();
+        if (minExpectedRecipients_ < ABSOLUTE_MIN_RECIPIENTS) revert Errors.InvalidParameter();
         registry = registry_;
         beneficiaryGroups = beneficiaryGroups_;
         confirmationThresholdBps = confirmationThresholdBps_;
@@ -171,6 +180,13 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
         if (d.verifierAttestationUID != bytes32(0)) revert Errors.VerificationAlreadyLinked();
         _requireInDelivery(d.needId);
         if (!roles.isIndependent(verifier, registry.ngoOf(d.needId))) revert Errors.NotIndependent();
+
+        // One rejection per verifier per tranche: a rejection is immediate and terminal, so an unbounded veto
+        // would let any independent verifier stall an NGO's tranche indefinitely by rejecting every retry.
+        if (!approved) {
+            if (hasRejectedTranche[d.needId][d.trancheIndex][verifier]) revert Errors.AlreadyRejected();
+            hasRejectedTranche[d.needId][d.trancheIndex][verifier] = true;
+        }
 
         d.verifierAttestationUID = uid;
         d.verifier = verifier;

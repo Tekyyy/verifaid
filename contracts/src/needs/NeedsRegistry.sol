@@ -162,9 +162,12 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     // ─── vault / delivery callbacks ────────────────────────────────────────────
 
     /// @inheritdoc INeedsRegistry
+    /// @dev Only the need's own vault. The spec also names the DeliveryManager, but it never calls this — and
+    ///      an unused, unscoped authority here is dangerous: with it, a `Funded` need could be walked to
+    ///      `Completed` without tranche 0 ever being released, locking the escrow with no refund path.
     function setStatus(uint256 needId, NeedStatus next) external {
         Need storage n = _need(needId);
-        if (msg.sender != n.vault && msg.sender != deliveryManager) revert Errors.Unauthorized();
+        if (msg.sender != n.vault || msg.sender == address(0)) revert Errors.Unauthorized();
         NeedStatus current = n.status;
         bool allowed = (current == NeedStatus.Funding && next == NeedStatus.Funded)
             || (current == NeedStatus.Funded && next == NeedStatus.InDelivery)

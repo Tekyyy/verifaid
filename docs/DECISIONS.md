@@ -173,7 +173,30 @@ the one that moves the most money per call. The admin lifts the pause, or cancel
 - **Region codes are ASCII in `bytes32`** (`bytes32("ES-CM")`), so the chain stores a coarse, human-readable
   subdivision rather than a hash nobody can reverse — and never coordinates.
 
-## 10. Static analysis
+## 10. Changes made after the adversarial review
+
+An independent review of the contracts (no theft path found; every fund-safety path held) produced seven
+exploits with passing proof-of-concept tests. All seven are fixed, and each PoC now fails to reproduce:
+
+| Finding | Fix |
+|---|---|
+| **Any independent verifier could reject every retry of a tranche, forever.** Rejection is immediate and terminal and needed no admin, making it a *cheaper* veto than the challenge path — which was already rate-limited for exactly this reason. | `hasRejectedTranche[needId][trancheIndex][verifier]`: one rejection per verifier per tranche. Other verifiers can still reject, and the same verifier can still challenge. |
+| **Removing a bank partner stranded its donors' refunds permanently** — the only unrecoverable fund-loss path in the system. | `claimRefundByRef` authorizes on ownership of the reference (`refPartner`), not on a live `BANK_PARTNER_ROLE`. The partner that deposited can always return the money. |
+| **`renounceRole(NGO_ROLE)` was an irreversible self-brick** that froze every one of that NGO's vaults, with no admin recovery (re-registration reverts, `grantRole` is blocked). | `renounceRole` is blocked for operational roles, consistent with the existing `grantRole`/`revokeRole` hardening. Admins can still step down. |
+| **`claimRefundByRef(ref, vault)` broke the §5.4 accounting identity** — `totalRefunded` grew while the self-transfer moved nothing. | Reject `to == address(this)`. |
+| **Donations were accepted into a suspended NGO's vault**, which provably could not pay out. | `_checkDonation` requires an active NGO. |
+| **An NGO's payout Safe could be another NGO or another NGO's payout**, letting two "independent" organizations share a treasury. | `registerNgo` runs the full conflict check on the payout address too (still allowing an NGO to pay out to itself). |
+| **`setStatus` accepted the DeliveryManager**, which never calls it — dead authority that could have walked a `Funded` need to `Completed` without releasing tranche 0, locking the escrow with no refund path. | Only the need's own vault. A documented deviation from the spec's "vault / DeliveryManager only". |
+
+Two further hardening changes came out of the same review: `ImpactReport.beneficiariesServed` must meet the same
+k-anonymity floor deliveries do (publishing "2 served" for a known category and region identifies people), and
+`minExpectedRecipients` now has an on-chain floor of 5 so no deployment can silently switch the protection off.
+
+The review also showed that `THREAT_MODEL.md` claimed something untrue — that an observer cannot tell whether
+the same person appears in two programmes. Semaphore's duplicate check is per group, so a globally-derived
+identity would leak exactly that. The doc is corrected and the app derives a separate identity per programme.
+
+## 11. Static analysis
 
 `forge lint` runs on every build. These lints are excluded in `foundry.toml` after review:
 `reentrancy-events`, `reentrancy-no-eth` (external calls only ever target trusted system contracts, and every

@@ -202,12 +202,15 @@ contract AidVault is IAidVault, ReentrancyGuard {
     }
 
     /// @inheritdoc IAidVault
+    /// @dev Authorization is ownership of the reference, deliberately *not* a live BANK_PARTNER_ROLE check:
+    ///      the partner that deposited the money must still be able to return it to its donor after the admin
+    ///      de-registers it, otherwise revoking a partner's role would strand its donors' refunds forever.
     function claimRefundByRef(bytes32 donorRefHash, address to) external nonReentrant returns (uint256 amount) {
         _requireNotPaused();
-        if (!roles.hasRole(Roles.BANK_PARTNER_ROLE, msg.sender) || refPartner[donorRefHash] != msg.sender) {
-            revert Errors.Unauthorized();
-        }
-        if (to == address(0)) revert Errors.ZeroAddress();
+        if (refPartner[donorRefHash] != msg.sender) revert Errors.Unauthorized();
+        // Refunding into the vault itself would inflate totalRefunded without moving tokens, breaking the
+        // balance + released + refunded == donated identity and stranding the amount.
+        if (to == address(0) || to == address(this)) revert Errors.ZeroAddress();
         _requireCancelled();
         uint256 donated = donatedByRef[donorRefHash];
         if (donated == 0) revert Errors.NothingToRefund();
@@ -258,6 +261,8 @@ contract AidVault is IAidVault, ReentrancyGuard {
         if (fundingClosed || registry.statusOf(needId) != INeedsRegistry.NeedStatus.Funding) {
             revert Errors.FundingNotOpen();
         }
+        // A suspended NGO cannot receive a release, so accepting more money would only trap it in escrow.
+        if (!roles.isActiveNgo(registry.ngoOf(needId))) revert Errors.NgoInactive();
         target = registry.targetAmountOf(needId);
         if (totalDonated + amount > target) revert Errors.ExceedsTarget();
     }

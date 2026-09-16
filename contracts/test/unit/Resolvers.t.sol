@@ -484,6 +484,26 @@ contract ResolversTest is PoATest {
         assertEq(impactReportResolver.activeReportOf(completed), corrected);
     }
 
+    /// @dev The same k-anonymity floor deliveries enforce: "2 beneficiaries served" in a known category and
+    ///      region is a small-count disclosure about identifiable people.
+    function test_impactReport_enforcesTheKAnonymityFloor() public {
+        uint256 completed = _completedNeed();
+        address vaultAddress = registry.vaultOf(completed);
+
+        vm.prank(ngo);
+        vm.expectRevert(Errors.TooFewRecipients.selector);
+        eas.attest(
+            AttestationRequest({
+                schema: impactReportSchema,
+                data: _data(vaultAddress, bytes32(0), true, abi.encode(completed, uint32(2), KPI_HASH, REPORT_CID))
+            })
+        );
+
+        // at the floor it is accepted
+        bytes32 uid = _attestImpactReport(ngo, completed, MIN_EXPECTED_RECIPIENTS);
+        assertEq(impactReportResolver.activeReportOf(completed), uid);
+    }
+
     function test_impactReport_onlyNgoAndOnlyWhenCompleted() public {
         uint256 completed = _completedNeed();
         address completedVault = registry.vaultOf(completed);

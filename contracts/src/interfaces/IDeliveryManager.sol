@@ -73,6 +73,7 @@ interface IDeliveryManager {
     function finalize(uint256 deliveryId) external;
 
     function getDelivery(uint256 deliveryId) external view returns (Delivery memory);
+    function minExpectedRecipients() external view returns (uint32);
     function deliveryCount() external view returns (uint256);
     function lastFinalizedDeliveryOf(uint256 needId) external view returns (uint256);
     function activeDeliveryOf(uint256 needId, uint256 trancheIndex) external view returns (uint256);

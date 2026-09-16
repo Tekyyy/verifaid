@@ -167,8 +167,18 @@ and the donor's address (for crypto donors — fiat donors appear only as a salt
 released and to which payout address; how many people were expected at each delivery and how many confirmed; the
 nullifiers of those confirmations; and the CIDs and hashes of encrypted evidence.
 
-They cannot learn: who any beneficiary is, which beneficiary confirmed which delivery, whether the same person
-appears in two programmes, what the evidence shows, or what the needs assessment says.
+They cannot learn: who any beneficiary is, which beneficiary confirmed which delivery, what the evidence shows,
+or what the needs assessment says.
+
+**Cross-programme linkage is a real caveat, and it depends on the client.** Semaphore's duplicate-leaf check is
+per group, so nothing on-chain stops the *same* identity commitment being enrolled in two programmes — and
+Semaphore publishes every commitment it adds. If a beneficiary used one identity everywhere, intersecting two
+groups' commitment sets would reveal exactly which people appear in both, and the programmes' public metadata
+often says which villages or NGOs those are. The beneficiary app therefore derives a **separate identity per
+programme** from the device secret, so the commitments a person presents to two programmes are unlinkable. An
+NGO that enrols commitments from somewhere else can reintroduce the leak; enrolment tooling should refuse a
+commitment that already appears in another of its programmes. (The confirmation layer itself is unaffected:
+nullifiers are scoped per delivery, so two confirmations by the same person are never linkable.)
 
 ## 5. Denial of service and griefing
 

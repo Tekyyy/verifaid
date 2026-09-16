@@ -131,10 +131,42 @@ contract RoleRegistryTest is PoATest {
         roles.setNgoActive(ngo, false);
     }
 
-    function test_isActiveNgo_falseAfterRenounce() public {
+    /// @dev Renouncing NGO_ROLE used to be an irreversible self-brick — the profile persists, so
+    ///      re-registration reverts and grantRole is blocked, which froze every one of that NGO's vaults.
+    function test_operationalRolesCannotBeRenounced() public {
         vm.prank(ngo);
+        vm.expectRevert(Errors.UseRegistrationFunction.selector);
         roles.renounceRole(Roles.NGO_ROLE, ngo);
-        assertFalse(roles.isActiveNgo(ngo));
+        assertTrue(roles.isActiveNgo(ngo));
+
+        vm.prank(verifier1);
+        vm.expectRevert(Errors.UseRegistrationFunction.selector);
+        roles.renounceRole(Roles.VERIFIER_ROLE, verifier1);
+        assertTrue(roles.isIndependent(verifier1, ngo));
+
+        // an admin may still step down
+        address admin2 = makeAddr("admin2");
+        vm.prank(admin);
+        roles.grantRole(Roles.DEFAULT_ADMIN_ROLE, admin2);
+        vm.prank(admin2);
+        roles.renounceRole(Roles.DEFAULT_ADMIN_ROLE, admin2);
+        assertFalse(roles.isAdmin(admin2));
+    }
+
+    function test_registerNgo_rejectsAPayoutThatIsAnotherParticipant() public {
+        vm.startPrank(admin);
+        // another NGO's operating address
+        vm.expectRevert(Errors.RoleConflict.selector);
+        roles.registerNgo(makeAddr("n1"), ngo2, keccak256("c"), "");
+        // another NGO's payout Safe: two "independent" NGOs must not share a treasury
+        vm.expectRevert(Errors.RoleConflict.selector);
+        roles.registerNgo(makeAddr("n2"), ngoPayout, keccak256("c"), "");
+
+        // paying out to itself stays allowed (single-address NGOs on a testnet)
+        address selfPaying = makeAddr("selfPaying");
+        roles.registerNgo(selfPaying, selfPaying, keccak256("c"), "");
+        assertEq(roles.payoutOf(selfPaying), selfPaying);
+        vm.stopPrank();
     }
 
     // ─── verifiers & bank partners ─────────────────────────────────────────────

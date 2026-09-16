@@ -10,6 +10,10 @@ import {INeedsRegistry} from "../../src/interfaces/INeedsRegistry.sol";
 import {IRoleRegistry} from "../../src/interfaces/IRoleRegistry.sol";
 import {Errors} from "../../src/libraries/Errors.sol";
 import {PoATest} from "../utils/PoATest.sol";
+import {
+    AttestationRequest,
+    AttestationRequestData
+} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
 import {ISemaphore} from "@semaphore-protocol/contracts/interfaces/ISemaphore.sol";
 
 contract DeliveryManagerTest is PoATest {
@@ -323,6 +327,64 @@ contract DeliveryManagerTest is PoATest {
         _attestDeliveryVerified(verifier2, deliveryId, false);
 
         assertEq(deliveryManager.getDelivery(deliveryId).status, IDeliveryManager.DeliveryStatus.Rejected);
+    }
+
+    /// @dev Rejection is immediate and terminal, so an unbounded veto would let one verifier stall a tranche
+    ///      forever by rejecting every retry — a cheaper attack than the rate-limited challenge path.
+    function test_verifierCannotRejectEveryRetryOfTheSameTranche() public {
+        uint256 first = _open();
+        _attestEvidence(fieldAgent, first);
+        _attestDeliveryVerified(verifier3, first, false);
+        assertEq(deliveryManager.getDelivery(first).status, IDeliveryManager.DeliveryStatus.Rejected);
+        assertTrue(deliveryManager.hasRejectedTranche(needId, 1, verifier3));
+
+        // the field agent retries; the same verifier is out of vetoes for this tranche
+        vm.prank(fieldAgent);
+        uint256 second = deliveryManager.openDelivery(needId, 1, EXPECTED);
+        bytes32 evidenceUID = _attestEvidence(fieldAgent, second);
+
+        vm.prank(verifier3);
+        vm.expectRevert(Errors.AlreadyRejected.selector);
+        eas.attest(
+            AttestationRequest({
+                schema: deliveryVerifiedSchema,
+                data: AttestationRequestData({
+                    recipient: address(deliveryManager),
+                    expirationTime: 0,
+                    revocable: false,
+                    refUID: evidenceUID,
+                    data: abi.encode(second, false, REPORT_HASH),
+                    value: 0
+                })
+            })
+        );
+
+        // another verifier can still reject it, and the same verifier can still challenge later
+        _attestDeliveryVerified(verifier1, second, false);
+        assertEq(deliveryManager.getDelivery(second).status, IDeliveryManager.DeliveryStatus.Rejected);
+    }
+
+    function test_verifierMayRejectEachTrancheOnce() public {
+        uint256 first = _open();
+        _attestEvidence(fieldAgent, first);
+        _attestDeliveryVerified(verifier3, first, false);
+
+        // a rejection on tranche 1 does not consume the verifier's say on tranche 2
+        uint256 redone = _runDelivery(needId, 1, EXPECTED);
+        assertEq(deliveryManager.getDelivery(redone).status, IDeliveryManager.DeliveryStatus.Finalized);
+        vault.releaseTranche(1);
+
+        vm.prank(fieldAgent);
+        uint256 nextTranche = deliveryManager.openDelivery(needId, 2, EXPECTED);
+        _attestEvidence(fieldAgent, nextTranche);
+        _attestDeliveryVerified(verifier3, nextTranche, false);
+        assertEq(deliveryManager.getDelivery(nextTranche).status, IDeliveryManager.DeliveryStatus.Rejected);
+    }
+
+    function test_constructor_enforcesTheAbsoluteRecipientFloor() public {
+        vm.expectRevert(Errors.InvalidParameter.selector);
+        new DeliveryManager(roles, registry, groups, 7000, 600, 4);
+        assertEq(deliveryManager.ABSOLUTE_MIN_RECIPIENTS(), 5);
     }
 
     function test_rejectedDeliveryFreesTheTrancheSlot() public {

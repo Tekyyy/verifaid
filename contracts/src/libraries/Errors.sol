@@ -73,6 +73,7 @@ library Errors {
     error ChallengePeriodOver();
     error ChallengePeriodActive();
     error AlreadyChallenged();
+    error AlreadyRejected();
 
     // ─── resolvers ─────────────────────────────────────────────────────────────
     error WrongSchema();

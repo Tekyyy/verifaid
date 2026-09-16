@@ -374,11 +374,14 @@ contract NeedsRegistryTest is PoATest {
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Completed);
     }
 
-    function test_setStatus_allowedFromDeliveryManager() public {
+    /// @dev The DeliveryManager never calls setStatus, and holding that authority would let it walk a Funded
+    ///      need to Completed without releasing tranche 0 — locking the escrow with no refund path.
+    function test_setStatus_rejectsTheDeliveryManager() public {
         (uint256 needId,,) = _verifiedNeed(1000e6);
         vm.prank(address(deliveryManager));
+        vm.expectRevert(Errors.Unauthorized.selector);
         registry.setStatus(needId, INeedsRegistry.NeedStatus.Funded);
-        assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Funded);
+        assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Funding);
     }
 
     // ─── cancellation ──────────────────────────────────────────────────────────

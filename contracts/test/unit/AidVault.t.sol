@@ -539,6 +539,60 @@ contract AidVaultTest is PoATest {
         vault.claimRefundByRef(DONOR_REF, bankPartner);
     }
 
+    /// @dev Revoking a partner's role must not strand the refunds of the donors it deposited for: authorization
+    ///      is ownership of the reference, not a live role.
+    function test_claimRefundByRef_survivesPartnerDeregistration() public {
+        _donateOnBehalf(needId, 1000e6, DONOR_REF, PAYMENT_REF);
+        vm.prank(ngo);
+        registry.cancelNeed(needId);
+
+        vm.prank(admin);
+        roles.removeBankPartner(bankPartner);
+
+        address fiatDonorAccount = makeAddr("fiatDonorAccount");
+        vm.prank(bankPartner);
+        uint256 refunded = vault.claimRefundByRef(DONOR_REF, fiatDonorAccount);
+        assertEq(refunded, 1000e6);
+        assertEq(token.balanceOf(fiatDonorAccount), 1000e6);
+        assertVaultInvariant(vault);
+    }
+
+    /// @dev Refunding into the vault would inflate totalRefunded without moving tokens, breaking the invariant.
+    function test_claimRefundByRef_rejectsTheVaultAsRecipient() public {
+        _donateOnBehalf(needId, 1000e6, DONOR_REF, PAYMENT_REF);
+        vm.prank(ngo);
+        registry.cancelNeed(needId);
+
+        vm.prank(bankPartner);
+        vm.expectRevert(Errors.ZeroAddress.selector);
+        vault.claimRefundByRef(DONOR_REF, address(vault));
+        assertVaultInvariant(vault);
+    }
+
+    /// @dev A suspended NGO cannot be paid, so taking more money would only trap it in escrow.
+    function test_donationsAreRefusedWhileTheNgoIsSuspended() public {
+        _fundDonor(donor1, needId, 100e6);
+        vm.prank(admin);
+        roles.setNgoActive(ngo, false);
+
+        vm.prank(donor1);
+        vm.expectRevert(Errors.NgoInactive.selector);
+        vault.donate(100e6);
+
+        token.mint(bankPartner, 100e6);
+        vm.startPrank(bankPartner);
+        token.approve(address(vault), 100e6);
+        vm.expectRevert(Errors.NgoInactive.selector);
+        vault.donateOnBehalf(100e6, DONOR_REF, PAYMENT_REF);
+        vm.stopPrank();
+
+        vm.prank(admin);
+        roles.setNgoActive(ngo, true);
+        vm.prank(donor1);
+        vault.donate(100e6);
+        assertEq(vault.totalDonated(), 100e6);
+    }
+
     function test_mixedDonorsRefundPoolIsShared() public {
         _donate(donor1, needId, 500e6);
         _donateOnBehalf(needId, 500e6, DONOR_REF, PAYMENT_REF);

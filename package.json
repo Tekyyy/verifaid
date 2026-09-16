@@ -22,6 +22,7 @@
     "demo:identities": "pnpm --filter @poa/demo identities",
     "indexer:dev": "pnpm --filter @poa/indexer dev",
     "app:dev": "pnpm --filter @poa/app dev",
+    "verify": "node scripts/verify-all.mjs",
     "abis": "node scripts/export-abis.mjs",
     "sync:deployments": "node scripts/sync-deployments.mjs"
   },

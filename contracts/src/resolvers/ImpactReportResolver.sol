@@ -44,6 +44,9 @@ contract ImpactReportResolver is ProofOfAidResolver {
         if (registry.statusOf(needId) != INeedsRegistry.NeedStatus.Completed) revert Errors.InvalidNeedStatus();
         if (attestation.recipient != registry.vaultOf(needId)) revert Errors.InvalidRecipient();
         if (kpiHash == bytes32(0) || bytes(reportCID).length == 0) revert Errors.InvalidParameter();
+        // The same k-anonymity floor that `openDelivery` enforces: publishing "2 beneficiaries served" for a
+        // known category and region is a small-count disclosure about identifiable people.
+        if (beneficiariesServed < deliveryManager.minExpectedRecipients()) revert Errors.TooFewRecipients();
         if (attestation.refUID != _expectedRefUID(needId)) revert Errors.InvalidRefUID();
         if (activeReportOf[needId] != bytes32(0)) revert Errors.ReportAlreadyActive();
 

@@ -45,10 +45,10 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
         if (credentialHash == bytes32(0)) revert Errors.InvalidParameter();
         if (ngos[ngo].payoutAddress != address(0)) revert Errors.AlreadyRegistered();
         _requireNoOperationalRole(ngo);
-        if (hasRole(VERIFIER_ROLE, payout) || hasRole(BANK_PARTNER_ROLE, payout) || fieldAgentNgo[payout] != address(0))
-        {
-            revert Errors.RoleConflict();
-        }
+        // An NGO may pay out to itself (a single-address NGO on a testnet), but a payout Safe may not double as
+        // any other participant — including another NGO or another NGO's payout, which would let two nominally
+        // independent organizations share one treasury.
+        if (payout != ngo) _requireNoOperationalRole(payout);
 
         ngos[ngo] = NgoProfile({active: true, payoutAddress: payout, credentialHash: credentialHash, metadataURI: uri});
         isPayoutAddress[payout] = true;
@@ -138,6 +138,15 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     function revokeRole(bytes32 role, address account) public override(AccessControl, IAccessControl) {
         if (role != DEFAULT_ADMIN_ROLE) revert Errors.UseRegistrationFunction();
         super.revokeRole(role, account);
+    }
+
+    /// @notice Operational roles cannot be renounced, only removed by the admin.
+    /// @dev Renouncing NGO_ROLE used to be an irreversible self-brick: `isActiveNgo` would stay false forever
+    ///      (re-registration reverts because the profile persists, and `grantRole` is blocked), which froze
+    ///      every one of that NGO's vaults — including needs whose pre-financing had already been spent.
+    function renounceRole(bytes32 role, address callerConfirmation) public override(AccessControl, IAccessControl) {
+        if (role != DEFAULT_ADMIN_ROLE) revert Errors.UseRegistrationFunction();
+        super.renounceRole(role, callerConfirmation);
     }
 
     // ─── views ─────────────────────────────────────────────────────────────────
