@@ -2,18 +2,15 @@
   "admin": "0x7642C9178a738Dd623Aac1F943bAFB81589E9050",
   "chainId": 84532,
   "contracts": {
-    "AidVaultFactory": "0xe4970edD5FB64908a69a3B1a17e608C6402644DA",
-    "AidVaultImplementation": "0x92877f5c8D2b5adf3B5154E35a8dD66eee953F89",
-    "BeneficiaryGroups": "0xA4AcaC78d404783349E58061f7E0EC227d89Fd42",
-    "DeliveryEvidenceResolver": "0xF91c07aff4007B6C86466efFA587b4baBA5391e0",
-    "DeliveryManager": "0xfd4108300Df609043Ba263307179Cc987531f2f5",
-    "DeliveryVerifiedResolver": "0xa8026510965ebF72D3703bD9901F5cf86d1f361F",
-    "DonationReceipt": "0x1025Cd8Ba38F95FAE1F4672B7fF379Ab4161fFDB",
-    "FiatDonationResolver": "0x22FE6E862D9Ac963cc41325558A6fD177486D927",
-    "ImpactReportResolver": "0xb9Fc3f7d06d729BaDbc71e691A84C3B3FfFB3bf4",
-    "NeedVerifiedResolver": "0x8d8C6dd884d4b7C96413Df8811E27007b22b23dA",
-    "NeedsRegistry": "0x3664a0fb745452a3fC7ed75ed221D2132fde471E",
-    "RoleRegistry": "0xC71df0E329f8b304447644a2496Fe6D3b920242e"
+    "AidVaultFactory": "0xC4D24C30a900C845E9bF06EC2cE2A13C3E232359",
+    "AidVaultImplementation": "0xa9969FB2335d5afb3d2Dfefe4813d60847DeabC3",
+    "BeneficiaryGroups": "0xec5cdCa8101323574a8953B0c7B7C26B716989c4",
+    "DeliveryManager": "0xfe628B18d322076da87A03d7f265AA2c4BCc6f09",
+    "DonationReceipt": "0xe5b765C7b0Bf1FA0af58CC71A3a67E236353F5bA",
+    "NeedsRegistry": "0x8931b763c74a1706f78a395dc8b005Ae1E0b7932",
+    "NonCustodialLedgerImplementation": "0x08D2b298F83B9E53Ef9Eb4ce129A6e87367bf995",
+    "ProofOfAidResolver": "0xf6854EFa8f77648B0e3638a9a9615C96D63dF29B",
+    "RoleRegistry": "0x5C4ea3f9A5F704282170890226326Ebab8E522A1"
   },
   "deployer": "0x7642C9178a738Dd623Aac1F943bAFB81589E9050",
   "external": {
@@ -21,7 +18,7 @@
     "SchemaRegistry": "0x4200000000000000000000000000000000000020",
     "Semaphore": "0x8A1fd199516489B0Fb7153EB5f075cDAC83c693D",
     "SemaphoreVerifier": "0x0000000000000000000000000000000000000000",
-    "Token": "0xdF3430bCF730A1D065d04FD70d11Aa93dd990e71"
+    "Token": "0xBC7c4FEa2d4Fe339d4e9a9f43f2D606F25aD1BD8"
   },
   "network": "base-sepolia",
   "params": {
@@ -32,11 +29,13 @@
     "minExpectedRecipients": 5
   },
   "schemas": {
-    "DeliveryEvidence": "0xc3133c8ba76fab649c20e88d9c71f2ed771c486422609941ac37f502ffb1ecf3",
-    "DeliveryVerified": "0x66841a481807a3fce7e93d70dc735198ec4fd167979baacd79bfaa2e7689d97b",
-    "FiatDonation": "0xd90b99c67b226db3ede4a06ec28aa7d81700e6d73f41aa56ca814f13734aea99",
-    "ImpactReport": "0xd2b73a63ee900b9200b13fcc6a197a53f235238c0f9972e0c91cb565326d7027",
-    "NeedVerified": "0xa8540fa92cc10109db7db0eb846bfa410da3f5f677bbf9518508cf9271581bc7"
+    "DeliveryEvidence": "0xb499c52fe06908b3bc3b2ab0e8e457de1af5cf7cabf2fe91ae75d57d5ba922aa",
+    "DeliveryVerified": "0x396f9f0e9bba4ed1b09916fcb4a612bf66225db2807a74226d7b6514f34754ea",
+    "FundingRecorded": "0x78b1053ca4b74b0cc3597b594f6772b09a4b5dff5cbf48bb12d64b7e506fee77",
+    "ImpactReport": "0x9cd6c6a52ea9ec40ab8e3498fed575d3a7352a828d139ea5bb9ec865210d583a",
+    "NeedVerified": "0x3fb6dcc2cb2956f3bce093e0faccc34446b6ec4bf568ca9e2cbe77e54f7398f7",
+    "Settlement": "0xc19312cff9d4865eab75a2ac00088294eb8091d42fb3a86268d3b8ece9047518"
   },
-  "startBlock": 46876431
+  "startBlock": 46897752,
+  "version": 2
 }

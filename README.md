@@ -3,60 +3,89 @@
 **The public chain holds flows and proofs. It never holds people.**
 
 A blockchain-native system to register verified needs, trace donations end to end, prove that aid was actually
-delivered, protect beneficiaries' data, and publish impact anyone can recompute. Built for Base Sepolia.
+delivered, protect beneficiaries' data, and publish impact anyone can recompute. Built on Base.
+
+## Where this sits in the proposal
+
+The public proposal ([proof-of-aid.lovable.app](https://proof-of-aid.lovable.app)) describes two ways to hold a
+need's money and recommends starting with the first:
+
+- **Model A — non-custodial.** A regulated payment provider holds the money; the chain holds the rules, every
+  payment and payout as a signed attestation, and the evidence of delivery.
+- **Model B — conditional stablecoin.** The money itself sits in an on-chain escrow and moves only when the rules
+  say so.
+
+This repository implements **both on the same contracts**. Every need picks its custody model when it is created;
+deadlines, the minimum-funding threshold, tranches, the three-signal delivery gate, fee caps and the impact chain
+are identical in both. So it covers the proposal's first phase and its end state, and a need can move from one to
+the other without changing what donors are promised. `docs/GAP_PLAN.md` maps every item of the proposal to where
+it lives in the code.
 
 | Requirement | Where it lives |
 |---|---|
-| R1 — register previously verified needs | `NeedsRegistry` + `NeedVerified` EAS attestations |
-| R2 — track the path of donations | `AidVault`, soulbound `DonationReceipt`, `FiatDonation` attestations |
+| R1 — register previously verified needs, with their terms | `NeedsRegistry` (deadlines, minimum funding, cost cap, expected outcome) + `NeedVerified` attestations |
+| R2 — track the path of donations | `AidVault` or `NonCustodialLedger`, soulbound `DonationReceipt`, `FundingRecorded` and `Settlement` attestations, public tracking links |
 | R3 — evidence of aid delivery | `DeliveryManager`, `DeliveryEvidence` + `DeliveryVerified` attestations, Semaphore receipt proofs |
 | R4 — protect beneficiaries' data | off-chain PII vault, Semaphore identities, encrypted evidence |
-| R5 — verifiable impact | `ImpactReport` attestations, Ponder indexer, public dashboard |
+| R5 — verifiable impact | `ImpactReport` attestations, Ponder indexer, public dashboard, PDF audit reports |
 
 ## How it works
 
 ```
-NGO registers ─► verifier attests the need ─► vault deploys ─► donors fund it (crypto or fiat via a bank partner)
-      │                                                                    │
-      │                                                    tranche 0 releases as pre-financing
-      ▼                                                                    ▼
-field agent delivers aid, uploads encrypted evidence ─► beneficiaries confirm anonymously (Semaphore)
-      │                                                                    │
-      └──► independent verifier signs off ─► challenge window ─► next tranche unlocks ─► impact report
+NGO registers a need and its terms ─► independent verifier attests it ─► ledger cloned, funding opens
+      │                                                                           │
+      │          donors give by wallet, card or bank ◄────────────────────────────┘
+      │          (on-chain custody: into the vault; off-chain: recorded by the payment provider)
+      │                                        │
+      │          funding closes at the target, or at the deadline if the minimum was met
+      │          (below it the need expires and every donor is refunded)
+      │                                        │
+      ▼                         tranche 0 released as pre-financing ─► Settlement report
+field agent delivers aid, files encrypted evidence ─► beneficiaries confirm anonymously (Semaphore)
+      │                                                                           │
+      └──► independent verifier signs off ─► challenge window ─► next tranche ─► Settlement ─► impact report
 ```
 
 Money only moves forward when three independent signals agree: field evidence, anonymous beneficiary
-confirmations above a threshold, and an approving verifier who is provably unrelated to the NGO.
+confirmations above a threshold, and an approving verifier who is provably unrelated to the NGO. A donor follows
+all of it through five stages — **verified, funded, settled, delivered, impact confirmed** — from a tracking link
+that needs no account.
 
 ## Live on Base Sepolia
 
-The system is deployed, source-verified on Basescan, and has run the full lifecycle end to end. Need #5 is the
-one to look at: funded with crypto **and** a fiat transfer through a bank partner, two deliveries confirmed by
-real zero-knowledge proofs, every tranche released, and an impact report chained to the last verified delivery.
+v2 is deployed and source-verified on Basescan, and its six schemas are registered in the real EAS
+SchemaRegistry. `pnpm demo:run base-sepolia` runs three needs on it: one in on-chain custody (wallet and card
+donors, settlement after every release), one in off-chain custody (every payment and payout attested by the
+payment provider), and one that expires below its minimum and refunds its donor.
 
 | | |
 |---|---|
-| `NeedsRegistry` | [`0x3664a0fb745452a3fC7ed75ed221D2132fde471E`](https://sepolia.basescan.org/address/0x3664a0fb745452a3fC7ed75ed221D2132fde471E) |
-| `DeliveryManager` | [`0xfd4108300Df609043Ba263307179Cc987531f2f5`](https://sepolia.basescan.org/address/0xfd4108300Df609043Ba263307179Cc987531f2f5) |
-| `RoleRegistry` | [`0xC71df0E329f8b304447644a2496Fe6D3b920242e`](https://sepolia.basescan.org/address/0xC71df0E329f8b304447644a2496Fe6D3b920242e) |
-| `AidVaultFactory` | [`0xe4970edD5FB64908a69a3B1a17e608C6402644DA`](https://sepolia.basescan.org/address/0xe4970edD5FB64908a69a3B1a17e608C6402644DA) |
-| `BeneficiaryGroups` | [`0xA4AcaC78d404783349E58061f7E0EC227d89Fd42`](https://sepolia.basescan.org/address/0xA4AcaC78d404783349E58061f7E0EC227d89Fd42) |
-| `DonationReceipt` | [`0x1025Cd8Ba38F95FAE1F4672B7fF379Ab4161fFDB`](https://sepolia.basescan.org/address/0x1025Cd8Ba38F95FAE1F4672B7fF379Ab4161fFDB) |
-| test token (mEURC) | [`0xdF3430bCF730A1D065d04FD70d11Aa93dd990e71`](https://sepolia.basescan.org/address/0xdF3430bCF730A1D065d04FD70d11Aa93dd990e71) |
+| `NeedsRegistry` | [`0x8931b763c74a1706f78a395dc8b005Ae1E0b7932`](https://sepolia.basescan.org/address/0x8931b763c74a1706f78a395dc8b005Ae1E0b7932) |
+| `DeliveryManager` | [`0xfe628B18d322076da87A03d7f265AA2c4BCc6f09`](https://sepolia.basescan.org/address/0xfe628B18d322076da87A03d7f265AA2c4BCc6f09) |
+| `ProofOfAidResolver` | [`0xf6854EFa8f77648B0e3638a9a9615C96D63dF29B`](https://sepolia.basescan.org/address/0xf6854EFa8f77648B0e3638a9a9615C96D63dF29B) |
+| `RoleRegistry` | [`0x5C4ea3f9A5F704282170890226326Ebab8E522A1`](https://sepolia.basescan.org/address/0x5C4ea3f9A5F704282170890226326Ebab8E522A1) |
+| `AidVaultFactory` | [`0xC4D24C30a900C845E9bF06EC2cE2A13C3E232359`](https://sepolia.basescan.org/address/0xC4D24C30a900C845E9bF06EC2cE2A13C3E232359) |
+| `BeneficiaryGroups` | [`0xec5cdCa8101323574a8953B0c7B7C26B716989c4`](https://sepolia.basescan.org/address/0xec5cdCa8101323574a8953B0c7B7C26B716989c4) |
+| `DonationReceipt` | [`0xe5b765C7b0Bf1FA0af58CC71A3a67E236353F5bA`](https://sepolia.basescan.org/address/0xe5b765C7b0Bf1FA0af58CC71A3a67E236353F5bA) |
+| test token (mEURC) | [`0xBC7c4FEa2d4Fe339d4e9a9f43f2D606F25aD1BD8`](https://sepolia.basescan.org/address/0xBC7c4FEa2d4Fe339d4e9a9f43f2D606F25aD1BD8) |
 
-Every address, resolver and schema UID is in [`deployments/base-sepolia.json`](deployments/base-sepolia.json);
-the five schemas are browsable on the [Base Sepolia EAS explorer](https://base-sepolia.easscan.org). EAS and
-Semaphore v4 are the ones already deployed on Base Sepolia — this project deploys neither.
+Every address and schema UID is in [`deployments/base-sepolia.json`](deployments/base-sepolia.json); the schemas are
+browsable on the [Base Sepolia EAS explorer](https://base-sepolia.easscan.org). EAS and Semaphore v4 are the ones
+already deployed on Base Sepolia — this project deploys neither. The v1 release (whose need #5 ran the original
+lifecycle) stays on-chain and is recorded in [`deployments/base-sepolia.v1.json`](deployments/base-sepolia.v1.json).
 
 ## Repository layout
 
 ```
-contracts/    Foundry project: registry, vaults, deliveries, Semaphore groups, five EAS resolvers
-services/     evidence (encrypt + IPFS), pii-vault (envelope-encrypted records), bank-connector (mock SEPA)
-indexer/      Ponder: events → tables → the API the dashboard reads
-app/          Next.js dashboard (public, donor, NGO, verifier, field agent, beneficiary)
+contracts/    Foundry: needs and their terms, vault and non-custodial ledgers, deliveries, Semaphore groups, one EAS resolver
+services/     evidence (encrypt + IPFS), pii-vault (envelope-encrypted records), bank-connector (SEPA, card checkout
+              sandbox, CSV import, provider settlements), notifier (alerts and signed webhooks)
+indexer/      Ponder: events → tables → the API, donation tracking and RSS feeds
+app/          Next.js dashboard: public needs and tracking pages, embeddable widget, donor, NGO, verifier, field
+              agent and beneficiary tools, PDF reports
+demo/         runs the three lifecycle scenarios against a live chain
 deployments/  addresses + schema UIDs per network, written by the deploy scripts
-docs/         DECISIONS.md, THREAT_MODEL.md, DEMO_SCRIPT.md
+docs/         DECISIONS.md, THREAT_MODEL.md, DEMO_SCRIPT.md, ROADMAP.md, GAP_PLAN.md
 ```
 
 ## Quick start
@@ -74,23 +103,22 @@ Build and test the contracts:
 cd contracts && forge build && forge test
 ```
 
-Run the whole lifecycle against a local chain:
+Run the whole system against a local chain:
 
 ```bash
 pnpm chain          # anvil
 pnpm deploy:local   # deploy + register schemas + seed demo data
-pnpm demo:run       # execute the full lifecycle and print explorer links
+pnpm demo:run       # the three lifecycle scenarios, with explorer links
+pnpm indexer:dev    # indexer on :42069
+pnpm app:dev        # dashboard on :3000
+pnpm services:up    # Postgres and the four services (Docker)
 ```
 
-Deploy to Base Sepolia (needs `DEPLOYER_PRIVATE_KEY` and `BASESCAN_API_KEY` in `.env`). A dry run against live
-Base Sepolia state estimates **~0.0003 ETH** for the whole system, and the script reuses the EAS and Semaphore
-contracts already deployed there rather than deploying its own:
+Deploy to Base Sepolia (needs `DEPLOYER_PRIVATE_KEY` and `BASESCAN_API_KEY` in `.env`). The whole system costs
+about 0.0003 ETH, and the script reuses the EAS and Semaphore contracts already deployed there:
 
 ```bash
-cd contracts
-forge script script/Deploy.s.sol --rpc-url base_sepolia --broadcast --verify
-forge script script/RegisterSchemas.s.sol --rpc-url base_sepolia --broadcast
-forge script script/SeedDemo.s.sol --rpc-url base_sepolia --broadcast
+pnpm deploy:sepolia
 ```
 
 ## Privacy
@@ -98,17 +126,19 @@ forge script script/SeedDemo.s.sol --rpc-url base_sepolia --broadcast
 No name, ID number, phone number, exact location, photo, or unsalted hash of any of these ever reaches the
 chain. Beneficiaries appear only as Semaphore identity commitments; a delivery confirmation reveals a nullifier
 and nothing else, and confirmations are relayed so the beneficiary's own wallet never appears in a transaction.
-Deliveries below five expected recipients are refused so a count cannot identify a person. Right to erasure is
-handled by destroying the record's data key (crypto-shredding) and removing the identity commitment from the
-group. See `docs/THREAT_MODEL.md` for what this does **not** protect against.
+Deliveries below five expected recipients are refused so a count cannot identify a person. Donors are tracked by a
+receipt id or a salted payment reference, never by name; alert emails are encrypted and destroyed on unsubscribe.
+Right to erasure is handled by destroying the record's data key (crypto-shredding) and removing the identity
+commitment from the group. See `docs/THREAT_MODEL.md` for what this does **not** protect against.
 
 ## Documentation
 
-- [`docs/DECISIONS.md`](docs/DECISIONS.md) — every open choice in the spec and how it was resolved
-- [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — threats, mitigations and residual risk
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — every open choice and how it was resolved, including v2 and both adversarial reviews
+- [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — threats, mitigations and residual risk, including off-chain custody
 - [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) — the five-minute walkthrough
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — what the MVP deliberately leaves out, and what it would take
-- [`contracts/README.md`](contracts/README.md) — contract map, money flow and test suites
+- [`docs/GAP_PLAN.md`](docs/GAP_PLAN.md) — the proposal, item by item, and where each lives in the code
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — what is deliberately left out, and what it would take
+- [`contracts/README.md`](contracts/README.md) — contract map, need terms, money flow and test suites
 
 ## License
 

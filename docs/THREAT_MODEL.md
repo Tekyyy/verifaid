@@ -10,7 +10,7 @@ frauds expensive.
 
 | Asset | Why it matters | Where it lives |
 |---|---|---|
-| Donor funds | The obvious one: money in escrow that has not been spent yet | `AidVault` (stablecoin) |
+| Donor funds | The obvious one: money in escrow that has not been spent yet | `AidVault` (stablecoin), or a payment provider for off-chain custody |
 | Beneficiary identity and personal data | People receiving aid are often at risk from the same actors that caused the crisis | PII vault (encrypted), never on-chain |
 | The link "this person received aid" | Even without a name, a linkable confirmation can expose someone | Semaphore nullifiers only |
 | Evidence integrity | The claim "we delivered 120 kits" must be anchored in time | IPFS ciphertext + on-chain hash |
@@ -28,6 +28,9 @@ Stated plainly, because most of the security rests on them:
 3. **At least one honest verifier watches each delivery.** The challenge window is only useful if somebody looks.
 4. **The NGO's enrollment process is honest.** Nothing on-chain can tell a real household from an invented one.
 5. **The stablecoin behaves like a standard ERC-20** and holds its peg.
+7. **For off-chain custody (Model A), the named custodian is a regulated payment provider that really holds and
+   pays out the money it attests.** The chain enforces who may attest and what the numbers must add up to; it
+   cannot see a bank account. See §3.11.
 6. **Beneficiaries' identity secrets stay on their own device** (phone mode). Card mode weakens this deliberately.
 
 ## 3. Threats and mitigations
@@ -138,15 +141,54 @@ Stated plainly, because most of the security rests on them:
 
 ### 3.9 Bank-partner and fiat path
 
-- **Mitigation.** `donateOnBehalf` is restricted to `BANK_PARTNER_ROLE`; a payment reference can be consumed
-  once system-wide (enforced in the factory, not just per vault), so a transfer cannot fund two needs; a
-  `FiatDonation` attestation is only accepted if it matches a deposit already recorded in the vault, with the
-  same amount, partner and donor reference. Refunds for a fiat donor can only be triggered by the partner that
-  deposited them.
+- **Mitigation.** `donateOnBehalf` is restricted to `BANK_PARTNER_ROLE`; a provider's payment reference can be
+  consumed once system-wide (enforced in the factory, not just per vault, and scoped per provider so one
+  provider cannot squat another's), so a transfer cannot fund two needs; a `FundingRecorded` attestation for an
+  on-chain need is only accepted if it matches a deposit already recorded in the vault, with the same amount,
+  provider and donor reference. Refunds for a fiat donor can only be triggered by the provider that deposited
+  them. Fees the provider reports count against the need's disclosed cost cap.
 - **Privacy.** Only salted hashes reach the chain: `keccak256(abi.encode(partnerSalt, endToEndId))`. A donor who
   knows their own reference can verify their donation; an observer cannot enumerate donors.
 - **Residual risk.** The partner is trusted to actually have received the fiat. This is a regulated-entity
   assumption, not a cryptographic one.
+
+### 3.11 Off-chain custody (Model A)
+
+- **Threat.** A need's money never touches the chain, so a dishonest provider could record payments it did not
+  receive (inflating "funded"), or report paying out tranches it kept.
+- **Mitigation.** The NGO names one custodian when it creates the need, and only that provider can record funding
+  or report payouts: another provider cannot adopt the need or release its tranches (review finding F1). Every
+  record is an irrevocable, attributable attestation with a salted payment reference the provider can be audited
+  against; payouts carry a supplier reference and an FX reference; fees are capped cumulatively by the need's
+  disclosure. Tranches still only unlock through the three-signal delivery gate, so a provider that over-reports
+  funding cannot move a need past a delivery nobody confirmed.
+- **Residual risk.** This is a regulated-entity trust assumption, the same one the proposal accepts for its first
+  phase. What the chain adds is that a lie is signed, dated and specific: an auditor comparing the provider's
+  books to its attestations finds the discrepancy line by line. A custodian that stops reporting cannot block
+  refunds forever: after the execution deadline and a 14-day grace period anyone can expire the need.
+
+### 3.12 Deadlines and expiry
+
+- **Threat.** `expire` is permissionless, so a donor-hostile actor could try to expire a need that had actually
+  delivered, and an NGO could try to keep a failed need alive.
+- **Mitigation.** A need cannot be verified or funded once either deadline has passed. After the execution
+  deadline, a tranche already earned (releasable) or a verified delivery still in its challenge window or under
+  dispute holds expiry off for `EXPIRY_GRACE_PERIOD`, and dismissing a challenge resumes the remaining window
+  rather than restarting it (review finding F2). The hold is bounded, so nothing can postpone refunds
+  indefinitely (F3).
+- **Residual risk.** An NGO can donate to its own need to cross an all-or-nothing threshold (F5). This adds no
+  exposure beyond pre-financing: an NGO that takes tranche 0 and does not deliver could do the same without the
+  top-up. Enrolment vetting and verification of the NGO are the defence, not the threshold.
+
+### 3.13 Public tracking, alerts and webhooks
+
+- **Tracking references** are a receipt id or a salted payment reference hash: knowing one reveals a donation's
+  amount and progress, both already public on-chain, and nothing about the donor.
+- **Alert email addresses** are envelope-encrypted in the notifier and crypto-shredded on unsubscribe; the
+  unsubscribe token is stored only as a hash. RSS and webhooks carry no personal data at all.
+- **Outbound webhooks** are HMAC-signed so receivers can reject forgeries. Subscriber-supplied URLs are an SSRF
+  vector; the notifier requires https and refuses private and link-local address literals outside development.
+  DNS rebinding to a private address is not covered and belongs in the egress proxy of a production deployment.
 
 ### 3.10 GDPR versus immutability
 
@@ -186,6 +228,8 @@ nullifiers are scoped per delivery, so two confirmations by the same person are 
 |---|---|
 | A verifier repeatedly challenges a delivery | One challenge per verifier per delivery; the admin resolves and can reject the challenge |
 | Donations blocking a need | Overfunding reverts, so a donor cannot push a need past its target to jam it |
+| Blocking expiry | A releasable tranche or an in-flight delivery holds expiry off for at most 14 days after the execution deadline |
+| Frivolous late challenges | Each verifier challenges once; a dismissed challenge resumes the remaining window instead of restarting it |
 | Spam needs | Only registered, active NGOs can create needs; the admin can deactivate an NGO |
 | Confirmation spam | Proofs must verify against the group and be unique per delivery; invalid proofs revert and cost the relayer gas — rate limiting belongs in the relayer |
 | Griefing the relayer | The relayer pays gas for beneficiaries; rate limit per delivery and cap spend. This is an operational cost, not a contract vulnerability |
@@ -198,4 +242,6 @@ nullifiers are scoped per delivery, so two confirmations by the same person are 
    encryption against verifier-held public keys so the service operator cannot read evidence at all.
 4. The relayer sees which delivery a confirmation belongs to and when it arrived.
 5. Fee-on-transfer or rebasing tokens are not supported.
+7. Off-chain custody is only as honest as its custodian (§3.11); the checkout, CSV import and settlement endpoints
+   of the bank connector are a sandbox, not a payment integration.
 6. Floor rounding leaves at most a few base units of dust in a vault after refunds.

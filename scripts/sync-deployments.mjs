@@ -15,7 +15,9 @@ const outFile = join(root, 'services', 'shared', 'src', 'generated', 'deployment
 
 const deployments = {}
 if (existsSync(deploymentsDir)) {
-  for (const file of readdirSync(deploymentsDir).filter((f) => f.endsWith('.json'))) {
+  // Archived releases (e.g. base-sepolia.v1.json) stay on disk as a record but are not bundled.
+  const current = readdirSync(deploymentsDir).filter((f) => f.endsWith('.json') && !/\.v\d+\.json$/.test(f))
+  for (const file of current) {
     const parsed = JSON.parse(readFileSync(join(deploymentsDir, file), 'utf8'))
     deployments[parsed.network ?? file.replace(/\.json$/, '')] = parsed
   }

@@ -8,12 +8,13 @@ import {
   easAbi,
   getDeployment,
   needsRegistryAbi,
+  nonCustodialLedgerAbi,
   resolveNetwork,
   roleRegistryAbi,
   semaphoreAbi,
 } from '@poa/shared'
 import { createConfig, factory } from 'ponder'
-import { parseAbiItem } from 'viem'
+import { type Abi, parseAbiItem } from 'viem'
 
 /**
  * Addresses, schema UIDs and the start block all come from `deployments/<network>.json` through @poa/shared,
@@ -28,8 +29,28 @@ const { contracts, external, schemas, startBlock, chainId } = deployment
 
 const rpc = process.env.PONDER_RPC_URL ?? chainFor(network).rpcUrls.default.http[0]
 
-/** The five schema UIDs of this deployment; every other EAS attestation on the chain is ignored. */
+/** The six schema UIDs of this deployment; every other EAS attestation on the chain is ignored. */
 const schemaUIDs = Object.values(schemas)
+
+/**
+ * Both ledger kinds (the custodial AidVault and the NonCustodialLedger) share the funding and tranche events,
+ * so they are indexed as one contract with the union of both ABIs, deduplicated by signature.
+ */
+const ledgerAbi = [
+  ...aidVaultAbi,
+  ...nonCustodialLedgerAbi.filter(
+    (item) =>
+      !aidVaultAbi.some(
+        (existing) =>
+          existing.type === item.type &&
+          'name' in existing &&
+          'name' in item &&
+          existing.name === item.name &&
+          JSON.stringify('inputs' in existing ? existing.inputs : []) ===
+            JSON.stringify('inputs' in item ? item.inputs : []),
+      ),
+  ),
+] as const satisfies Abi
 
 export default createConfig({
   chains: { [network]: { id: chainId, rpc } },
@@ -42,13 +63,13 @@ export default createConfig({
       address: contracts.AidVaultFactory,
       startBlock,
     },
-    // One vault is cloned per need, so the address set is discovered from the factory's VaultCreated events.
-    AidVault: {
-      abi: aidVaultAbi,
+    // One ledger is cloned per need, so the address set is discovered from the factory's VaultCreated events.
+    Ledger: {
+      abi: ledgerAbi,
       chain: network,
       address: factory({
         address: contracts.AidVaultFactory,
-        event: parseAbiItem('event VaultCreated(uint256 indexed needId, address vault)'),
+        event: parseAbiItem('event VaultCreated(uint256 indexed needId, address vault, uint8 custodyMode)'),
         parameter: 'vault',
         startBlock,
       }),

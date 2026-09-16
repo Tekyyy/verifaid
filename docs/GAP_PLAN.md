@@ -1,7 +1,29 @@
 # Gap-closing plan: aligning with the Proof of Aid proposal
 
 Source of the gaps: https://proof-of-aid.lovable.app (the public proposal), compared against this repository on
-2026-09-16. Nothing in this plan has been applied yet.
+2026-09-16.
+
+**Status (2026-09-16): implemented.** Every item below shipped in the v2 release; C3 is documented as deferred in
+`docs/ROADMAP.md` §7, as planned. Where each item lives:
+
+| Item | Where |
+|---|---|
+| A1 | `README.md`, `docs/DEMO_SCRIPT.md` (both custody models side by side) |
+| A2, A3 | indexer `GET /donations/:ref` (`indexer/src/api/track.ts`), app `/track/[ref]` |
+| A4 | app `/embed/track/[ref]` and its iframe snippet |
+| A5 | indexer `GET /needs?country=&custody=&open=&sort=urgency|gap|newest`, app needs filters |
+| A6 | `services/notifier` (email, webhook) and indexer RSS feeds (`/needs/:id/feed.rss`, `/donations/:ref/feed.rss`) |
+| A7 | bank connector `POST /checkout/sessions` (sandbox), app card and bank giving panel |
+| A8 | app `useTx` with `NEXT_PUBLIC_PAYMASTER_URL` (EIP-5792 paymaster capability) |
+| B1, B2, B4 | `NeedsRegistry` terms and `expire`, `TrancheLedger`, `NonCustodialLedger` |
+| B3 | `Settlement` schema in `ProofOfAidResolver`, indexer `settlement` table and Settled stage |
+| B5 | single resolver, clones with immutable args, packed storage, `confirmReceiptBatch`, transient guard |
+| B6 | `deployments/base-sepolia.json` (v2), `deployments/base-sepolia.v1.json` (archived) |
+| C1 | bank connector `POST /imports/funding` (CSV), notifier HMAC-signed webhooks |
+| C2 | app `GET /api/reports/[needId]` (PDF) |
+| C3 | `docs/ROADMAP.md` §7 |
+
+The design choices and the adversarial review of the v2 contracts are in `docs/DECISIONS.md` §12–13.
 
 ## Organizing principle: redeploy or not
 

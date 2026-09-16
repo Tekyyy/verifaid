@@ -1,5 +1,12 @@
 # Demo script — five minutes
 
+**Where this sits in the proposal.** The public proposal (proof-of-aid.lovable.app) plans two custody models and
+recommends starting with the non-custodial one: *Model A*, where a regulated payment provider holds the money and
+the chain holds the rules and the evidence, then moving to *Model B*, conditional stablecoin escrow, in a later
+phase. This repository runs **both, side by side, on the same contracts**: every need picks its custody model,
+and deadlines, thresholds, tranches, the three-signal delivery gate and the impact chain are identical in both.
+So the demo can show the proposal's first phase and its end state in one sitting.
+
 The whole point of the demo is one sentence: **a judge should be able to open a single need page and follow the
 money from "someone said this need is real" to "beneficiaries confirmed they received the aid", without taking
 anyone's word for it.** Everything below serves that.
@@ -17,17 +24,15 @@ pnpm chain            # terminal 1: anvil
 pnpm deploy:local     # terminal 2: deploy + register schemas + seed demo data
 pnpm --filter @poa/indexer dev    # terminal 3: indexer on :42069
 pnpm --filter @poa/app dev        # terminal 4: dashboard on :3000
+pnpm services:up                  # optional: evidence, pii-vault, bank-connector (card checkout), notifier (alerts)
 ```
 
 ### Base Sepolia (for a public, verifiable demo)
 
-Put a funded deployer key and a Basescan key in `.env`, then:
+Put a funded deployer key and a Basescan key in `.env` (with `CHALLENGE_PERIOD_SECONDS=60`), then:
 
 ```bash
-cd contracts
-CHALLENGE_PERIOD_SECONDS=60 forge script script/Deploy.s.sol --rpc-url base_sepolia --broadcast --verify
-forge script script/RegisterSchemas.s.sol --rpc-url base_sepolia --broadcast
-forge script script/SeedDemo.s.sol --rpc-url base_sepolia --broadcast
+pnpm deploy:sepolia    # deploy + verify, register the six schemas, seed; archives the previous release first
 ```
 
 Use a **60-second challenge period** for the demo deployment. The default of 600s is realistic but makes a live
@@ -42,8 +47,12 @@ pnpm demo:run              # anvil
 pnpm demo:run base-sepolia # testnet
 ```
 
-This runs the full lifecycle unattended and prints an explorer link for every step. Run it once before the
-demo so the artifacts (Semaphore proving keys) are cached and the dashboard has data.
+This runs three needs unattended and prints an explorer link for every step: an **on-chain** need (wallet and
+card donors, settlements after every release), an **off-chain** need (the payment provider records every payment
+and payout by attestation, no token moves), and a need whose **funding deadline passes below its minimum**, so it
+expires and the donor is refunded. Run it once before the demo so the Semaphore proving keys are cached, the
+dashboard has data, and you have the tracking links it prints at the end. Pass scenario names to run a subset:
+`pnpm demo:run base-sepolia onchain offchain`.
 
 ---
 
@@ -60,7 +69,7 @@ same on every machine:
 | 3 | Field agent | `0x90F79bf6…93b906` | Opens deliveries, uploads evidence |
 | 4 | Verifier 1 | `0x15d34AAf…2C6A65` | Attests the need is real |
 | 5 | Verifier 2 | `0x9965507D…B0A4dc` | Signs off on deliveries (and could challenge) |
-| 6 | Bank partner | `0x976EA740…3a0aa9` | Converts a SEPA transfer and deposits it on-chain |
+| 6 | Payment provider | `0x976EA740…3a0aa9` | Deposits card and bank payments on-chain, or holds the money for an off-chain need and attests it |
 | 7 | Donor (crypto) | `0x14dC7996…3d9955` | Donates stablecoin, gets a soulbound receipt |
 | 9 | Relayer | `0xa0Ee7A14…a79720` | Submits beneficiary confirmations so their wallets never appear |
 
@@ -78,16 +87,24 @@ identity commitments.
 > transparency — the people receiving aid — is the group that gets exposed by it. We put the *flows and the
 > proofs* on-chain and kept the *people* off it."
 
-### 0:30 — Start at the end: the need page (60s)
+### 0:30 — Start where a donor starts: the tracking link (60s)
 
-Open `/needs/3` (or whichever id `pnpm demo:run` printed). Scroll the timeline once, top to bottom.
+Open the card donor's tracking link that `pnpm demo:run` printed (`/en/track/0x…`).
 
-> "One need. Every state change is an event, and every claim is an attestation signed by somebody who is
-> accountable for it. Verified here, funded here — this donation is crypto, this one came from a bank transfer.
-> Pre-financing released so the NGO could actually buy the goods. Then a delivery: evidence, confirmations,
-> sign-off, a challenge window, and only then the next tranche moved."
+> "I gave by card. I have no wallet, and I get this link. Five stages, the ones the proposal promises: verified,
+> funded, settled, delivered, impact confirmed. Each one is a link to the transaction or the attestation that
+> reached it, signed by somebody accountable for it. Not a status someone typed into a CRM."
 
-Click one Basescan link and one EAS link. Let them see it is real.
+Click one Basescan link and one EAS link. Then show the "Embed this" snippet and the alerts form:
+
+> "Any NGO can drop this widget on its own website. And I can get alerts by email, webhook or RSS without an
+> account; my email is encrypted and destroyed when I unsubscribe."
+
+Open the need page from there and scroll its **Terms** panel and timeline once:
+
+> "The NGO committed to these terms before anyone gave: a funding deadline, a minimum of 60% to go ahead, a cap of
+> 1.5% on intermediary costs, an expected outcome. The contract enforces them. Fees the provider and the NGO
+> reported are counted against that cap, cumulatively."
 
 ### 1:30 — Who is allowed to say a need is real (45s)
 
@@ -117,14 +134,18 @@ Tap confirm. While it generates:
 
 Then show the delivery on the need page: the count went up.
 
-### 3:30 — Follow my money (45s)
+### 3:30 — Two custody models, one set of rules (45s)
 
-Open `/donor` with the donor wallet.
+Open the off-chain need from the demo run, then the expired one.
 
-> "A donor holds a soulbound receipt — it cannot be sold or transferred, because it is evidence, not an asset.
-> And this is their trace: their share of each tranche that was actually released, the deliveries behind those
-> releases, and the confirmation ratios. Not 'we spent your money well'. The chain of evidence, recomputable
-> by anyone."
+> "This need's money never touched the chain: a payment provider holds it, as the proposal's first phase
+> recommends. The provider's attestations recorded every payment and every payout, and the provider was named up
+> front, so no one else can speak for this money. Same deadlines, same tranches, same anonymous confirmations
+> gating each payout."
+
+> "And this one missed its minimum by the deadline. Nobody had to decide anything: anyone could call expire, and
+> the donor got every unit back. Wallet donors see the same thing through their soulbound receipt at `/donor`,
+> and anyone can download the whole need as a PDF audit report."
 
 ### 4:15 — Where it can still go wrong (30s)
 
@@ -150,7 +171,9 @@ Open `/donor` with the donor wallet.
 | A transaction reverts with a custom error | The error names the reason (`NotIndependent`, `TooFewRecipients`, `ChallengePeriodActive`…). Read it out — it is a feature, not an excuse |
 | Proof generation is slow the first time | Semaphore's proving keys are being downloaded. Run `pnpm demo:run` once before the demo |
 | Challenge window has not elapsed | On anvil: `cast rpc evm_increaseTime 601 && cast rpc evm_mine`. On testnet, wait — or use the pre-run need |
-| A role wallet is out of gas on testnet | Re-run `forge script script/SeedDemo.s.sol --broadcast`; it tops the role wallets up |
+| A role wallet is out of gas on testnet | Re-run `pnpm deploy:sepolia seed`; it tops the role wallets up |
+| Tracking page says "not found" | The indexer has not reached that block yet; the widget refreshes every minute on its own |
+| Card checkout fails | The bank connector is not running (`pnpm services:up`) or the need is not open for funding any more |
 
 ## Questions judges actually ask
 
@@ -173,6 +196,12 @@ chain. It still needs a legal review before production, and we say so in the thr
 They can pause the system and cancel needs — which refunds donors — and register bogus organizations. They
 cannot withdraw from a vault: there is no admin withdrawal path, and releases only go to the payout address
 recorded at registration, which has no setter.
+
+**"Isn't the off-chain model just trusting the payment provider?"**
+Yes, for the money itself, and the proposal says so too. What changes is that every claim the provider makes is
+signed, dated and specific: this payment, this fee, this payout of this tranche to this supplier reference. An
+auditor compares its books to its attestations line by line. And the provider cannot unlock anything on its own:
+payouts after the first still need evidence, anonymous confirmations and an independent sign-off.
 
 **"Why Base?"**
 Cheap enough that a per-beneficiary confirmation is viable, EAS and Semaphore v4 already deployed, and Coinbase

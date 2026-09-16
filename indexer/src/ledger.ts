@@ -1,12 +1,18 @@
 import { ponder } from 'ponder:registry'
 import schema from 'ponder:schema'
+import { currencyLabel } from '@poa/shared'
+import { and, eq } from 'ponder'
+import type { Hex } from 'viem'
 import { appendTimeline, eventId, seconds } from './lib/timeline.js'
 
-/** One vault per need: donations in, tranches out. Amounts stay in token base units everywhere. */
+/**
+ * One ledger per need: donations in, tranches out. The custodial AidVault and the NonCustodialLedger emit the
+ * same funding and tranche events, so both are indexed as `Ledger`. Amounts stay in token base units.
+ */
 
 const BPS_DENOMINATOR = 10_000n
 
-ponder.on('AidVault:Donated', async ({ event, context }) => {
+ponder.on('Ledger:Donated', async ({ event, context }) => {
   const { needId, donor, amount, receiptId } = event.args
   const id = eventId(event)
 
@@ -19,6 +25,9 @@ ponder.on('AidVault:Donated', async ({ event, context }) => {
     paymentRefHash: null,
     partner: null,
     amount,
+    gross: amount,
+    fee: 0n,
+    currency: null,
     receiptId,
     attestationUID: null,
     txHash: event.transaction.hash,
@@ -52,7 +61,7 @@ ponder.on('AidVault:Donated', async ({ event, context }) => {
 })
 
 /** Fiat donation deposited by a bank partner. The donor exists only as a salted reference hash (spec §5.6). */
-ponder.on('AidVault:DonatedOnBehalf', async ({ event, context }) => {
+ponder.on('Ledger:DonatedOnBehalf', async ({ event, context }) => {
   const { needId, partner, amount, donorRefHash, paymentRefHash } = event.args
 
   await context.db.insert(schema.donation).values({
@@ -64,6 +73,10 @@ ponder.on('AidVault:DonatedOnBehalf', async ({ event, context }) => {
     paymentRefHash,
     partner,
     amount,
+    // gross, fee and currency arrive with the provider's FundingRecorded attestation (see eas.ts)
+    gross: null,
+    fee: null,
+    currency: null,
     receiptId: null,
     attestationUID: null,
     txHash: event.transaction.hash,
@@ -83,10 +96,67 @@ ponder.on('AidVault:DonatedOnBehalf', async ({ event, context }) => {
 })
 
 /**
- * Funding closed: the tranche plan turns into amounts. This mirrors `AidVault._closeFunding` exactly —
+ * Off-chain custody (Model A): the custodian's FundingRecorded attestation counted a payment toward the target.
+ * No token moved; the attestation that caused this event is in the same transaction, with a lower log index.
+ */
+ponder.on('Ledger:FundingRecorded', async ({ event, context }) => {
+  const { needId, provider, gross, fee, net, currency, paymentRefHash, donorRefHash } = event.args
+
+  const [attestationRow] = await context.db.sql
+    .select({ uid: schema.attestation.uid })
+    .from(schema.attestation)
+    .where(
+      and(
+        eq(schema.attestation.txHash, event.transaction.hash),
+        eq(schema.attestation.schemaName, 'FundingRecorded'),
+      ),
+    )
+    .limit(1)
+
+  await context.db.insert(schema.donation).values({
+    id: eventId(event),
+    needId,
+    kind: 'OFFCHAIN',
+    donor: null,
+    donorRefHash,
+    paymentRefHash,
+    partner: provider,
+    amount: net,
+    gross,
+    fee,
+    currency: currencyLabel(currency as Hex),
+    receiptId: null,
+    attestationUID: attestationRow?.uid ?? null,
+    txHash: event.transaction.hash,
+    blockNumber: event.block.number,
+    timestamp: seconds(event),
+  })
+
+  await context.db
+    .update(schema.need, { id: needId })
+    .set((row) => ({ totalDonated: row.totalDonated + net, fundingFees: row.fundingFees + fee }))
+
+  await appendTimeline(context, event, {
+    needId,
+    type: 'FundingRecorded',
+    data: {
+      provider,
+      gross: gross.toString(),
+      fee: fee.toString(),
+      net: net.toString(),
+      currency: currencyLabel(currency as Hex),
+      paymentRefHash,
+      donorRefHash,
+    },
+    attestationUID: attestationRow?.uid ?? null,
+  })
+})
+
+/**
+ * Funding closed: the tranche plan turns into amounts. This mirrors `TrancheLedger._closeFunding` exactly —
  * `bps` of the total per tranche, with the rounding dust assigned to the last one (DECISIONS §6).
  */
-ponder.on('AidVault:FundingClosed', async ({ event, context }) => {
+ponder.on('Ledger:FundingClosed', async ({ event, context }) => {
   const { needId, totalDonated } = event.args
 
   const record = await context.db.find(schema.need, { id: needId })
@@ -113,7 +183,7 @@ ponder.on('AidVault:FundingClosed', async ({ event, context }) => {
   })
 })
 
-ponder.on('AidVault:TrancheReleasable', async ({ event, context }) => {
+ponder.on('Ledger:TrancheReleasable', async ({ event, context }) => {
   const { needId, index, deliveryId } = event.args
   const trancheIndex = Number(index)
 
@@ -133,7 +203,7 @@ ponder.on('AidVault:TrancheReleasable', async ({ event, context }) => {
   })
 })
 
-ponder.on('AidVault:TrancheReleased', async ({ event, context }) => {
+ponder.on('Ledger:TrancheReleased', async ({ event, context }) => {
   const { needId, index, amount, to } = event.args
   const trancheIndex = Number(index)
 
@@ -156,7 +226,7 @@ ponder.on('AidVault:TrancheReleased', async ({ event, context }) => {
   })
 })
 
-ponder.on('AidVault:Refunded', async ({ event, context }) => {
+ponder.on('Ledger:Refunded', async ({ event, context }) => {
   const { needId, account, amount } = event.args
 
   await context.db.insert(schema.refund).values({
@@ -180,7 +250,7 @@ ponder.on('AidVault:Refunded', async ({ event, context }) => {
   })
 })
 
-ponder.on('AidVault:RefundedByRef', async ({ event, context }) => {
+ponder.on('Ledger:RefundedByRef', async ({ event, context }) => {
   const { needId, donorRefHash, to, amount } = event.args
 
   await context.db.insert(schema.refund).values({

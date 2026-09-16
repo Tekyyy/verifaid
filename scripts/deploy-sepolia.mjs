@@ -12,8 +12,8 @@
  * to the child process through its environment only.
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { copyFileSync, existsSync, readFileSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -65,7 +65,7 @@ console.log('Deploying Proof of Aid to Base Sepolia')
 console.log(`  rpc              ${rpcUrl}`)
 console.log(`  verify on scan   ${verify ? 'yes' : 'no'}`)
 console.log(`  challenge period ${env.CHALLENGE_PERIOD_SECONDS ?? '600'}s`)
-console.log('  cost             ~0.0003 ETH to deploy, plus ~0.018 ETH to fund the demo role wallets\n')
+console.log('  cost             ~0.0005 ETH to deploy, plus up to 0.0035 ETH to top the demo role wallets up\n')
 
 const run = (script, extra = []) => {
   console.log(`\n▸ ${script}`)
@@ -89,11 +89,22 @@ const run = (script, extra = []) => {
 const requested = process.argv.slice(2).filter((arg) => !arg.startsWith('-'))
 const wanted = (step) => requested.length === 0 || requested.includes(step)
 
+const deployment = join(root, 'deployments', 'base-sepolia.json')
+
+// A new release gets new addresses. Keep the previous record, so links into the old deployment keep resolving.
+if (wanted('deploy') && existsSync(deployment)) {
+  const previous = JSON.parse(readFileSync(deployment, 'utf8'))
+  const archive = join(root, 'deployments', `base-sepolia.v${previous.version ?? 1}.json`)
+  if (!existsSync(archive)) {
+    copyFileSync(deployment, archive)
+    console.log(`  archived the previous deployment to deployments/${basename(archive)}`)
+  }
+}
+
 if (wanted('deploy')) run('Deploy.s.sol', verify ? ['--verify'] : [])
 if (wanted('schemas')) run('RegisterSchemas.s.sol')
 if (wanted('seed')) run('SeedDemo.s.sol')
 
-const deployment = join(root, 'deployments', 'base-sepolia.json')
 if (existsSync(deployment)) {
   const { contracts: addresses, schemas, startBlock } = JSON.parse(readFileSync(deployment, 'utf8'))
   console.log('\n✓ Live on Base Sepolia\n')

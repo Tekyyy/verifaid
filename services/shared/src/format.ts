@@ -40,6 +40,12 @@ export const regionLabel = (code: Hex): string => {
   }
 }
 
+/** ISO 3166-1 country of an ISO 3166-2 region label: "ES-CM" → "ES". */
+export const countryOf = (region: string): string => region.split('-')[0]?.toUpperCase() ?? region
+
+/** bytes32 currency codes ("EUR" padded) back to text. */
+export const currencyLabel = (code: Hex): string => regionLabel(code)
+
 /**
  * Salted hash for fiat references, byte-for-byte equal to Solidity's
  * `keccak256(abi.encode(bytes32 salt, string value))` — the raw reference never leaves the bank partner.

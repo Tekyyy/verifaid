@@ -3,9 +3,26 @@ import { describe, expect, it } from 'vitest'
 import { createSessionToken, verifySessionToken, verifyWebhookSignature } from '../src/auth.js'
 import { hmac, open, openEnvelope, seal, sealEnvelope } from '../src/crypto.js'
 import { getDeployment, hasDeployment } from '../src/deployment.js'
-import { categoryHash, categoryLabel, regionCode, regionLabel, saltedRefHash } from '../src/format.js'
+import { DONOR_STAGES, trackingRefKind } from '../src/api.js'
+import {
+  categoryHash,
+  categoryLabel,
+  countryOf,
+  currencyLabel,
+  regionCode,
+  regionLabel,
+  saltedRefHash,
+} from '../src/format.js'
 import { AID_RECEIVED_MESSAGE, ROLES } from '../src/roles.js'
-import { computeSchemaUid, decodeSchemaData, encodeSchemaData, SCHEMAS } from '../src/schemas.js'
+import {
+  computeSchemaUid,
+  decodeSchemaData,
+  encodeSchemaData,
+  type FundingRecordedData,
+  SCHEMAS,
+  type SettlementData,
+} from '../src/schemas.js'
+import { custodyModeName, needStatusName, SCHEMA_NAMES } from '../src/types.js'
 
 describe('roles', () => {
   it('matches the identifiers in Roles.sol', () => {
@@ -54,20 +71,55 @@ describe('schemas', () => {
 
   it.runIf(hasDeployment('anvil'))('derives the same schema UIDs the SchemaRegistry assigned', () => {
     const deployment = getDeployment('anvil')
-    const resolvers = {
-      NeedVerified: deployment.contracts.NeedVerifiedResolver,
-      DeliveryEvidence: deployment.contracts.DeliveryEvidenceResolver,
-      DeliveryVerified: deployment.contracts.DeliveryVerifiedResolver,
-      FiatDonation: deployment.contracts.FiatDonationResolver,
-      ImpactReport: deployment.contracts.ImpactReportResolver,
-    } as const
-
-    for (const [name, resolver] of Object.entries(resolvers)) {
-      const definition = SCHEMAS[name as keyof typeof resolvers]
-      expect(computeSchemaUid(definition.schema, resolver, definition.revocable)).toBe(
-        deployment.schemas[definition.name],
-      )
+    // one resolver serves all six schemas
+    const resolver = deployment.contracts.ProofOfAidResolver
+    for (const name of SCHEMA_NAMES) {
+      const definition = SCHEMAS[name]
+      expect(computeSchemaUid(definition.schema, resolver, definition.revocable)).toBe(deployment.schemas[name])
     }
+  })
+
+  it('encodes FundingRecorded and Settlement payloads', () => {
+    const funding = encodeSchemaData('FundingRecorded', [
+      3n,
+      1025_000000n,
+      25_000000n,
+      1000_000000n,
+      regionCode('EUR'),
+      keccak256(stringToHex('payment')),
+      keccak256(stringToHex('donor')),
+    ])
+    const decoded = decodeSchemaData<FundingRecordedData>('FundingRecorded', funding)
+    expect(decoded[1] - decoded[2]).toBe(decoded[3])
+    expect(currencyLabel(decoded[4])).toBe('EUR')
+
+    const settlement = encodeSchemaData('Settlement', [
+      3n,
+      0n,
+      300_000000n,
+      3_000000n,
+      297_000000n,
+      keccak256(stringToHex('invoice')),
+      keccak256(stringToHex('fx')),
+    ])
+    expect(decodeSchemaData<SettlementData>('Settlement', settlement)[4]).toBe(297_000000n)
+  })
+})
+
+describe('tracking references', () => {
+  it('tells receipt ids from payment reference hashes', () => {
+    expect(trackingRefKind('12')).toBe('receipt')
+    expect(trackingRefKind(keccak256(stringToHex('payment')))).toBe('payment')
+    expect(trackingRefKind('0')).toBeNull()
+    expect(trackingRefKind('0x1234')).toBeNull()
+    expect(trackingRefKind('../etc/passwd')).toBeNull()
+  })
+
+  it('names the five donor stages in the order the proposal gives them', () => {
+    expect(DONOR_STAGES).toEqual(['Verified', 'Funded', 'Settled', 'Delivered', 'ImpactConfirmed'])
+    expect(countryOf('ES-CM')).toBe('ES')
+    expect(needStatusName(7)).toBe('Expired')
+    expect(custodyModeName(1)).toBe('OffChain')
   })
 })
 

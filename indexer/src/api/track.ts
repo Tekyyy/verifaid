@@ -1,0 +1,215 @@
+import {
+  type DonationOutcome,
+  type DonationTrack,
+  type DonorStage,
+  type DonorStageView,
+  formatAmount,
+  type TrackingRefKind,
+} from '@poa/shared'
+import type { Hex } from 'viem'
+import {
+  type DeliveryRow,
+  type DonationRow,
+  type ImpactReportRow,
+  liveReport,
+  type NeedRow,
+  type RefundRow,
+  type SettlementRow,
+  type TimelineRow,
+  type TrancheRow,
+  toDeliveryView,
+  toDonationView,
+  toDonorTrancheSlice,
+  toImpactReportView,
+  toNeedSummary,
+  toSettlementView,
+} from './views.js'
+
+/**
+ * Builds the public tracking view of one donation: the five stages the proposal promises donors, each backed by
+ * the on-chain evidence that reached it, and what happened to this donation's share of the money.
+ *
+ * Every stage is a fact about the need, but the view is per donation because shares, refunds and the outcome
+ * are. `pending` explains a stage that is partly there instead of pretending it is done or not started.
+ */
+
+export interface TrackInputs {
+  ref: string
+  refKind: TrackingRefKind
+  donation: DonationRow
+  need: NeedRow
+  /** All donations to the same need by the same donor (address or salted reference), for refund attribution. */
+  sameDonorDonations: DonationRow[]
+  tranches: TrancheRow[]
+  deliveries: DeliveryRow[]
+  settlements: SettlementRow[]
+  reports: ImpactReportRow[]
+  refunds: RefundRow[]
+  timeline: TimelineRow[]
+}
+
+const firstOfType = (timeline: TimelineRow[], type: string): TimelineRow | undefined =>
+  timeline.find((row) => row.type === type)
+
+const stage = (
+  name: DonorStage,
+  reached:
+    | TimelineRow
+    | { timestamp: number; txHash: string | null; attestationUID: string | null }
+    | undefined,
+  pending: string | null,
+  attestationUID?: string | null,
+): DonorStageView => ({
+  stage: name,
+  reached: Boolean(reached),
+  at: reached?.timestamp ?? null,
+  txHash: (reached?.txHash as Hex | null | undefined) ?? null,
+  attestationUID: ((attestationUID ?? reached?.attestationUID) as Hex | null | undefined) ?? null,
+  pending: reached ? null : pending,
+})
+
+export const buildDonationTrack = (inputs: TrackInputs): DonationTrack => {
+  const { donation, need, tranches, deliveries, settlements, reports, refunds, timeline } = inputs
+
+  // ── Verified ──
+  const verified = firstOfType(timeline, 'NeedVerified')
+  const lastApproval = [...timeline]
+    .reverse()
+    .find((row) => row.type === 'NeedVerificationRecorded' && (row.data as { approved?: boolean }).approved)
+  const verifiedStage = stage(
+    'Verified',
+    verified,
+    `${need.verificationCount} of ${need.verificationsRequired} independent verifications`,
+    lastApproval?.attestationUID ?? null,
+  )
+
+  // ── Funded ──
+  const funded = firstOfType(timeline, 'FundingClosed')
+  const fundedStage = stage(
+    'Funded',
+    funded,
+    need.status === 'Funding'
+      ? `${formatAmount(need.totalDonated)} of ${formatAmount(need.targetAmount)} raised`
+      : null,
+  )
+
+  // ── Settled ──
+  const firstSettlement = [...settlements].sort((a, b) => a.timestamp - b.timestamp)[0]
+  const released = tranches.filter((tranche) => tranche.status === 'Released')
+  const releasable = tranches.filter((tranche) => tranche.status === 'Releasable')
+  let settledPending: string | null = null
+  if (!firstSettlement) {
+    if (released.length > 0) {
+      settledPending = `Tranche ${released[0]?.index} released to the NGO; settlement report not yet filed`
+    } else if (releasable.length > 0) {
+      settledPending =
+        need.custodyMode === 'OffChain'
+          ? `Tranche ${releasable[0]?.index} ready for payout by the payment provider`
+          : `Tranche ${releasable[0]?.index} ready to be released to the NGO`
+    }
+  }
+  const settledStage = stage(
+    'Settled',
+    firstSettlement
+      ? {
+          timestamp: firstSettlement.timestamp,
+          txHash: firstSettlement.txHash,
+          attestationUID: firstSettlement.uid,
+        }
+      : undefined,
+    settledPending,
+  )
+
+  // ── Delivered ──
+  const finalized = deliveries
+    .filter((delivery) => delivery.status === 'Finalized' && delivery.finalizedAt !== null)
+    .sort((a, b) => (a.finalizedAt ?? 0) - (b.finalizedAt ?? 0))[0]
+  const finalizedEvent = finalized
+    ? timeline.find(
+        (row) =>
+          row.type === 'DeliveryFinalized' &&
+          (row.data as { deliveryId?: string }).deliveryId === finalized.id.toString(),
+      )
+    : undefined
+  const active = deliveries.find((delivery) =>
+    ['Open', 'Challengeable', 'Disputed'].includes(delivery.status),
+  )
+  let deliveredPending: string | null = null
+  if (active) {
+    deliveredPending =
+      active.status === 'Open'
+        ? `Delivery #${active.id}: ${active.confirmations} of ${active.expectedRecipients} beneficiary confirmations`
+        : active.status === 'Challengeable'
+          ? `Delivery #${active.id} verified; challenge window open`
+          : `Delivery #${active.id} under dispute`
+  }
+  const deliveredStage = stage(
+    'Delivered',
+    finalized
+      ? {
+          timestamp: finalized.finalizedAt ?? finalizedEvent?.timestamp ?? 0,
+          txHash: finalizedEvent?.txHash ?? null,
+          attestationUID: finalized.verifierUID,
+        }
+      : undefined,
+    deliveredPending,
+  )
+
+  // ── Impact confirmed ──
+  const report = liveReport(reports)
+  const reportEvent =
+    report && !report.revoked
+      ? timeline.find((row) => row.type === 'ImpactReportPublished' && row.attestationUID === report.uid)
+      : undefined
+  const impactStage = stage(
+    'ImpactConfirmed',
+    reportEvent,
+    need.status === 'Completed' ? 'Need completed; impact report not yet published' : null,
+  )
+
+  const stages = [verifiedStage, fundedStage, settledStage, deliveredStage, impactStage]
+  const currentStage = [...stages].reverse().find((view) => view.reached)?.stage ?? null
+
+  // ── this donation's money ──
+  const funding = need.totalDonated
+  const share = (amount: bigint): bigint => (funding === 0n ? 0n : (amount * donation.amount) / funding)
+  let releasedToNgo = 0n
+  const donorTranches = tranches.map((tranche) => {
+    const slice = share(tranche.amount)
+    if (tranche.status === 'Released') releasedToNgo += slice
+    return toDonorTrancheSlice(tranche, slice)
+  })
+
+  // A refund is paid per donor (address or salted reference), not per donation: attribute it pro rata.
+  const donorTotal = inputs.sameDonorDonations.reduce((sum, row) => sum + row.amount, 0n)
+  const refundedToDonor = refunds.reduce((sum, row) => sum + row.amount, 0n)
+  const refunded = donorTotal === 0n ? 0n : (refundedToDonor * donation.amount) / donorTotal
+
+  let outcome: DonationOutcome = 'InProgress'
+  if (need.status === 'Completed') outcome = 'Completed'
+  else if (need.status === 'Cancelled' || need.status === 'Expired') {
+    if (refunded > 0n) outcome = 'Refunded'
+    else if (need.custodyMode === 'OnChain' && funding > need.totalReleased) outcome = 'Refundable'
+    else outcome = need.status
+  }
+
+  const updatedAt = timeline.reduce((latest, row) => Math.max(latest, row.timestamp), donation.timestamp)
+
+  return {
+    ref: inputs.ref,
+    refKind: inputs.refKind,
+    donation: toDonationView(donation),
+    need: toNeedSummary(need),
+    shareBps: funding === 0n ? 0 : Number((donation.amount * 10_000n) / funding),
+    stages,
+    currentStage,
+    outcome,
+    releasedToNgo: releasedToNgo.toString(),
+    refunded: refunded.toString(),
+    tranches: donorTranches,
+    deliveries: deliveries.map(toDeliveryView),
+    settlements: settlements.map(toSettlementView),
+    impactReport: report ? toImpactReportView(report) : null,
+    updatedAt,
+  }
+}

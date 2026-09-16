@@ -62,7 +62,23 @@ the threat model). The current mitigation is a blunt minimum of five expected re
 confirmations, without publishing the per-delivery counts, plus calibrated noise on public breakdowns. That
 would let a programme of eight households publish impact without publishing "eight".
 
-## 7. Mainnet on Base
+## 7. From the proposal, deliberately deferred
+
+The public proposal marks these as later phases; v2 does not build them (`docs/GAP_PLAN.md` item C3).
+
+- **OfferBook.** Suppliers publish offers against open needs (price, delivery date, conditions) and the NGO picks
+  one, so the `Settlement` attestation's supplier reference points at an on-chain offer instead of an invoice
+  hash. Needs a supplier role in `RoleRegistry` and a dispute path for undelivered offers.
+- **ProtocolTreasury.** A transparent fee or donation stream that funds verifiers and relayers, with its own
+  tranche-like release rules. Blocked on deciding who governs it; without that it is just an admin wallet.
+- **Multichain.** Needs funded on several chains with one registry of record. The clean shape is one home chain
+  for the registry and deliveries, with ledgers elsewhere reporting through a bridge or cross-chain attestations;
+  it multiplies the trust surface, so it waits until a partner actually needs a second chain.
+- **Real payment providers.** The checkout and CSV import are sandboxes. Moving to a licensed PSP (card) and a
+  PSD2 / ISO 20022 bank feed means a provider onboarding flow, reconciliation reports signed by the provider, and
+  refunds for off-chain needs executed by the provider and attested back.
+
+## 8. Mainnet on Base
 
 Everything above is a prerequisite for at least one of: a professional audit, a Safe multisig with a timelock
 for the admin role, a KMS-backed key hierarchy for the services (today they can read the evidence they store),
@@ -76,5 +92,5 @@ a legal review of the crypto-shredding erasure story, and real custody arrangeme
   cannot read what it stores.
 - **Committed Prisma migrations** instead of `db push`, once the schema stops moving.
 - **A gas benchmark suite**, so a confirmation's cost per beneficiary is a number in CI rather than an assumption.
-- **Partial refunds on under-funded needs** that expire without reaching their target: today the NGO closes
-  funding early or the admin cancels, and both are manual.
+- ~~Partial refunds on under-funded needs that expire without reaching their target.~~ Done in v2: funding and
+  execution deadlines, a minimum threshold with partial execution, and a permissionless `expire`.

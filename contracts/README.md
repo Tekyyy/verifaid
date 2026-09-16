@@ -5,7 +5,7 @@ Solidity 0.8.24, Foundry, OpenZeppelin v5. Dependencies come from npm (`pnpm ins
 ```bash
 pnpm install                # installs OpenZeppelin, EAS, Semaphore, forge-std
 forge build
-forge test                  # 216 tests: unit, fuzz, invariant, end-to-end, real-Semaphore integration
+forge test                  # 274 tests: unit, fuzz, invariant, end-to-end, real Semaphore, review regressions
 forge coverage --report summary --no-match-coverage "(script|test|mocks)"
 ```
 
@@ -13,38 +13,61 @@ forge coverage --report summary --no-match-coverage "(script|test|mocks)"
 
 | Contract | Responsibility |
 |---|---|
-| `access/RoleRegistry` | Who is an NGO, a verifier, a field agent, a bank partner — and the global pause. One address holds at most one operational role, which is what makes "independent verifier" checkable on-chain. |
-| `needs/NeedsRegistry` | The need lifecycle and its state machine. Records verifications forwarded by the EAS resolver; deploys the vault when the verification threshold is reached. |
-| `funds/AidVaultFactory` | One minimal-proxy `AidVault` per verified need; also the system-wide registry of fiat payment references, so one bank transfer cannot fund two needs. |
-| `funds/AidVault` | Escrow. Accepts crypto and fiat-backed donations, splits the total into tranches when funding closes, releases them one at a time, and refunds pro-rata if the need is cancelled. **No admin withdrawal path exists.** |
-| `funds/DonationReceipt` | Soulbound (ERC-5192) ERC-721 receipt with fully on-chain metadata. Evidence, not an asset — so it cannot be transferred or sold. |
+| `access/RoleRegistry` | Who is an NGO, a verifier, a field agent, a payment provider (`BANK_PARTNER_ROLE`), and the global pause. One address holds at most one operational role, which is what makes "independent verifier" checkable on-chain. |
+| `needs/NeedsRegistry` | The need (the proposal's *NeedClaim*): its terms, lifecycle and state machine. Records verifications forwarded by the resolver, clones the need's ledger when the threshold is reached, and applies deadlines through the permissionless `expire`. |
+| `funds/TrancheLedger` | Funding and tranche rules shared by both custody modes: the minimum threshold, the tranche split of what was actually raised, releases in order, and the delivery gate. |
+| `funds/AidVault` | On-chain custody (Model B). Escrow for stablecoin donations from wallets and payment providers; releases tranches to the NGO's payout Safe; refunds pro-rata if the need is cancelled or expires. **No admin withdrawal path exists.** |
+| `funds/NonCustodialLedger` | Off-chain custody (Model A). No token ever touches it: the need's named custodian records funding and tranche payouts by attestation, under the same rules. |
+| `funds/AidVaultFactory` | Clones one ledger per verified need, with the need id baked into the clone's code; also the system-wide registry of payment references, scoped per provider. |
+| `funds/DonationReceipt` | Soulbound (ERC-5192) ERC-721 receipt with fully on-chain metadata. Evidence, not an asset, so it cannot be transferred or sold. |
 | `identity/BeneficiaryGroups` | One Semaphore group per NGO programme. Beneficiaries exist here only as identity commitments. |
-| `delivery/DeliveryManager` | Ties a delivery to a tranche: field evidence, anonymous beneficiary confirmations, independent verifier sign-off, challenge window, finalize. |
-| `resolvers/*` | Five EAS schema resolvers. They decide who may attest what, and forward accepted attestations into the contracts above. |
+| `delivery/DeliveryManager` | Ties a delivery to a tranche: field evidence, anonymous beneficiary confirmations (single or batched), independent verifier sign-off, challenge window, finalize. |
+| `resolvers/ProofOfAidResolver` | The EAS resolver for all six schemas. Decides who may attest what and forwards accepted attestations into the contracts above. |
+
+## A need's terms
+
+Everything an NGO commits to at creation, and what enforces it:
+
+| Term | Enforcement |
+|---|---|
+| Custody mode, and the custodian for off-chain custody | Which ledger is cloned; only the named custodian may record funding or payouts |
+| Funding deadline | No verification or donation after it; `expire` then closes funding or expires the need |
+| Minimum funding (`minFundingBps`) | Funding closes early or at the deadline only at or above it; below it the need expires and refunds open. 10000 = all or nothing; lower = partial execution with every tranche scaled down |
+| Execution deadline | After it (plus a 14-day grace period for work already in flight) anyone can expire the need and the unreleased balance is refundable |
+| Third-party cost cap + disclosure hash | Funding and settlement fees together stay within the cap of what donors paid |
+| Tranche plan, target, region, dossier hash | As in v1; the region is checked against delivery evidence and the dossier against verifications |
+| Category, metadata URI, expected outcome hash | Committed in the `NeedCreated` event (nothing on-chain reads them, so they are not stored) |
 
 ## How money moves
 
 ```
-verified need ──► vault ──► donations (crypto + fiat) ──► funding closes ──► tranche plan fixed
-                                                                              │
-                        tranche 0 released as pre-financing ◄─────────────────┘
-                                   │
-          ┌────────────────────────┴───────────────────────────────────┐
-          │  for every later tranche, all three must be true:          │
-          │    1. evidence attested by the NGO's field agent           │
-          │    2. ≥ 70% of expected recipients confirmed anonymously   │
-          │    3. an independent verifier approved                     │
-          │  then a challenge window passes without a dispute          │
-          └────────────────────────┬───────────────────────────────────┘
-                                   ▼
-                       tranche released to the NGO's payout Safe
-                                   │
-                    last tranche ──► need Completed ──► impact report
+verified need ──► ledger cloned ──► funding ──────────────────────────► funding closes ──► tranches fixed
+                    │                 on-chain: wallet donations and       (target reached, or the NGO closes
+                    │                   provider deposits into the vault    at/above its minimum, or the
+                    │                 off-chain: the custodian's            deadline passes at/above it)
+                    │                   FundingRecorded attestations               │
+                    │                                                              │
+                    │                 tranche 0 released as pre-financing ◄────────┘
+                    │                    on-chain: anyone calls releaseTranche(0)
+                    │                    off-chain: the custodian's Settlement attestation
+                    │                                    │
+                    │          ┌─────────────────────────┴─────────────────────────────────┐
+                    │          │  for every later tranche, all three must be true:         │
+                    │          │    1. evidence attested by the NGO's field agent          │
+                    │          │    2. ≥ 70% of expected recipients confirmed anonymously  │
+                    │          │    3. an independent verifier approved                    │
+                    │          │  then a challenge window passes without a dispute         │
+                    │          └─────────────────────────┬─────────────────────────────────┘
+                    │                                    ▼
+                    │                  tranche released (and a Settlement reconciles it)
+                    │                                    │
+                    │                 last tranche ──► need Completed ──► impact report
+                    ▼
+     below the minimum at the deadline, cancelled, or past the execution deadline ──► refunds (on-chain custody)
 ```
 
-Cancel a need at any point before completion and every donor — crypto or fiat — can claim their pro-rata share
-of whatever was not released yet. The invariant `balance + released + refunded == donated` is checked by a fuzz
-test and by a stateful invariant test over 12,800 random call sequences.
+The invariant `balance + released + refunded == donated` is checked by fuzz tests and by a stateful invariant
+test over 12,800 random call sequences that include the passage of time, partial execution and expiry.
 
 ## Why a beneficiary never appears on-chain
 
@@ -53,32 +76,48 @@ zero-knowledge proof that they belong to the programme's group, scoped to that d
 nullifier and a counter. The same person confirming two different deliveries produces two unlinkable
 nullifiers, and confirming the same delivery twice is impossible — Semaphore enforces that, not us.
 
-Because the proof is relayed by a third party, the beneficiary's wallet never appears in a transaction either.
-A delivery with fewer than five expected recipients is refused, so a confirmation count cannot point at one
-household. Regions are coarse ISO 3166-2 subdivisions; there is no GPS, no photo, no name, and no unsalted hash
-of any of those anywhere in the system.
+Because proofs are relayed by a third party (one transaction can carry a whole batch), the beneficiary's wallet
+never appears in a transaction either. A delivery with fewer than five expected recipients is refused, so a
+confirmation count cannot point at one household. Regions are coarse ISO 3166-2 subdivisions; there is no GPS,
+no photo, no name, and no unsalted hash of any of those anywhere in the system.
 
 ## Attestations
 
-Five EAS schemas (`NeedVerified`, `DeliveryEvidence`, `DeliveryVerified`, `FiatDonation`, `ImpactReport`).
-Each resolver derives the UID of the one schema it serves from its own address, exactly as the SchemaRegistry
-does, and rejects everything else — so registering a look-alike schema against our resolver achieves nothing.
-`refUID` chains the evidence together: a sign-off must point at the evidence it reviewed, and an impact report
-must point at the sign-off of the need's last verified delivery. That chain is walkable in any EAS explorer.
+Six EAS schemas, one resolver, in the order a donor experiences them:
+
+| Schema | Attester | Effect |
+|---|---|---|
+| `NeedVerified` | independent verifier | counts toward the need's verification threshold; revocable while nothing was raised |
+| `FundingRecorded` | payment provider | on-chain custody: vouches for a deposit already in the vault; off-chain: *is* the funding record |
+| `DeliveryEvidence` | the NGO's field agent | links encrypted evidence (hash + CID) to a delivery in the need's region |
+| `DeliveryVerified` | independent verifier | sign-off that must reference the evidence it reviewed |
+| `Settlement` | NGO (on-chain) / custodian (off-chain) | reconciles one tranche payout: gross, fee, net, supplier and FX references |
+| `ImpactReport` | NGO | outcomes of a completed need, referencing the last verified delivery; revocable to correct |
+
+The resolver derives every UID it accepts from its own address, exactly as the SchemaRegistry does, and rejects
+everything else, so registering a look-alike schema against it achieves nothing. `refUID` chains the evidence
+together, walkable in any EAS explorer.
 
 ## Tests
 
 | Suite | What it covers |
 |---|---|
-| `test/unit/*` | Every function and revert path of every contract |
-| `test/fuzz/VaultMath.t.sol` | Tranche splitting and refund arithmetic over random inputs |
-| `test/invariant/AidVaultInvariant.t.sol` | The accounting identity under random sequences of donations, releases, cancellation and refunds |
-| `test/e2e/Lifecycle.t.sol` | The full spec §7 lifecycle, plus nullifier reuse, non-independent verifiers, challenge and dispute, cancellation and refunds |
-| `test/integration/RealSemaphore.t.sol` | Real Semaphore v4 contracts with real Groth16 proofs from a committed fixture: threshold confirmations, replay, tampering, wrong scope, and post-erasure root expiry |
+| `test/unit/*` | Every function and revert path of every contract, including need terms, expiry, off-chain custody, batched confirmations and settlements |
+| `test/fuzz/VaultMath.t.sol` | Tranche splitting, partial-execution rescaling, and refund arithmetic over random inputs |
+| `test/invariant/AidVaultInvariant.t.sol` | The accounting identity under random sequences of donations, releases, time passing, expiry, cancellation and refunds |
+| `test/e2e/Lifecycle.t.sol` | The full lifecycle, plus nullifier reuse, non-independent verifiers, challenge and dispute, cancellation and refunds |
+| `test/integration/RealSemaphore.t.sol` | Real Semaphore v4 contracts with real Groth16 proofs from a committed fixture |
+| `test/regression/V2ReviewFindings.t.sol` | Every finding of the adversarial review of v2, replayed against the fix (see `docs/DECISIONS.md` §12) |
 
 The Semaphore fixture is regenerated with `pnpm fixture:semaphore` (downloads the official proving artifacts).
 
 ## Deploying
+
+```bash
+pnpm deploy:sepolia          # deploy + verify, register schemas, seed; prints every link
+```
+
+or step by step:
 
 ```bash
 forge script script/Deploy.s.sol --rpc-url base_sepolia --broadcast --verify
@@ -88,4 +127,5 @@ forge script script/SeedDemo.s.sol --rpc-url base_sepolia --broadcast
 
 `Deploy.s.sol` reuses the external contracts that already exist on the target chain and deploys local
 stand-ins for whatever is missing, so the same script works on anvil and on Base Sepolia. Addresses and schema
-UIDs are written to `deployments/<network>.json`, which every off-chain package reads.
+UIDs are written to `deployments/<network>.json`, which every off-chain package reads; previous releases are
+kept as `deployments/<network>.v1.json`.

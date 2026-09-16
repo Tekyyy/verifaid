@@ -88,6 +88,10 @@ export const verifySessionToken = (secret: string, token: string): SessionPayloa
   }
 }
 
+/** Signs an outbound webhook body: the `sha256=<hex>` value `verifyWebhookSignature` accepts. */
+export const signWebhookBody = (secret: string, rawBody: string): string =>
+  `sha256=${hmac(secret, rawBody).toString('hex')}`
+
 /** Verifies an HMAC webhook signature of the form `sha256=<hex>`. */
 export const verifyWebhookSignature = (
   secret: string,

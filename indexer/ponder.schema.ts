@@ -101,27 +101,45 @@ export const need = onchainTable(
     programId: t.bigint().notNull(),
     category: t.hex().notNull(),
     regionCode: t.hex().notNull(),
+    /** ISO 3166-1 country, the prefix of the ISO 3166-2 region ("ES" for "ES-CM"), for filtering. */
+    country: t.text().notNull(),
     dossierHash: t.hex().notNull(),
     metadataURI: t.text().notNull(),
     targetAmount: t.bigint().notNull(),
     verificationsRequired: t.integer().notNull(),
     verificationCount: t.integer().notNull(),
     status: t.text().notNull(),
+    /** OnChain (AidVault escrow, Model B) | OffChain (payment provider custody, Model A). */
+    custodyMode: t.text().notNull(),
+    custodian: t.hex(),
     vault: t.hex(),
+    // ── the terms the NGO committed to at creation ──
+    fundingDeadline: t.integer(),
+    executionDeadline: t.integer(),
+    minFundingBps: t.integer().notNull(),
+    thirdPartyCostBps: t.integer().notNull(),
+    expectedOutcomeHash: t.hex().notNull(),
+    costDisclosureHash: t.hex(),
+    // ── money ──
     totalDonated: t.bigint().notNull(),
     totalReleased: t.bigint().notNull(),
     totalRefunded: t.bigint().notNull(),
+    /** Fees intermediaries kept, as attested in FundingRecorded and Settlement. */
+    fundingFees: t.bigint().notNull(),
+    settlementFees: t.bigint().notNull(),
     trancheCount: t.integer().notNull(),
     createdAt: t.integer().notNull(),
     createdTxHash: t.hex().notNull(),
     fundingClosedAt: t.integer(),
     completedAt: t.integer(),
     cancelledAt: t.integer(),
+    expiredAt: t.integer(),
   }),
   (table) => ({
     statusIdx: index().on(table.status),
     categoryIdx: index().on(table.category),
     regionIdx: index().on(table.regionCode),
+    countryIdx: index().on(table.country),
     ngoIdx: index().on(table.ngo),
     vaultIdx: index().on(table.vault),
   }),
@@ -148,19 +166,28 @@ export const tranche = onchainTable(
 
 // ─── donations ───────────────────────────────────────────────────────────────
 
-/** `donor` is set for direct donations, `donorRefHash` (salted, never the raw reference) for fiat ones. */
+/**
+ * `donor` is set for direct donations, `donorRefHash` (salted, never the raw reference) for provider ones.
+ * DIRECT: a wallet donated to the vault. FIAT: a provider deposited a card or bank payment into the vault.
+ * OFFCHAIN: a provider holds the money and recorded it by attestation (non-custodial need).
+ */
 export const donation = onchainTable(
   'donation',
   (t) => ({
     id: t.text().primaryKey(), // txHash-logIndex
     needId: t.bigint().notNull(),
-    kind: t.text().notNull(), // DIRECT | FIAT
+    kind: t.text().notNull(), // DIRECT | FIAT | OFFCHAIN
     donor: t.hex(),
     donorRefHash: t.hex(),
     paymentRefHash: t.hex(),
-    /** Bank partner that deposited a fiat donation. It is the depositor, never the donor. */
+    /** Payment provider that deposited or recorded the donation. It is the intermediary, never the donor. */
     partner: t.hex(),
+    /** Net amount: what counts toward the target. */
     amount: t.bigint().notNull(),
+    /** What the donor paid and what the provider kept, once a FundingRecorded attestation states them. */
+    gross: t.bigint(),
+    fee: t.bigint(),
+    currency: t.text(),
     receiptId: t.bigint(),
     attestationUID: t.hex(),
     txHash: t.hex().notNull(),
@@ -202,6 +229,25 @@ export const refund = onchainTable(
     timestamp: t.integer().notNull(),
   }),
   (table) => ({ needIdx: index().on(table.needId), accountIdx: index().on(table.account) }),
+)
+
+/** A tranche payout reconciled by a Settlement attestation (NGO for on-chain custody, custodian for off-chain). */
+export const settlement = onchainTable(
+  'settlement',
+  (t) => ({
+    uid: t.hex().primaryKey(),
+    needId: t.bigint().notNull(),
+    trancheIndex: t.integer().notNull(),
+    attester: t.hex().notNull(),
+    gross: t.bigint().notNull(),
+    fee: t.bigint().notNull(),
+    net: t.bigint().notNull(),
+    supplierRefHash: t.hex().notNull(),
+    fxRef: t.hex().notNull(),
+    txHash: t.hex().notNull(),
+    timestamp: t.integer().notNull(),
+  }),
+  (table) => ({ needIdx: index().on(table.needId, table.trancheIndex) }),
 )
 
 // ─── deliveries ──────────────────────────────────────────────────────────────
@@ -326,7 +372,10 @@ export const timelineEvent = onchainTable(
     logIndex: t.integer().notNull(),
     timestamp: t.integer().notNull(),
   }),
-  (table) => ({ needIdx: index().on(table.needId, table.blockNumber, table.logIndex) }),
+  (table) => ({
+    needIdx: index().on(table.needId, table.blockNumber, table.logIndex),
+    orderIdx: index().on(table.blockNumber, table.logIndex),
+  }),
 )
 
 // ─── relations (for the GraphQL schema) ──────────────────────────────────────
@@ -334,6 +383,7 @@ export const timelineEvent = onchainTable(
 export const needRelations = relations(need, ({ many, one }) => ({
   tranches: many(tranche),
   donations: many(donation),
+  settlements: many(settlement),
   deliveries: many(delivery),
   attestations: many(attestation),
   timeline: many(timelineEvent),
@@ -348,6 +398,10 @@ export const trancheRelations = relations(tranche, ({ one }) => ({
 export const donationRelations = relations(donation, ({ one }) => ({
   need: one(need, { fields: [donation.needId], references: [need.id] }),
   receipt: one(receipt, { fields: [donation.receiptId], references: [receipt.id] }),
+}))
+
+export const settlementRelations = relations(settlement, ({ one }) => ({
+  need: one(need, { fields: [settlement.needId], references: [need.id] }),
 }))
 
 export const receiptRelations = relations(receipt, ({ one }) => ({

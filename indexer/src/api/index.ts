@@ -3,37 +3,54 @@ import schema from 'ponder:schema'
 import {
   categoryHash,
   categoryLabel,
-  type DeliveryStatus,
+  CUSTODY_MODE,
+  type CustodyMode,
   type DeliveryView,
-  type DonationView,
+  type DonationTrack,
   type DonorReceiptTrace,
   type DonorTrace,
-  type DonorTrancheSlice,
   getDeployment,
   type ImpactBucket,
-  type ImpactReportView,
   type ImpactSummary,
+  NEED_SORTS,
   type NeedDetail,
+  type NeedSort,
   type NeedStatus,
   type NeedSummary,
   type ProgramMembersResponse,
+  type ProviderView,
   regionCode as regionCodeOf,
   regionLabel,
   resolveNetwork,
   semaphoreAbi,
   type TimelineEvent,
-  type TimelineEventType,
-  type TrancheStatus,
-  type TrancheView,
+  type TimelinePage,
+  trackingRefKind,
 } from '@poa/shared'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { and, asc, eq, graphql } from 'ponder'
+import { and, asc, desc, eq, graphql, gt, isNull, or } from 'ponder'
 import type { Address, Hex } from 'viem'
+import { renderRss } from './rss.js'
+import { buildDonationTrack } from './track.js'
+import {
+  type DonationRow,
+  fundingGapOf,
+  liveReport,
+  type NeedRow,
+  toDeliveryView,
+  toDonationView,
+  toDonorTrancheSlice,
+  toImpactReportView,
+  toNeedSummary,
+  toSettlementView,
+  toTimelineEvent,
+  toTrancheView,
+} from './views.js'
 
 /**
- * The read API the dashboard and the demo runner consume. Every response is one of the types exported by
- * @poa/shared, with bigints serialized as decimal strings in token base units (6 decimals).
+ * The read API the dashboard, the notifier and the demo runner consume. Every response is one of the types
+ * exported by @poa/shared, with bigints serialized as decimal strings in token base units (6 decimals).
  *
  * Nothing here can expose a beneficiary: the only person-adjacent data indexed at all are Semaphore identity
  * commitments (public, unlinkable, and required to build a Merkle proof) and confirmation counts.
@@ -71,105 +88,8 @@ app.use('*', cors({ origin: '*', maxAge: 86_400 }))
 
 app.use('/graphql', graphql({ db, schema }))
 
-// ─── row → API type ──────────────────────────────────────────────────────────
-
-type NeedRow = typeof schema.need.$inferSelect
-type TrancheRow = typeof schema.tranche.$inferSelect
-type DeliveryRow = typeof schema.delivery.$inferSelect
-type DonationRow = typeof schema.donation.$inferSelect
-type TimelineRow = typeof schema.timelineEvent.$inferSelect
-type ImpactReportRow = typeof schema.impactReport.$inferSelect
-
-const toNeedSummary = (row: NeedRow): NeedSummary => ({
-  id: row.id.toString(),
-  ngo: row.ngo as Address,
-  // The NGO's display name lives in the off-chain profile JSON at metadataURI; only the URI is on-chain.
-  ngoName: null,
-  programId: row.programId.toString(),
-  category: row.category,
-  categoryLabel: categoryLabel(row.category as Hex),
-  regionCode: row.regionCode,
-  regionLabel: regionLabel(row.regionCode as Hex),
-  targetAmount: row.targetAmount.toString(),
-  totalDonated: row.totalDonated.toString(),
-  totalReleased: row.totalReleased.toString(),
-  status: row.status as NeedStatus,
-  vault: (row.vault as Address | null) ?? null,
-  metadataURI: row.metadataURI,
-  verificationsRequired: row.verificationsRequired,
-  verificationCount: row.verificationCount,
-  createdAt: row.createdAt,
-})
-
-const toTrancheView = (row: TrancheRow): TrancheView => ({
-  index: row.index,
-  bps: row.bps,
-  amount: row.amount.toString(),
-  status: row.status as TrancheStatus,
-  deliveryId: row.deliveryId?.toString() ?? null,
-  releasedAt: row.releasedAt,
-  releaseTxHash: (row.releaseTxHash as Hex | null) ?? null,
-})
-
-/** `amount` stays the real tranche; `donorShare` is this donor's slice of it. Never conflate the two. */
-const toDonorTrancheSlice = (row: TrancheRow, donorShare: bigint): DonorTrancheSlice => ({
-  ...toTrancheView(row),
-  donorShare: donorShare.toString(),
-})
-
-const toDeliveryView = (row: DeliveryRow): DeliveryView => ({
-  id: row.id.toString(),
-  needId: row.needId.toString(),
-  trancheIndex: row.trancheIndex,
-  fieldAgent: row.fieldAgent as Address,
-  expectedRecipients: row.expectedRecipients,
-  confirmations: row.confirmations,
-  confirmationRatio:
-    row.expectedRecipients === 0
-      ? 0
-      : Math.round((row.confirmations / row.expectedRecipients) * 10_000) / 10_000,
-  status: row.status as DeliveryStatus,
-  evidenceUID: (row.evidenceUID as Hex | null) ?? null,
-  evidenceCID: row.evidenceCID,
-  verifierUID: (row.verifierUID as Hex | null) ?? null,
-  verifier: (row.verifier as Address | null) ?? null,
-  challengeDeadline: row.challengeDeadline,
-})
-
-const toDonationView = (row: DonationRow): DonationView => ({
-  id: row.id,
-  needId: row.needId.toString(),
-  kind: row.kind as 'DIRECT' | 'FIAT',
-  donor: (row.donor as Address | null) ?? null,
-  donorRefHash: (row.donorRefHash as Hex | null) ?? null,
-  paymentRefHash: (row.paymentRefHash as Hex | null) ?? null,
-  amount: row.amount.toString(),
-  receiptId: row.receiptId?.toString() ?? null,
-  attestationUID: (row.attestationUID as Hex | null) ?? null,
-  txHash: row.txHash as Hex,
-  timestamp: row.timestamp,
-})
-
-const toTimelineEvent = (row: TimelineRow): TimelineEvent => ({
-  id: row.id,
-  needId: row.needId.toString(),
-  type: row.type as TimelineEventType,
-  data: row.data as TimelineEvent['data'],
-  attestationUID: (row.attestationUID as Hex | null) ?? null,
-  txHash: row.txHash as Hex,
-  blockNumber: Number(row.blockNumber),
-  timestamp: row.timestamp,
-})
-
-const toImpactReportView = (row: ImpactReportRow): ImpactReportView => ({
-  needId: row.needId.toString(),
-  uid: row.uid as Hex,
-  beneficiariesServed: row.beneficiariesServed,
-  kpiHash: row.kpiHash as Hex,
-  reportCID: row.reportCID,
-  revoked: row.revoked,
-  timestamp: row.timestamp,
-})
+/** Links in feeds and alerts point at the public dashboard. */
+const APP_BASE_URL = (process.env.APP_BASE_URL ?? 'http://localhost:3000').replace(/\/$/, '')
 
 /** Query params accept either the human label ("FOOD", "ES-CM") or the raw bytes32 the contracts store. */
 const asBytes32 = (value: string, encode: (label: string) => Hex): Hex | null => {
@@ -185,6 +105,11 @@ const asBytes32 = (value: string, encode: (label: string) => Hex): Hex | null =>
 
 // ─── needs ───────────────────────────────────────────────────────────────────
 
+/**
+ * `?status=&category=&region=&country=&custody=&open=true&sort=urgency|gap|newest`.
+ * `urgency` puts needs that are still raising money first, soonest funding deadline first (open-ended ones after
+ * the dated ones), then the largest funding gap; everything else follows, newest first.
+ */
 app.get('/needs', async (c) => {
   const filters = []
 
@@ -205,11 +130,31 @@ app.get('/needs', async (c) => {
     filters.push(eq(schema.need.regionCode, hash))
   }
 
-  const rows = await db
+  const country = c.req.query('country')
+  if (country) {
+    if (!/^[A-Za-z]{2}$/.test(country)) return c.json({ error: 'invalid country' }, 400)
+    filters.push(eq(schema.need.country, country.toUpperCase()))
+  }
+
+  const custody = c.req.query('custody')
+  if (custody) {
+    if (!(CUSTODY_MODE as readonly string[]).includes(custody))
+      return c.json({ error: 'invalid custody' }, 400)
+    filters.push(eq(schema.need.custodyMode, custody as CustodyMode))
+  }
+
+  const sort = (c.req.query('sort') ?? '') as NeedSort | ''
+  if (sort && !(NEED_SORTS as readonly string[]).includes(sort)) return c.json({ error: 'invalid sort' }, 400)
+
+  let rows = await db
     .select()
     .from(schema.need)
     .where(filters.length ? and(...filters) : undefined)
     .orderBy(asc(schema.need.id))
+
+  const now = Math.floor(Date.now() / 1000)
+  if (c.req.query('open') === 'true') rows = rows.filter((row) => isOpenForFunding(row, now))
+  if (sort) rows = sortNeeds(rows, sort, now)
 
   return c.json(rows.map(toNeedSummary) satisfies NeedSummary[])
 })
@@ -221,7 +166,7 @@ app.get('/needs/:id', async (c) => {
   const [row] = await db.select().from(schema.need).where(eq(schema.need.id, id)).limit(1)
   if (!row) return c.json({ error: 'need not found' }, 404)
 
-  const [tranches, deliveries, donations, reports] = await Promise.all([
+  const [tranches, deliveries, donations, settlements, reports] = await Promise.all([
     db.select().from(schema.tranche).where(eq(schema.tranche.needId, id)).orderBy(asc(schema.tranche.index)),
     db.select().from(schema.delivery).where(eq(schema.delivery.needId, id)).orderBy(asc(schema.delivery.id)),
     db
@@ -229,16 +174,22 @@ app.get('/needs/:id', async (c) => {
       .from(schema.donation)
       .where(eq(schema.donation.needId, id))
       .orderBy(asc(schema.donation.timestamp)),
+    db
+      .select()
+      .from(schema.settlement)
+      .where(eq(schema.settlement.needId, id))
+      .orderBy(asc(schema.settlement.trancheIndex)),
     db.select().from(schema.impactReport).where(eq(schema.impactReport.needId, id)),
   ])
 
-  const live = reports.find((report) => !report.revoked) ?? reports[0]
+  const live = liveReport(reports)
 
   return c.json({
     ...toNeedSummary(row),
     tranches: tranches.map((tranche) => toTrancheView(tranche)),
     deliveries: deliveries.map(toDeliveryView),
     donations: donations.map(toDonationView),
+    settlements: settlements.map(toSettlementView),
     impactReport: live ? toImpactReportView(live) : null,
   } satisfies NeedDetail)
 })
@@ -247,13 +198,123 @@ app.get('/needs/:id/timeline', async (c) => {
   const id = parseId(c.req.param('id'))
   if (id === null) return c.json({ error: 'invalid need id' }, 400)
 
+  const rows = await needTimeline(id)
+  return c.json(rows.map(toTimelineEvent) satisfies TimelineEvent[])
+})
+
+app.get('/needs/:id/feed.rss', async (c) => {
+  const id = parseId(c.req.param('id'))
+  if (id === null) return c.json({ error: 'invalid need id' }, 400)
+
+  const [need] = await db.select().from(schema.need).where(eq(schema.need.id, id)).limit(1)
+  if (!need) return c.json({ error: 'need not found' }, 404)
+
+  const rows = await needTimeline(id)
+  const link = `${APP_BASE_URL}/en/needs/${id}`
+  return rss(
+    c,
+    renderRss({
+      title: `Proof of Aid: need #${id} (${categoryLabel(need.category as Hex)}, ${regionLabel(need.regionCode as Hex)})`,
+      link,
+      description: 'Every verified step of this need, from verification to impact, as it happens on-chain.',
+      selfUrl: new URL(c.req.url).toString(),
+      itemLink: link,
+      need,
+      rows,
+    }),
+  )
+})
+
+// ─── global timeline ─────────────────────────────────────────────────────────
+
+/**
+ * Every need's events in chain order, paged by cursor, for consumers that follow the whole system (the notifier,
+ * integrators). `?after=<blockNumber>:<logIndex>&limit=200`.
+ */
+app.get('/timeline', async (c) => {
+  const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 200) || 200, 1), 1000)
+  const after = c.req.query('after')
+
+  let where: ReturnType<typeof or> | undefined
+  if (after) {
+    const match = /^(\d+):(\d+)$/.exec(after)
+    if (!match) return c.json({ error: 'invalid cursor' }, 400)
+    const block = BigInt(match[1] as string)
+    const logIndex = Number(match[2])
+    where = or(
+      gt(schema.timelineEvent.blockNumber, block),
+      and(eq(schema.timelineEvent.blockNumber, block), gt(schema.timelineEvent.logIndex, logIndex)),
+    )
+  }
+
   const rows = await db
     .select()
     .from(schema.timelineEvent)
-    .where(eq(schema.timelineEvent.needId, id))
+    .where(where)
     .orderBy(asc(schema.timelineEvent.blockNumber), asc(schema.timelineEvent.logIndex))
+    .limit(limit)
 
-  return c.json(rows.map(toTimelineEvent) satisfies TimelineEvent[])
+  const last = rows.at(-1)
+  return c.json({
+    events: rows.map(toTimelineEvent),
+    cursor: last ? `${last.blockNumber}:${last.logIndex}` : (after ?? null),
+  } satisfies TimelinePage)
+})
+
+// ─── donation tracking ───────────────────────────────────────────────────────
+
+/**
+ * The public "track this donation" view. `:ref` is a receipt id (wallet donations) or the salted payment
+ * reference hash a payment provider returned (card and bank donations). Neither identifies the donor, so the
+ * route needs no login. When two providers reused the same reference value, `?provider=0x…` picks one.
+ */
+app.get('/donations/:ref', async (c) => {
+  const track = await loadTrack(c.req.param('ref'), c.req.query('provider'))
+  if ('error' in track) return c.json({ error: track.error }, track.status)
+  return c.json(track.value satisfies DonationTrack)
+})
+
+app.get('/donations/:ref/feed.rss', async (c) => {
+  const ref = c.req.param('ref')
+  const track = await loadTrack(ref, c.req.query('provider'))
+  if ('error' in track) return c.json({ error: track.error }, track.status)
+
+  const needId = BigInt(track.value.need.id)
+  const [need] = await db.select().from(schema.need).where(eq(schema.need.id, needId)).limit(1)
+  if (!need) return c.json({ error: 'need not found' }, 404)
+
+  const link = `${APP_BASE_URL}/en/track/${ref}`
+  return rss(
+    c,
+    renderRss({
+      title: `Proof of Aid: your donation to need #${needId}`,
+      link,
+      description: 'Where this donation is: verified, funded, settled, delivered and impact confirmed.',
+      selfUrl: new URL(c.req.url).toString(),
+      itemLink: link,
+      need,
+      rows: await needTimeline(needId),
+    }),
+  )
+})
+
+// ─── providers ───────────────────────────────────────────────────────────────
+
+/** Registered payment providers: who can deposit card and bank payments or hold off-chain custody. */
+app.get('/providers', async (c) => {
+  const rows = await db
+    .select()
+    .from(schema.roleAccount)
+    .where(eq(schema.roleAccount.role, 'BANK_PARTNER'))
+    .orderBy(asc(schema.roleAccount.registeredAt))
+
+  return c.json(
+    rows.map((row) => ({
+      address: row.address as Address,
+      active: row.active,
+      registeredAt: row.registeredAt,
+    })) satisfies ProviderView[],
+  )
 })
 
 // ─── donors ──────────────────────────────────────────────────────────────────
@@ -476,6 +537,135 @@ const serializeBucket = (acc: ImpactBucketAcc): ImpactBucket => ({
   deliveriesFinalized: acc.deliveriesFinalized,
   beneficiariesServed: acc.beneficiariesServed,
 })
+
+const needTimeline = (needId: bigint) =>
+  db
+    .select()
+    .from(schema.timelineEvent)
+    .where(eq(schema.timelineEvent.needId, needId))
+    .orderBy(asc(schema.timelineEvent.blockNumber), asc(schema.timelineEvent.logIndex))
+
+const rss = (
+  c: { body: (body: string, status: 200, headers: Record<string, string>) => Response },
+  xml: string,
+) =>
+  c.body(xml, 200, {
+    'content-type': 'application/rss+xml; charset=utf-8',
+    'cache-control': 'public, max-age=60',
+  })
+
+/** Funding is open while the need is raising money and neither of its deadlines has passed. */
+const isOpenForFunding = (row: NeedRow, now: number): boolean =>
+  row.status === 'Funding' &&
+  (row.fundingDeadline === null || row.fundingDeadline > now) &&
+  (row.executionDeadline === null || row.executionDeadline > now)
+
+const sortNeeds = (rows: NeedRow[], sort: NeedSort, now: number): NeedRow[] => {
+  const byGap = (a: NeedRow, b: NeedRow) => {
+    const gap = fundingGapOf(b) - fundingGapOf(a)
+    return gap === 0n ? 0 : gap > 0n ? 1 : -1
+  }
+  const newest = (a: NeedRow, b: NeedRow) => (a.id === b.id ? 0 : a.id < b.id ? 1 : -1)
+  const sorted = [...rows]
+  if (sort === 'newest') return sorted.sort(newest)
+  if (sort === 'gap') return sorted.sort((a, b) => byGap(a, b) || newest(a, b))
+  return sorted.sort((a, b) => {
+    const openA = isOpenForFunding(a, now)
+    const openB = isOpenForFunding(b, now)
+    if (openA !== openB) return openA ? -1 : 1
+    if (openA) {
+      const deadlineA = a.fundingDeadline ?? Number.MAX_SAFE_INTEGER
+      const deadlineB = b.fundingDeadline ?? Number.MAX_SAFE_INTEGER
+      if (deadlineA !== deadlineB) return deadlineA - deadlineB
+      return byGap(a, b) || newest(a, b)
+    }
+    return newest(a, b)
+  })
+}
+
+type Loaded<T> = { value: T } | { error: string; status: 400 | 404 | 409 }
+
+/** Resolves a tracking reference to its donation and gathers everything the tracking view is built from. */
+const loadTrack = async (ref: string, provider: string | undefined): Promise<Loaded<DonationTrack>> => {
+  const refKind = trackingRefKind(ref)
+  if (!refKind) return { error: 'invalid tracking reference', status: 400 }
+
+  let donation: DonationRow | undefined
+  if (refKind === 'receipt') {
+    ;[donation] = await db
+      .select()
+      .from(schema.donation)
+      .where(eq(schema.donation.receiptId, BigInt(ref)))
+      .limit(1)
+  } else {
+    if (provider && !/^0x[0-9a-fA-F]{40}$/.test(provider)) return { error: 'invalid provider', status: 400 }
+    const matches = await db
+      .select()
+      .from(schema.donation)
+      .where(
+        and(
+          eq(schema.donation.paymentRefHash, ref.toLowerCase() as Hex),
+          provider ? eq(schema.donation.partner, provider.toLowerCase() as Address) : undefined,
+        ),
+      )
+      .orderBy(desc(schema.donation.timestamp))
+    const partners = new Set(matches.map((match) => match.partner))
+    if (partners.size > 1)
+      return { error: 'reference used by several providers; pass ?provider=', status: 409 }
+    donation = matches[0]
+  }
+  if (!donation) return { error: 'donation not found', status: 404 }
+
+  const needId = donation.needId
+  const [need] = await db.select().from(schema.need).where(eq(schema.need.id, needId)).limit(1)
+  if (!need) return { error: 'need not found', status: 404 }
+
+  const sameDonor = donation.donor
+    ? and(eq(schema.donation.needId, needId), eq(schema.donation.donor, donation.donor as Address))
+    : and(eq(schema.donation.needId, needId), eq(schema.donation.donorRefHash, donation.donorRefHash as Hex))
+  const refundsOfDonor = donation.donor
+    ? and(
+        eq(schema.refund.needId, needId),
+        eq(schema.refund.account, donation.donor as Address),
+        isNull(schema.refund.donorRefHash),
+      )
+    : and(eq(schema.refund.needId, needId), eq(schema.refund.donorRefHash, donation.donorRefHash as Hex))
+
+  const [sameDonorDonations, tranches, deliveries, settlements, reports, refunds, timeline] =
+    await Promise.all([
+      db.select().from(schema.donation).where(sameDonor),
+      db
+        .select()
+        .from(schema.tranche)
+        .where(eq(schema.tranche.needId, needId))
+        .orderBy(asc(schema.tranche.index)),
+      db
+        .select()
+        .from(schema.delivery)
+        .where(eq(schema.delivery.needId, needId))
+        .orderBy(asc(schema.delivery.id)),
+      db.select().from(schema.settlement).where(eq(schema.settlement.needId, needId)),
+      db.select().from(schema.impactReport).where(eq(schema.impactReport.needId, needId)),
+      db.select().from(schema.refund).where(refundsOfDonor),
+      needTimeline(needId),
+    ])
+
+  return {
+    value: buildDonationTrack({
+      ref,
+      refKind,
+      donation,
+      need,
+      sameDonorDonations,
+      tranches,
+      deliveries,
+      settlements,
+      reports,
+      refunds,
+      timeline,
+    }),
+  }
+}
 
 function parseId(value: string): bigint | null {
   if (!/^\d+$/.test(value)) return null

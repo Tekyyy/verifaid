@@ -1,35 +1,56 @@
 import { ponder } from 'ponder:registry'
 import schema from 'ponder:schema'
-import { needStatusName } from '@poa/shared'
+import { countryOf, custodyModeName, needStatusName, regionLabel } from '@poa/shared'
+import { type Hex, zeroAddress, zeroHash } from 'viem'
 import { appendTimeline, seconds } from './lib/timeline.js'
 
-/** The need lifecycle: Pending → Verified → Funding → Funded → InDelivery → Completed, or Cancelled. */
+/**
+ * The need lifecycle: Pending → Verified → Funding → Funded → InDelivery → Completed, or Cancelled / Expired.
+ * `NeedCreated` carries every term the NGO committed to, including the display-only commitments (category,
+ * metadata URI, expected outcome, cost disclosure) that the contract logs instead of storing.
+ */
+
+const orNull = (value: bigint): number | null => (value === 0n ? null : Number(value))
 
 ponder.on('NeedsRegistry:NeedCreated', async ({ event, context }) => {
-  const { needId, trancheBps } = event.args
+  const { needId, ngo, programId, params } = event.args
+  const { trancheBps } = params
+  const custodyMode = custodyModeName(params.custodyMode)
 
   await context.db.insert(schema.need).values({
     id: needId,
-    ngo: event.args.ngo,
-    programId: event.args.programId,
-    category: event.args.category,
-    regionCode: event.args.regionCode,
-    dossierHash: event.args.dossierHash,
-    metadataURI: event.args.metadataURI,
-    targetAmount: event.args.targetAmount,
-    verificationsRequired: event.args.verificationsRequired,
+    ngo,
+    programId,
+    category: params.category,
+    regionCode: params.regionCode,
+    country: countryOf(regionLabel(params.regionCode as Hex)),
+    dossierHash: params.dossierHash,
+    metadataURI: params.metadataURI,
+    targetAmount: params.targetAmount,
+    verificationsRequired: params.verificationsRequired,
     verificationCount: 0,
     status: 'Pending',
+    custodyMode,
+    custodian: custodyMode === 'OffChain' && params.custodian !== zeroAddress ? params.custodian : null,
     vault: null,
+    fundingDeadline: orNull(params.fundingDeadline),
+    executionDeadline: orNull(params.executionDeadline),
+    minFundingBps: params.minFundingBps,
+    thirdPartyCostBps: params.thirdPartyCostBps,
+    expectedOutcomeHash: params.expectedOutcomeHash,
+    costDisclosureHash: params.costDisclosureHash === zeroHash ? null : params.costDisclosureHash,
     totalDonated: 0n,
     totalReleased: 0n,
     totalRefunded: 0n,
+    fundingFees: 0n,
+    settlementFees: 0n,
     trancheCount: trancheBps.length,
     createdAt: seconds(event),
     createdTxHash: event.transaction.hash,
     fundingClosedAt: null,
     completedAt: null,
     cancelledAt: null,
+    expiredAt: null,
   })
 
   // The plan is fixed at creation; the amounts are only known when funding closes.
@@ -51,14 +72,20 @@ ponder.on('NeedsRegistry:NeedCreated', async ({ event, context }) => {
     needId,
     type: 'NeedCreated',
     data: {
-      ngo: event.args.ngo,
-      programId: event.args.programId.toString(),
-      category: event.args.category,
-      regionCode: event.args.regionCode,
-      targetAmount: event.args.targetAmount.toString(),
-      verificationsRequired: event.args.verificationsRequired,
+      ngo,
+      programId: programId.toString(),
+      category: params.category,
+      regionCode: params.regionCode,
+      targetAmount: params.targetAmount.toString(),
+      verificationsRequired: params.verificationsRequired,
       trancheCount: trancheBps.length,
-      metadataURI: event.args.metadataURI,
+      metadataURI: params.metadataURI,
+      custodyMode,
+      fundingDeadline: orNull(params.fundingDeadline),
+      executionDeadline: orNull(params.executionDeadline),
+      minFundingBps: params.minFundingBps,
+      thirdPartyCostBps: params.thirdPartyCostBps,
+      expectedOutcomeHash: params.expectedOutcomeHash,
     },
   })
 })
@@ -95,6 +122,7 @@ ponder.on('NeedsRegistry:NeedStatusChanged', async ({ event, context }) => {
     status: to,
     ...(to === 'Completed' ? { completedAt: seconds(event) } : {}),
     ...(to === 'Cancelled' ? { cancelledAt: seconds(event) } : {}),
+    ...(to === 'Expired' ? { expiredAt: seconds(event) } : {}),
   })
 
   await appendTimeline(context, event, { needId, type: 'NeedStatusChanged', data: { from, to } })
@@ -105,6 +133,29 @@ ponder.on('NeedsRegistry:NeedCancelled', async ({ event, context }) => {
     needId: event.args.needId,
     type: 'NeedCancelled',
     data: { by: event.args.by },
+  })
+})
+
+/** A deadline applied by anyone: the need did not go ahead, or its unreleased balance goes back to donors. */
+ponder.on('NeedsRegistry:NeedExpired', async ({ event, context }) => {
+  await appendTimeline(context, event, {
+    needId: event.args.needId,
+    type: 'NeedExpired',
+    data: { from: needStatusName(event.args.from), raised: event.args.raised.toString() },
+  })
+})
+
+/** The funding deadline passed above the NGO's threshold: the need goes ahead on what was raised. */
+ponder.on('NeedsRegistry:PartialFundingAccepted', async ({ event, context }) => {
+  const { needId, raised, targetAmount } = event.args
+  await appendTimeline(context, event, {
+    needId,
+    type: 'PartialFundingAccepted',
+    data: {
+      raised: raised.toString(),
+      targetAmount: targetAmount.toString(),
+      scaleBps: targetAmount === 0n ? 0 : Number((raised * 10_000n) / targetAmount),
+    },
   })
 })
 

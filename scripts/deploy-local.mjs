@@ -36,7 +36,9 @@ const env = {
 
 const run = (script) => {
   console.log(`\n▸ forge script ${script}`)
-  const result = spawnSync('forge', ['script', `script/${script}`, '--rpc-url', rpcUrl, '--broadcast'], {
+  // --slow: one transaction at a time, each confirmed before the next. Without it anvil can silently drop the
+  // tail of a long batch, leaving a half-wired deployment behind.
+  const result = spawnSync('forge', ['script', `script/${script}`, '--rpc-url', rpcUrl, '--broadcast', '--slow'], {
     cwd: contracts,
     env,
     stdio: 'inherit',
@@ -58,6 +60,7 @@ if (existsSync(deployment)) {
   console.log('\n✓ Local deployment ready')
   console.log(`  NeedsRegistry   ${addresses.NeedsRegistry}`)
   console.log(`  DeliveryManager ${addresses.DeliveryManager}`)
+  console.log(`  Resolver        ${addresses.ProofOfAidResolver}`)
   console.log(`  NeedVerified    ${schemas.NeedVerified}`)
   console.log(`  start block     ${startBlock}`)
   console.log(`\n  addresses: deployments/anvil.json`)

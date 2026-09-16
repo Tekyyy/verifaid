@@ -102,25 +102,29 @@ the one that moves the most money per call. The admin lifts the pause, or cancel
 
 - **Rounding dust goes to the last tranche** (spec §5.4). `tranche[last] = totalDonated - Σ(previous)`, so the
   tranche plan always covers exactly the donated amount — asserted by a fuzz test and an invariant.
-- **Refund shares freeze at cancellation.** `refund = donatedBy × (totalDonated − totalReleased) / totalDonated`
-  is evaluated against values that can no longer change once the need is `Cancelled` (donations require
-  `Funding`, releases require `Funded`/`InDelivery`). Floor division can strand at most one base unit per
+- **Refund shares freeze at cancellation or expiry.** `refund = donatedBy × (totalDonated − totalReleased) /
+  totalDonated` is evaluated against values that can no longer change once the need is `Cancelled` or `Expired`
+  (donations require `Funding`, releases require `Funded`/`InDelivery`). v2 clears the donor's balance when the
+  refund is paid instead of keeping a separate "claimed" flag. Floor division can strand at most one base unit per
   claimant in the vault; that dust keeps the invariant intact rather than being sweepable by whoever claims last.
 - **Fiat donations mint no receipt NFT.** The spec allows "partner custody address or skipped". Minting to the
   bank partner would suggest the partner is the donor; the donor is represented by the salted `donorRefHash`,
   and only the partner that deposited a reference can trigger its refund.
-- **Payment references are globally unique.** The vault records `paymentRefUsed` per the spec, and additionally
-  calls `AidVaultFactory.consumePaymentRef`, so one bank transfer cannot be replayed against a second need.
+- **Payment references are unique per provider, system-wide.** Every ledger calls
+  `AidVaultFactory.consumePaymentRef(provider, ref)`, so one bank transfer or card payment cannot be replayed
+  against a second need in either custody mode. v2 scoped the key to the provider after review finding F7 (§12).
 - **Only standard ERC-20s are supported.** No fee-on-transfer or rebasing tokens (the deployer chooses the token).
 
 ## 7. Attestations and resolvers
 
-- **Each resolver derives the UID of the one schema it serves** from its own address:
-  `keccak256(abi.encodePacked(schema, address(this), revocable))`, the same formula the SchemaRegistry uses.
-  Without this, anyone could register a second schema pointing at our resolver and produce attestations the
-  indexer would not recognise while the core contracts still accepted them.
+- **One resolver serves all six schemas (v2).** v1 had one resolver per schema; they shared almost everything,
+  and five contracts cost 21.8 KB of bytecode against 14.2 KB for the merged `ProofOfAidResolver`.
+- **The resolver derives the UID of every schema it serves** from its own address:
+  `keccak256(abi.encodePacked(schema, address(this), revocable))`, the same formula the SchemaRegistry uses, and
+  dispatches on it. Without this, anyone could register another schema pointing at our resolver and produce
+  attestations the indexer would not recognise while the core contracts still accepted them.
 - **`recipient` is enforced**, never a person: the registry for `NeedVerified`, the DeliveryManager for
-  `DeliveryEvidence`/`DeliveryVerified`, the vault for `FiatDonation`/`ImpactReport`.
+  `DeliveryEvidence`/`DeliveryVerified`, the need's ledger for `FundingRecorded`/`Settlement`/`ImpactReport`.
 - **Expiring attestations are rejected** (`expirationTime != 0`). An "expired" verification that still counted
   toward a threshold would be misleading.
 - **refUID builds the evidence chain**: `DeliveryVerified.refUID` must equal the delivery's evidence UID, and
@@ -201,6 +205,102 @@ identity would leak exactly that. The doc is corrected and the app derives a sep
 `forge lint` runs on every build. These lints are excluded in `foundry.toml` after review:
 `reentrancy-events`, `reentrancy-no-eth` (external calls only ever target trusted system contracts, and every
 token-moving entry point is `nonReentrant`), `unsafe-oz-erc721-mint` (receipts use `_mint` deliberately so a
-receiver hook cannot re-enter the donating vault), `unsafe-typecast` (`uint64(block.timestamp)`),
-`block-timestamp` (the challenge window is a coarse timer), plus three categories that are false positives here
-(`missing-events-access-control`, `uninitialized-local`, `require-revert-in-loop`).
+receiver hook cannot re-enter the donating vault), `unsafe-typecast` (every narrowing cast in the packed storage
+layouts is bounds-checked at the entry point), `block-timestamp` (challenge windows and need deadlines are coarse
+timers), `unused-return` (flagged on deliberate partial destructuring of our own views), `calls-loop` (the only
+loop with an external call validates a proof batch bounded by `expectedRecipients`), plus three categories that
+are false positives here (`missing-events-access-control`, `uninitialized-local`, `require-revert-in-loop`).
+
+## 12. Contracts v2: closing the gaps with the proposal
+
+The public proposal (proof-of-aid.lovable.app) describes a *NeedClaim* with terms v1 had no place for, a
+non-custodial first model (its "Model A"), a five-stage donor view and several integrations. `docs/GAP_PLAN.md`
+lists every gap; v2 is the single contract release that closes the on-chain ones.
+
+### Need terms
+
+- **Funding deadline, execution deadline, minimum funding.** `minFundingBps` is the share of the target that must
+  be raised for the need to go ahead: 10000 means all or nothing, anything lower allows *partial execution*. There
+  is no separate "partial execution" flag because it would be redundant with the threshold.
+- **`expire(needId)` is permissionless**, because deadlines protect donors and must not depend on the NGO or the
+  admin acting. Pending past a deadline expires. Funding past the funding deadline closes on what was raised when
+  that meets the minimum (every tranche scales down by the same factor, since tranches are split by basis points
+  of what was actually raised) and otherwise expires with refunds open. Funded or in delivery past the execution
+  deadline expires and refunds the unreleased balance.
+- **The NGO cannot close funding early below its own minimum**, otherwise closing early would sidestep the terms
+  donors were shown.
+- **Display-only commitments live in the event.** `category`, `metadataURI`, `expectedOutcomeHash` and
+  `costDisclosureHash` are logged in `NeedCreated` but not stored: nothing on-chain reads them, and a log is as
+  immutable as storage. This is most of why `createNeed` went from 349,710 to 177,585 gas.
+- **Third-party costs are capped and disclosed.** `thirdPartyCostBps` (at most 20%) plus a disclosure hash that is
+  required exactly when the cap is non-zero. The resolver enforces the cap *cumulatively*: fees attested on the
+  way in (`FundingRecorded`) and on the way out (`Settlement`) together stay within the cap of what donors paid.
+
+### Two custody modes
+
+- **`OnChain` (Model B)** is v1's escrow: an `AidVault` holds stablecoin and releases it to the NGO's payout Safe.
+- **`OffChain` (Model A)**: a regulated payment provider, named as the need's `custodian` at creation, holds the
+  money. A `NonCustodialLedger` mirrors the vault's rules without holding a token: the custodian's
+  `FundingRecorded` attestations count toward the target, and its `Settlement` attestation for a releasable
+  tranche is what releases it. Deadlines, thresholds, the tranche split and the three-signal delivery gate are
+  identical, because both ledgers extend `TrancheLedger` and `DeliveryManager` only talks to that interface.
+- **What the chain cannot know in Model A** is whether the provider really holds or paid the money. That trust is
+  explicit (a named, registered custodian, capped fees, per-tranche settlement reports with supplier and FX
+  references) and is the trade-off the proposal itself makes for its first phase. See `THREAT_MODEL.md` §3.11.
+- **`FundingRecorded` generalizes v1's `FiatDonation`.** For an on-chain need it must match a deposit the provider
+  already made (the vault keeps one digest slot per deposit); for an off-chain need it *is* the funding record.
+
+### Settlement
+
+- **A `Settlement` attestation per tranche** records gross (the whole tranche), fee, net, a salted supplier
+  reference and an FX reference: the proposal's "Settled" stage, and the reconciliation an auditor needs between
+  "released to the NGO" and "reached a supplier". For on-chain custody the NGO files it after the release; for
+  off-chain custody the custodian's report is the release.
+
+### Gas and size
+
+Ledgers are EIP-1167 clones with the need id appended to their code (`Clones.cloneWithImmutableArgs`). Every
+system address is an immutable of the implementation, so a clone writes no storage at creation and has no
+initializer to front-run; calls that reach the implementation directly are rejected. Needs, deliveries, tranche
+state, running totals and receipts are packed; confirmations can be batched; the reentrancy guard is transient.
+On the same end-to-end flows, v1 → v2: `createNeed` 349,710 → 177,585; `donate` 421,060 → 316,791;
+`donateOnBehalf` 389,283 → 257,103; `openDelivery` 214,181 → 164,199; `finalize` 136,604 → 90,806;
+`releaseTranche` 111,490 → 78,757. Total runtime bytecode went from 73.0 KB to 77.1 KB: merging the resolvers saved
+7.6 KB, but v2 adds a second custody mode and the terms logic.
+
+### Adversarial review of v2
+
+An independent review wrote a passing Foundry PoC for each finding; none allowed theft or broke the accounting
+identity. Every fix is locked in by `test/regression/V2ReviewFindings.t.sol`, which replays the original sequence.
+
+| Finding | Fix |
+|---|---|
+| **F1** Any provider could release another provider's off-chain tranche after recording 1 unit of funding. | The NGO names the custodian at creation; only it records funding or settles. It can still settle after losing its role. |
+| **F2** `expire` could beat a delivery that had passed every check but was not yet finalized, and one frivolous challenge near the deadline forced that because dismissal restarted the full window. | Dismissal resumes the time that was left. After the execution deadline, a releasable tranche or a delivery in its challenge window or under dispute holds expiry off for `EXPIRY_GRACE_PERIOD` (14 days). |
+| **F3** A tranche nobody could release (absent custodian, suspended NGO) blocked expiry forever. | The hold ends with the grace period. |
+| **F4** A need could be verified and funded after its execution deadline. | Funding is open only while both deadlines are ahead; a need still funding at the execution deadline expires instead of closing partially. |
+| **F6** The cost cap applied to each fee on its own, so funding and settlement fees could stack past it. | Cumulative cap tracked per need in the resolver. |
+| **F7** Payment references were global, so one provider could squat another's with a free off-chain record. | References are scoped per provider in the factory and in the resolver's index. |
+| **F5** (design, accepted) An NGO can top up its own need to cross an all-or-nothing threshold. | Not fixable on-chain. It adds no exposure beyond the pre-financing trust every funded need already carries: an NGO that takes tranche 0 and does not deliver could do the same with a need it did not top up. |
+
+## 13. Donor experience and integrations
+
+- **Tracking references need no account.** A wallet donation is tracked by its receipt id, a card or bank donation
+  by the salted payment reference hash the provider returns. Neither identifies the donor, so `/track/<ref>`,
+  the embeddable widget and the RSS feeds are public.
+- **Five stages, each backed by evidence**: Verified = the `NeedVerified` threshold; Funded = funding closed;
+  Settled = the first `Settlement` attestation; Delivered = the first finalized delivery; Impact confirmed = a
+  live `ImpactReport`. A stage that is partly there (a tranche released but its settlement not yet filed, a
+  delivery collecting confirmations) is shown as pending with the reason, never rounded up or down.
+- **Alerts without accounts.** The notifier stores an email address envelope-encrypted and destroys its data key
+  on unsubscribe; the subscriber holds a token whose hash is all the service keeps. Webhooks and RSS need no
+  personal data at all, so they are the default channels; email is delivered through any Resend-compatible HTTP
+  API when one is configured, otherwise into an outbox visible to operators.
+- **Integrators get HMAC-signed webhooks and CSV import**, the proposal's integration levels 2 and 3, reusing
+  the signature scheme the bank webhook already uses.
+- **Card and bank giving is a sandbox checkout**: the bank connector simulates the payment provider (fees included,
+  capped by the need's disclosure) and runs the same deposit-and-attest pipeline as a real SEPA transfer. No card
+  data is ever collected.
+- **Sponsored gas is opt-in through `NEXT_PUBLIC_PAYMASTER_URL`.** Coinbase Smart Wallet already gives NGOs and
+  verifiers passkey accounts; with a paymaster their transactions need no ETH. No forwarder contract is involved,
+  so `msg.sender` role checks are unchanged.

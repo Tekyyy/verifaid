@@ -13,17 +13,30 @@ export interface SchemaDefinition {
   name: SchemaName
   schema: string
   revocable: boolean
-  /** Which contract must be the attestation recipient — never a person (spec §6). */
-  recipient: 'NeedsRegistry' | 'DeliveryManager' | 'AidVault'
+  /**
+   * Which contract must be the attestation recipient — never a person (spec §6). `Ledger` is the need's
+   * AidVault (on-chain custody) or NonCustodialLedger (off-chain custody): whatever `vaultOf(needId)` returns.
+   */
+  recipient: 'NeedsRegistry' | 'DeliveryManager' | 'Ledger'
 }
 
-/** The five schemas of the system, exactly as registered by RegisterSchemas.s.sol. */
+/**
+ * The six schemas of the system, exactly as registered by RegisterSchemas.s.sol against the single
+ * ProofOfAidResolver. Amounts are in the need's stablecoin base units; `currency` is what a donor paid in.
+ */
 export const SCHEMAS: Record<SchemaName, SchemaDefinition> = {
   NeedVerified: {
     name: 'NeedVerified',
     schema: 'uint256 needId,bytes32 dossierHash,bool approved,bytes32 reportHash',
     revocable: true,
     recipient: 'NeedsRegistry',
+  },
+  FundingRecorded: {
+    name: 'FundingRecorded',
+    schema:
+      'uint256 needId,uint256 gross,uint256 fee,uint256 net,bytes32 currency,bytes32 paymentRefHash,bytes32 donorRefHash',
+    revocable: false,
+    recipient: 'Ledger',
   },
   DeliveryEvidence: {
     name: 'DeliveryEvidence',
@@ -38,17 +51,18 @@ export const SCHEMAS: Record<SchemaName, SchemaDefinition> = {
     revocable: false,
     recipient: 'DeliveryManager',
   },
-  FiatDonation: {
-    name: 'FiatDonation',
-    schema: 'uint256 needId,uint256 amount,bytes32 paymentRefHash,bytes32 donorRefHash',
+  Settlement: {
+    name: 'Settlement',
+    schema:
+      'uint256 needId,uint256 trancheIndex,uint256 gross,uint256 fee,uint256 net,bytes32 supplierRefHash,bytes32 fxRef',
     revocable: false,
-    recipient: 'AidVault',
+    recipient: 'Ledger',
   },
   ImpactReport: {
     name: 'ImpactReport',
     schema: 'uint256 needId,uint32 beneficiariesServed,bytes32 kpiHash,string reportCID',
     revocable: true,
-    recipient: 'AidVault',
+    recipient: 'Ledger',
   },
 }
 
@@ -78,8 +92,8 @@ export const decodeSchemaData = <T extends readonly unknown[]>(name: SchemaName,
 
 /**
  * The UID a schema gets in the EAS SchemaRegistry: keccak256(schema, resolver, revocable).
- * Each resolver derives the same value from its own address, which is why a schema squatted on one of our
- * resolvers can never drive core state.
+ * The resolver derives the same values from its own address, which is why a schema squatted on our resolver can
+ * never drive core state.
  */
 export const computeSchemaUid = (schema: string, resolver: Address, revocable: boolean): Hex =>
   keccak256(encodePacked(['string', 'address', 'bool'], [schema, resolver, revocable]))
@@ -94,11 +108,23 @@ export type DeliveryEvidenceData = readonly [
   regionCode: Hex,
 ]
 export type DeliveryVerifiedData = readonly [deliveryId: bigint, approved: boolean, reportHash: Hex]
-export type FiatDonationData = readonly [
+export type FundingRecordedData = readonly [
   needId: bigint,
-  amount: bigint,
+  gross: bigint,
+  fee: bigint,
+  net: bigint,
+  currency: Hex,
   paymentRefHash: Hex,
   donorRefHash: Hex,
+]
+export type SettlementData = readonly [
+  needId: bigint,
+  trancheIndex: bigint,
+  gross: bigint,
+  fee: bigint,
+  net: bigint,
+  supplierRefHash: Hex,
+  fxRef: Hex,
 ]
 export type ImpactReportData = readonly [
   needId: bigint,

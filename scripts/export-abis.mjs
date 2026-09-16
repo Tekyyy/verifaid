@@ -20,11 +20,11 @@ const FORGE_ARTIFACTS = [
   'NeedsRegistry',
   'AidVaultFactory',
   'AidVault',
+  'NonCustodialLedger',
   'DonationReceipt',
   'BeneficiaryGroups',
   'DeliveryManager',
-  'FiatDonationResolver',
-  'ImpactReportResolver',
+  'ProofOfAidResolver',
   'MockEURC',
   'Semaphore',
 ]
