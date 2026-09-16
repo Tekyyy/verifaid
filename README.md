@@ -85,6 +85,8 @@ group. See `docs/THREAT_MODEL.md` for what this does **not** protect against.
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — every open choice in the spec and how it was resolved
 - [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — threats, mitigations and residual risk
 - [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) — the five-minute walkthrough
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — what the MVP deliberately leaves out, and what it would take
+- [`contracts/README.md`](contracts/README.md) — contract map, money flow and test suites
 
 ## License
 
