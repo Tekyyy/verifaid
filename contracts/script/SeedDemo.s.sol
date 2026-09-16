@@ -90,9 +90,10 @@ contract SeedDemo is Script, DeploymentIO {
                 0
             )
         );
-        uint256 cashNeed = registry.createNeed(
-            _need(programId, "CASH", 3000e6, 1, _bps(4000, 6000, 0), INeedsRegistry.CustodyMode.OffChain, 5000, 250)
-        );
+        INeedsRegistry.CreateNeedParams memory cash =
+            _need(programId, "CASH", 3000e6, 1, _bps(4000, 6000, 0), INeedsRegistry.CustodyMode.OffChain, 5000, 250);
+        cash.custodian = a.bankPartner; // the payment provider that will hold the money
+        uint256 cashNeed = registry.createNeed(cash);
         vm.stopBroadcast();
 
         _mintDemoTokens(token, a);
@@ -115,6 +116,8 @@ contract SeedDemo is Script, DeploymentIO {
 
     function _actors() internal view returns (Actors memory a) {
         string memory mnemonic = vm.envOr("DEMO_MNEMONIC", DEFAULT_MNEMONIC);
+        // Present but empty (how deploy-local forces the public anvil wallets) means the default too.
+        if (bytes(mnemonic).length == 0) mnemonic = DEFAULT_MNEMONIC;
         uint256 deployerKey = vm.envOr("DEPLOYER_PRIVATE_KEY", uint256(0));
 
         a.adminKey = deployerKey != 0 ? deployerKey : vm.deriveKey(mnemonic, 0);
@@ -188,6 +191,7 @@ contract SeedDemo is Script, DeploymentIO {
             verificationsRequired: verificationsRequired,
             trancheBps: trancheBps,
             custodyMode: custodyMode,
+            custodian: address(0),
             fundingDeadline: uint64(block.timestamp + 30 days),
             executionDeadline: uint64(block.timestamp + 120 days),
             minFundingBps: minFundingBps,

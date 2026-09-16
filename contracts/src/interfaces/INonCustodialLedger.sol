@@ -19,7 +19,8 @@ interface INonCustodialLedger is ITrancheLedger {
         bytes32 donorRefHash
     );
 
-    /// @notice Counts a payment the provider received toward the need. Resolver only (from `FundingRecorded`).
+    /// @notice Counts a payment the need's custodian received toward the target. Resolver only
+    ///         (from `FundingRecorded`, after checking the attester is the custodian).
     function recordFunding(
         address provider,
         uint256 gross,
@@ -30,10 +31,7 @@ interface INonCustodialLedger is ITrancheLedger {
         bytes32 donorRefHash
     ) external;
 
-    /// @notice Records that the provider paid out a releasable tranche. Resolver only (from `Settlement`).
+    /// @notice Records that the custodian paid out a releasable tranche. Resolver only (from `Settlement`).
     /// @return amount The tranche amount.
-    function recordRelease(uint256 index, address provider) external returns (uint256 amount);
-
-    /// @notice Net amount a provider has recorded for this need (only such providers may settle tranches).
-    function recordedBy(address provider) external view returns (uint256);
+    function recordRelease(uint256 index) external returns (uint256 amount);
 }

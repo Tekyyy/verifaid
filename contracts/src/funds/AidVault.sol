@@ -24,7 +24,6 @@ contract AidVault is TrancheLedger, IAidVault {
     IERC20 public immutable token;
     IDonationReceipt public immutable receipt;
 
-    /// @dev Shares the flags slot with `_fundingClosed` / `_trancheCount`.
     uint128 private _totalRefunded;
 
     /// @notice Unrefunded direct donations per donor address (cleared when the refund is paid).
@@ -33,8 +32,8 @@ contract AidVault is TrancheLedger, IAidVault {
     mapping(bytes32 => uint256) public donatedByRef;
     /// @notice Payment provider that owns a donor reference (only it may claim refunds for that reference).
     mapping(bytes32 => address) public refPartner;
-    /// @notice paymentRefHash => keccak256(partner, donorRefHash, amount): one slot per deposit, enough for the
-    ///         resolver to check a `FundingRecorded` attestation against what was actually deposited.
+    /// @notice keccak256(partner, paymentRefHash) => keccak256(donorRefHash, amount): one slot per deposit, enough
+    ///         for the resolver to check a `FundingRecorded` attestation against what was actually deposited.
     mapping(bytes32 => bytes32) public fiatDepositDigest;
 
     constructor(
@@ -88,9 +87,9 @@ contract AidVault is TrancheLedger, IAidVault {
         _totalDonated += uint128(amount);
         donatedByRef[donorRefHash] += amount;
         if (owner == address(0)) refPartner[donorRefHash] = msg.sender;
-        fiatDepositDigest[paymentRefHash] = _digest(msg.sender, donorRefHash, amount);
+        fiatDepositDigest[_depositKey(msg.sender, paymentRefHash)] = _digest(donorRefHash, amount);
 
-        factory.consumePaymentRef(paymentRefHash); // reverts if any ledger already used this reference
+        factory.consumePaymentRef(msg.sender, paymentRefHash); // reverts if this provider already used it anywhere
         token.safeTransferFrom(msg.sender, address(this), amount);
         emit DonatedOnBehalf(id, msg.sender, amount, donorRefHash, paymentRefHash);
 
@@ -167,8 +166,8 @@ contract AidVault is TrancheLedger, IAidVault {
         view
         returns (bool)
     {
-        bytes32 digest = fiatDepositDigest[paymentRefHash];
-        return digest != bytes32(0) && digest == _digest(partner, donorRefHash, amount);
+        bytes32 digest = fiatDepositDigest[_depositKey(partner, paymentRefHash)];
+        return digest != bytes32(0) && digest == _digest(donorRefHash, amount);
     }
 
     /// @notice Refund a direct donor could claim right now (0 unless the need is cancelled or expired).
@@ -194,7 +193,11 @@ contract AidVault is TrancheLedger, IAidVault {
         return s == INeedsRegistry.NeedStatus.Cancelled || s == INeedsRegistry.NeedStatus.Expired;
     }
 
-    function _digest(address partner, bytes32 donorRefHash, uint256 amount) internal pure returns (bytes32) {
-        return keccak256(abi.encode(partner, donorRefHash, amount));
+    function _depositKey(address partner, bytes32 paymentRefHash) internal pure returns (bytes32) {
+        return keccak256(abi.encode(partner, paymentRefHash));
+    }
+
+    function _digest(bytes32 donorRefHash, uint256 amount) internal pure returns (bytes32) {
+        return keccak256(abi.encode(donorRefHash, amount));
     }
 }

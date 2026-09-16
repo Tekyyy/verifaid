@@ -10,17 +10,15 @@ import {TrancheLedger} from "./TrancheLedger.sol";
 
 /// @title NonCustodialLedger
 /// @notice Ledger for a need whose money never touches the chain (`CustodyMode.OffChain`, the proposal's Model A).
-/// @dev A regulated payment provider holds the funds. Its `FundingRecorded` attestations count toward the target
-///      and its `Settlement` attestations record each tranche payout; both arrive through the resolver, which
-///      checks the attester's role, the fee disclosure and the amounts first. Everything else is identical to the
+/// @dev The need's custodian, a payment provider the NGO names when it creates the need, holds the funds. Its
+///      `FundingRecorded` attestations count toward the target and its `Settlement` attestations record each
+///      tranche payout; both arrive through the resolver, which checks that the attester is the custodian, the
+///      fee disclosure and the amounts first. Everything else is identical to the
 ///      custodial vault: the same deadlines, threshold, tranche split and three-signal delivery gate, so a need
 ///      can move between custody models without changing what donors are promised.
 contract NonCustodialLedger is TrancheLedger, INonCustodialLedger {
     /// @notice The attestation resolver: the only caller that can record funding or releases.
     address public immutable resolver;
-
-    /// @inheritdoc INonCustodialLedger
-    mapping(address => uint256) public recordedBy;
 
     constructor(
         IRoleRegistry roles_,
@@ -48,19 +46,16 @@ contract NonCustodialLedger is TrancheLedger, INonCustodialLedger {
         uint256 target = _checkFunding(id, net);
 
         _totalDonated += uint128(net);
-        recordedBy[provider] += net;
 
-        factory.consumePaymentRef(paymentRefHash); // one payment can fund one need, across both custody modes
+        factory.consumePaymentRef(provider, paymentRefHash); // one payment funds one need, in either custody mode
         emit FundingRecorded(id, provider, gross, fee, net, currency, paymentRefHash, donorRefHash);
 
         if (_totalDonated == target) _closeFunding(id);
     }
 
     /// @inheritdoc INonCustodialLedger
-    function recordRelease(uint256 index, address provider) external nonReentrant onlyClone returns (uint256 amount) {
+    function recordRelease(uint256 index) external nonReentrant onlyClone returns (uint256 amount) {
         if (msg.sender != resolver) revert Errors.Unauthorized();
-        // Only a provider that actually holds money for this need can say it paid a tranche out.
-        if (recordedBy[provider] == 0) revert Errors.Unauthorized();
         uint256 id = needId();
         address payout;
         (amount, payout) = _release(id, index);

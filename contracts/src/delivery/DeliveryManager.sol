@@ -64,6 +64,7 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
         // slot 1
         address verifier;
         uint40 challengeDeadline;
+        uint40 disputedAt; // when the open challenge was raised, so a dismissal resumes the window that was left
         // slot 2
         uint128 needId;
         uint128 programId;
@@ -233,6 +234,7 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
 
         hasChallenged[deliveryId][msg.sender] = true;
         d.status = DeliveryStatus.Disputed;
+        d.disputedAt = uint40(block.timestamp);
         emit DeliveryChallenged(deliveryId, msg.sender, reasonHash);
     }
 
@@ -256,8 +258,13 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
         DeliveryRecord storage d = _delivery(deliveryId);
         if (d.status != DeliveryStatus.Disputed) revert Errors.InvalidDeliveryStatus();
         emit DisputeResolved(deliveryId, uphold);
-        if (uphold) _reject(deliveryId, d);
-        else _startChallengePeriod(deliveryId, d);
+        if (uphold) {
+            _reject(deliveryId, d);
+        } else {
+            // Resume, not restart: a dismissed challenge must not hand the delivery a fresh window, which would let
+            // one frivolous challenge near a deadline push an earned tranche past it.
+            _startChallengePeriod(deliveryId, d, d.challengeDeadline - d.disputedAt);
+        }
     }
 
     // ─── anyone ────────────────────────────────────────────────────────────────
@@ -298,6 +305,18 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
         });
     }
 
+    /// @inheritdoc IDeliveryManager
+    function hasDeliveryInFlight(uint256 needId) external view returns (bool) {
+        // Tranche 0 is pre-financing and never has a delivery; a need has at most five tranches.
+        for (uint256 index = 1; index < 5; ++index) {
+            uint256 deliveryId = activeDeliveryOf[needId][index];
+            if (deliveryId == 0) continue;
+            DeliveryStatus s = _deliveries[deliveryId].status;
+            if (s == DeliveryStatus.Challengeable || s == DeliveryStatus.Disputed) return true;
+        }
+        return false;
+    }
+
     /// @notice Confirmations still needed before the delivery can become challengeable (0 when reached).
     function confirmationsNeeded(uint256 deliveryId) external view returns (uint256) {
         DeliveryRecord storage d = _delivery(deliveryId);
@@ -334,12 +353,12 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
             return;
         }
         if (!roles.isIndependent(d.verifier, registry.ngoOf(d.needId))) return;
-        _startChallengePeriod(deliveryId, d);
+        _startChallengePeriod(deliveryId, d, challengePeriod);
     }
 
-    function _startChallengePeriod(uint256 deliveryId, DeliveryRecord storage d) internal {
+    function _startChallengePeriod(uint256 deliveryId, DeliveryRecord storage d, uint256 duration) internal {
         d.status = DeliveryStatus.Challengeable;
-        uint40 deadline = uint40(block.timestamp + challengePeriod);
+        uint40 deadline = uint40(block.timestamp + duration);
         d.challengeDeadline = deadline;
         emit DeliveryChallengeable(deliveryId, deadline);
     }

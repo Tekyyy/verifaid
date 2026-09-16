@@ -216,6 +216,7 @@ abstract contract PoATest is Test, SystemDeployer {
             verificationsRequired: verificationsRequired,
             trancheBps: bps,
             custodyMode: INeedsRegistry.CustodyMode.OnChain,
+            custodian: address(0),
             fundingDeadline: 0,
             executionDeadline: 0,
             minFundingBps: 1,
@@ -266,6 +267,7 @@ abstract contract PoATest is Test, SystemDeployer {
         programId = _createProgram(ngo, 10);
         INeedsRegistry.CreateNeedParams memory p = _needParams(programId, target, 1, _threeTrancheBps());
         p.custodyMode = INeedsRegistry.CustodyMode.OffChain;
+        p.custodian = bankPartner;
         p.thirdPartyCostBps = thirdPartyCostBps;
         p.costDisclosureHash = thirdPartyCostBps == 0 ? bytes32(0) : COST_DISCLOSURE_HASH;
         needId = _verifiedNeedWith(p);

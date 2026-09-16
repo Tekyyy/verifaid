@@ -382,7 +382,7 @@ contract ResolversTest is PoATest {
         _donateOnBehalf(needId, 1000e6, DONOR_REF, PAYMENT_REF);
 
         bytes32 uid = _attestFundingRecorded(bankPartner, needId, 1000e6, PAYMENT_REF, DONOR_REF);
-        assertEq(resolver.fundingAttestationOf(PAYMENT_REF), uid);
+        assertEq(resolver.fundingAttestationOf(bankPartner, PAYMENT_REF), uid);
     }
 
     function test_fundingRecorded_requiresMatchingOnChainDeposit() public {
@@ -498,7 +498,7 @@ contract ResolversTest is PoATest {
         // 25 on 1000 is exactly the cap
         _donateOnBehalf(costlyNeed, 975e6, DONOR_REF, PAYMENT_REF);
         bytes32 uid = _attestFundingRecorded(bankPartner, costlyNeed, 975e6, 25e6, PAYMENT_REF, DONOR_REF);
-        assertEq(resolver.fundingAttestationOf(PAYMENT_REF), uid);
+        assertEq(resolver.fundingAttestationOf(bankPartner, PAYMENT_REF), uid);
 
         bytes32 secondPayment = keccak256("payment-2");
         _donateOnBehalf(costlyNeed, 974e6, DONOR_REF, secondPayment);

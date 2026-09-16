@@ -82,7 +82,7 @@ contract AidVaultFactoryTest is PoATest {
     function test_consumePaymentRef_onlyLedgers() public {
         vm.prank(outsider);
         vm.expectRevert(Errors.NotLedger.selector);
-        factory.consumePaymentRef(keccak256("ref"));
+        factory.consumePaymentRef(bankPartner, keccak256("ref"));
     }
 
     function test_consumePaymentRef_rejectsDuplicatesAcrossCustodyModes() public {
@@ -90,10 +90,25 @@ contract AidVaultFactoryTest is PoATest {
         (,, NonCustodialLedger ledger) = _verifiedOffChainNeed(1000e6, 0);
 
         vm.prank(address(vault));
-        factory.consumePaymentRef(keccak256("ref"));
+        factory.consumePaymentRef(bankPartner, keccak256("ref"));
         vm.prank(address(ledger));
         vm.expectRevert(Errors.PaymentRefAlreadyUsed.selector);
-        factory.consumePaymentRef(keccak256("ref"));
-        assertTrue(factory.paymentRefConsumed(keccak256("ref")));
+        factory.consumePaymentRef(bankPartner, keccak256("ref"));
+        assertTrue(factory.isPaymentRefConsumed(bankPartner, keccak256("ref")));
+    }
+
+    /// @dev Review finding F7: references are scoped per provider, so one provider can neither collide with nor
+    ///      squat another provider's reference (bank end-to-end ids are only unique within the issuing bank).
+    function test_consumePaymentRef_isScopedToTheProvider() public {
+        (,, AidVault vault) = _verifiedNeed(1000e6);
+        address otherProvider = makeAddr("otherProvider");
+
+        vm.startPrank(address(vault));
+        factory.consumePaymentRef(otherProvider, keccak256("e2e-42"));
+        factory.consumePaymentRef(bankPartner, keccak256("e2e-42"));
+        vm.stopPrank();
+        assertTrue(factory.isPaymentRefConsumed(otherProvider, keccak256("e2e-42")));
+        assertTrue(factory.isPaymentRefConsumed(bankPartner, keccak256("e2e-42")));
+        assertFalse(factory.isPaymentRefConsumed(outsider, keccak256("e2e-42")));
     }
 }

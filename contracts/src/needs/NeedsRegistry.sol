@@ -4,10 +4,12 @@ pragma solidity ^0.8.24;
 import {RoleAware} from "../access/RoleAware.sol";
 import {IAidVaultFactory} from "../interfaces/IAidVaultFactory.sol";
 import {IBeneficiaryGroups} from "../interfaces/IBeneficiaryGroups.sol";
+import {IDeliveryManager} from "../interfaces/IDeliveryManager.sol";
 import {INeedsRegistry} from "../interfaces/INeedsRegistry.sol";
 import {IRoleRegistry} from "../interfaces/IRoleRegistry.sol";
 import {ITrancheLedger} from "../interfaces/ITrancheLedger.sol";
 import {Errors} from "../libraries/Errors.sol";
+import {Roles} from "../libraries/Roles.sol";
 
 /// @title NeedsRegistry
 /// @notice Registers previously verified needs and drives their lifecycle:
@@ -18,6 +20,11 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     uint256 public constant MAX_TRANCHES = 5;
     /// @notice Hard cap on disclosed intermediary costs: above 20% a need is not a credible aid channel.
     uint16 public constant MAX_THIRD_PARTY_COST_BPS = 2000;
+    /// @notice After the execution deadline, work already done keeps priority over expiry for this long: a
+    ///         releasable tranche can still be paid and a verified delivery can still finish its challenge window.
+    ///         Bounded, so a tranche nobody can release (a suspended NGO, an absent custodian) cannot block
+    ///         refunds forever.
+    uint256 public constant EXPIRY_GRACE_PERIOD = 14 days;
 
     /// @notice Needs with `targetAmount` above this value require at least two independent verifications.
     uint256 public immutable HIGH_VALUE_THRESHOLD;
@@ -31,7 +38,7 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     /// @inheritdoc INeedsRegistry
     uint256 public needCount;
 
-    /// @dev Packed into five slots. Display-only commitments (category, metadata URI, expected outcome, cost
+    /// @dev Packed into five slots (six for off-chain custody). Display-only commitments (category, metadata URI, expected outcome, cost
     ///      disclosure) live in the `NeedCreated` event instead.
     struct NeedRecord {
         // slot 0
@@ -53,6 +60,8 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         // slots 3-4
         bytes32 regionCode;
         bytes32 dossierHash;
+        // slot 5, off-chain custody only
+        address custodian;
     }
 
     mapping(uint256 => NeedRecord) private _needs;
@@ -113,6 +122,7 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         n.trancheBps = _packTranches(p.trancheBps);
         n.regionCode = p.regionCode;
         n.dossierHash = p.dossierHash;
+        if (p.custodyMode == CustodyMode.OffChain) n.custodian = p.custodian;
         // status is Pending (the zero value)
 
         emit NeedCreated(needId, msg.sender, p.programId, p);
@@ -139,15 +149,16 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         NeedStatus s = n.status;
 
         if (s == NeedStatus.Pending) {
-            if (!_passed(n.fundingDeadline)) revert Errors.DeadlineNotReached();
+            if (!_passed(n.fundingDeadline) && !_passed(n.executionDeadline)) revert Errors.DeadlineNotReached();
             _expire(needId, n, 0);
         } else if (s == NeedStatus.Funding) {
-            if (!_passed(n.fundingDeadline)) revert Errors.DeadlineNotReached();
+            bool executionOver = _passed(n.executionDeadline);
+            if (!_passed(n.fundingDeadline) && !executionOver) revert Errors.DeadlineNotReached();
             ITrancheLedger ledger = ITrancheLedger(n.vault);
             uint256 raised = ledger.totalDonated();
             // Reaching the target closes funding on the spot, so here raised < target: execute partially if the
-            // NGO's own threshold allows it, otherwise give the money back.
-            if (raised != 0 && _meetsMinimum(n, raised)) {
+            // NGO's own threshold allows it and there is still time to deliver, otherwise give the money back.
+            if (!executionOver && raised != 0 && _meetsMinimum(n, raised)) {
                 emit PartialFundingAccepted(needId, raised, n.targetAmount);
                 ledger.closeFundingAtDeadline(); // calls back setStatus(Funded)
             } else {
@@ -156,8 +167,13 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         } else if (s == NeedStatus.Funded || s == NeedStatus.InDelivery) {
             if (!_passed(n.executionDeadline)) revert Errors.DeadlineNotReached();
             ITrancheLedger ledger = ITrancheLedger(n.vault);
-            // A tranche someone already earned must be paid before the rest is returned; releasing is permissionless.
-            if (ledger.hasReleasableTranche()) revert Errors.ReleasePending();
+            // Work already done keeps priority for a bounded grace period: a tranche someone earned should be
+            // paid (releasing is permissionless on-chain), and a verified delivery should finish its challenge
+            // window or dispute, before the rest of the money goes back.
+            if (
+                block.timestamp < uint256(n.executionDeadline) + EXPIRY_GRACE_PERIOD
+                    && (ledger.hasReleasableTranche() || IDeliveryManager(deliveryManager).hasDeliveryInFlight(needId))
+            ) revert Errors.ReleasePending();
             _expire(needId, n, ledger.totalDonated());
         } else {
             revert Errors.InvalidNeedStatus();
@@ -174,7 +190,7 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         if (msg.sender != resolver || msg.sender == address(0)) revert Errors.Unauthorized();
         NeedRecord storage n = _need(needId);
         if (n.status != NeedStatus.Pending) revert Errors.InvalidNeedStatus();
-        if (_passed(n.fundingDeadline)) revert Errors.DeadlinePassed();
+        if (_passed(n.fundingDeadline) || _passed(n.executionDeadline)) revert Errors.DeadlinePassed();
         if (!roles.isIndependent(verifier, n.ngo)) revert Errors.NotIndependent();
         if (verifiedBy[needId][verifier]) revert Errors.AlreadyVerified();
 
@@ -251,6 +267,7 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
             vault: n.vault,
             status: n.status,
             custodyMode: n.custodyMode,
+            custodian: n.custodian,
             fundingDeadline: n.fundingDeadline,
             executionDeadline: n.executionDeadline,
             minFundingBps: n.minFundingBps,
@@ -265,7 +282,8 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         returns (address ngo, uint256 targetAmount, uint16 minFundingBps, bool open)
     {
         NeedRecord storage n = _need(needId);
-        return (n.ngo, n.targetAmount, n.minFundingBps, n.status == NeedStatus.Funding && !_passed(n.fundingDeadline));
+        open = n.status == NeedStatus.Funding && !_passed(n.fundingDeadline) && !_passed(n.executionDeadline);
+        return (n.ngo, n.targetAmount, n.minFundingBps, open);
     }
 
     /// @inheritdoc INeedsRegistry
@@ -328,6 +346,11 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         return _need(needId).thirdPartyCostBps;
     }
 
+    /// @inheritdoc INeedsRegistry
+    function custodianOf(uint256 needId) external view returns (address) {
+        return _need(needId).custodian;
+    }
+
     // ─── internal ──────────────────────────────────────────────────────────────
 
     function _need(uint256 needId) internal view returns (NeedRecord storage n) {
@@ -351,6 +374,13 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         if (p.thirdPartyCostBps > MAX_THIRD_PARTY_COST_BPS) revert Errors.InvalidParameter();
         if ((p.thirdPartyCostBps == 0) != (p.costDisclosureHash == bytes32(0))) revert Errors.InvalidParameter();
         if (p.fundingDeadline != 0 && p.fundingDeadline <= block.timestamp) revert Errors.InvalidParameter();
+        // Off-chain money has exactly one custodian, named up front: a provider cannot adopt someone else's need
+        // by recording a token amount first, and nobody but the custodian can report its payouts.
+        if (p.custodyMode == CustodyMode.OffChain) {
+            if (!roles.hasRole(Roles.BANK_PARTNER_ROLE, p.custodian)) revert Errors.InvalidParameter();
+        } else if (p.custodian != address(0)) {
+            revert Errors.InvalidParameter();
+        }
         if (p.executionDeadline != 0) {
             // Delivery cannot be due before money can have arrived.
             if (p.executionDeadline <= block.timestamp || p.executionDeadline <= p.fundingDeadline) {

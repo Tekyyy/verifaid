@@ -52,8 +52,12 @@ contract ProofOfAidResolver is SchemaResolver {
     INeedsRegistry public immutable registry;
     IDeliveryManager public immutable deliveryManager;
 
-    /// @notice paymentRefHash => FundingRecorded attestation UID.
-    mapping(bytes32 => bytes32) public fundingAttestationOf;
+    /// @notice provider => paymentRefHash => FundingRecorded attestation UID (references are scoped per provider).
+    mapping(address => mapping(bytes32 => bytes32)) public fundingAttestationOf;
+    /// @notice needId => fees intermediaries kept on the way in (FundingRecorded).
+    mapping(uint256 => uint256) public fundingFeesOf;
+    /// @notice needId => fees intermediaries kept on the way out (Settlement).
+    mapping(uint256 => uint256) public settlementFeesOf;
     /// @notice needId => trancheIndex => Settlement attestation UID.
     mapping(uint256 => mapping(uint256 => bytes32)) public settlementOf;
     /// @notice needId => UID of the live (non-revoked) impact report.
@@ -180,18 +184,22 @@ contract ProofOfAidResolver is SchemaResolver {
         }
         INeedsRegistry.Need memory n = registry.getNeed(needId);
         if (n.vault == address(0) || a.recipient != n.vault) revert Errors.InvalidRecipient();
-        _checkAmounts(gross, fee, net, n.thirdPartyCostBps);
-        if (fundingAttestationOf[paymentRefHash] != bytes32(0)) revert Errors.FundingAlreadyAttested();
-        fundingAttestationOf[paymentRefHash] = a.uid;
+        _checkAmounts(gross, fee, net);
+        if (fundingAttestationOf[a.attester][paymentRefHash] != bytes32(0)) revert Errors.FundingAlreadyAttested();
+        fundingAttestationOf[a.attester][paymentRefHash] = a.uid;
+        fundingFeesOf[needId] += fee;
 
         if (n.custodyMode == INeedsRegistry.CustodyMode.OnChain) {
             if (!IAidVault(n.vault).fiatDepositMatches(paymentRefHash, a.attester, donorRefHash, net)) {
                 revert Errors.FundingMismatch();
             }
         } else {
+            // Only the custodian the NGO named can say it received money for this need.
+            if (a.attester != n.custodian) revert Errors.Unauthorized();
             INonCustodialLedger(n.vault)
                 .recordFunding(a.attester, gross, fee, net, currency, paymentRefHash, donorRefHash);
         }
+        _checkCostCap(needId, n.vault, n.thirdPartyCostBps);
         emit FundingAttestationLinked(needId, paymentRefHash, a.uid);
     }
 
@@ -239,7 +247,7 @@ contract ProofOfAidResolver is SchemaResolver {
 
     /// @dev Reconciles one tranche payout: gross must equal the tranche, fees must stay within the disclosed cap.
     ///      On-chain custody: the vault already released the tranche; the NGO reports how it reached the supplier.
-    ///      Off-chain custody: the provider holding the money reports the payout, which is what releases the
+    ///      Off-chain custody: the custodian holding the money reports the payout, which is what releases the
     ///      tranche in the ledger (the same checks as an on-chain release apply there).
     function _onSettlement(Attestation calldata a) internal {
         (uint256 needId, uint256 trancheIndex, uint256 gross, uint256 fee, uint256 net, bytes32 supplierRefHash,) =
@@ -248,7 +256,7 @@ contract ProofOfAidResolver is SchemaResolver {
         if (supplierRefHash == bytes32(0)) revert Errors.InvalidParameter();
         INeedsRegistry.Need memory n = registry.getNeed(needId);
         if (n.vault == address(0) || a.recipient != n.vault) revert Errors.InvalidRecipient();
-        _checkAmounts(gross, fee, net, n.thirdPartyCostBps);
+        _checkAmounts(gross, fee, net);
         if (settlementOf[needId][trancheIndex] != bytes32(0)) revert Errors.SettlementAlreadyRecorded();
 
         ITrancheLedger ledger = ITrancheLedger(n.vault);
@@ -256,6 +264,7 @@ contract ProofOfAidResolver is SchemaResolver {
         if (trancheIndex >= tranches.length) revert Errors.InvalidTrancheIndex();
         if (gross != tranches[trancheIndex].amount) revert Errors.AmountMismatch();
         settlementOf[needId][trancheIndex] = a.uid;
+        settlementFeesOf[needId] += fee;
 
         if (n.custodyMode == INeedsRegistry.CustodyMode.OnChain) {
             if (a.attester != n.ngo) revert Errors.Unauthorized();
@@ -263,9 +272,12 @@ contract ProofOfAidResolver is SchemaResolver {
                 revert Errors.InvalidTrancheStatus();
             }
         } else {
-            if (!roles.hasRole(Roles.BANK_PARTNER_ROLE, a.attester)) revert Errors.Unauthorized();
-            INonCustodialLedger(n.vault).recordRelease(trancheIndex, a.attester);
+            // The designation is the authority, not a live role: a custodian that loses its role must still be
+            // able to report paying out money it already holds (the same rule as refunds by reference).
+            if (a.attester != n.custodian) revert Errors.Unauthorized();
+            INonCustodialLedger(n.vault).recordRelease(trancheIndex);
         }
+        _checkCostCap(needId, n.vault, n.thirdPartyCostBps);
         emit SettlementLinked(needId, trancheIndex, a.uid, gross, fee, net);
     }
 
@@ -294,10 +306,19 @@ contract ProofOfAidResolver is SchemaResolver {
 
     // ─── internal ──────────────────────────────────────────────────────────────
 
-    function _checkAmounts(uint256 gross, uint256 fee, uint256 net, uint16 costCapBps) internal pure {
+    function _checkAmounts(uint256 gross, uint256 fee, uint256 net) internal pure {
         if (gross < fee || gross - fee != net) revert Errors.AmountMismatch();
-        // The disclosure is binding: intermediaries cannot take more than donors were told.
-        if (fee * BPS_DENOMINATOR > gross * costCapBps) revert Errors.FeeExceedsDisclosure();
+    }
+
+    /// @dev The disclosure is binding and cumulative: everything intermediaries kept on the way in and on the way
+    ///      out, together, stays within `thirdPartyCostBps` of what donors paid. Checking each fee on its own would
+    ///      let a funding fee and a settlement fee stack past the cap donors were shown.
+    function _checkCostCap(uint256 needId, address ledger, uint16 costCapBps) internal view {
+        uint256 fundingFees = fundingFeesOf[needId];
+        uint256 paidByDonors = ITrancheLedger(ledger).totalDonated() + fundingFees;
+        if ((fundingFees + settlementFeesOf[needId]) * BPS_DENOMINATOR > paidByDonors * costCapBps) {
+            revert Errors.FeeExceedsDisclosure();
+        }
     }
 
     function _expectedImpactRefUID(uint256 needId) internal view returns (bytes32) {

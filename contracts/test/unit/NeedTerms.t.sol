@@ -44,6 +44,7 @@ contract NeedTermsTest is PoATest {
     function test_createNeed_storesTheTerms() public {
         INeedsRegistry.CreateNeedParams memory p = _terms(6000);
         p.custodyMode = INeedsRegistry.CustodyMode.OffChain;
+        p.custodian = bankPartner;
         p.thirdPartyCostBps = 150;
         p.costDisclosureHash = COST_DISCLOSURE_HASH;
 

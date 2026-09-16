@@ -39,6 +39,7 @@ interface INeedsRegistry is IRoleAware {
         uint8 verificationsRequired;
         uint16[] trancheBps; // sums to 10_000
         CustodyMode custodyMode;
+        address custodian; // OffChain only: the payment provider (BANK_PARTNER_ROLE) that holds the money
         uint64 fundingDeadline; // 0 = open-ended; after it anyone may call `expire`
         uint64 executionDeadline; // 0 = none; after it unreleased funds can be returned via `expire`
         uint16 minFundingBps; // share of the target that must be raised to execute (10_000 = all or nothing)
@@ -61,6 +62,7 @@ interface INeedsRegistry is IRoleAware {
         address vault; // AidVault (OnChain) or NonCustodialLedger (OffChain); zero until verified
         NeedStatus status;
         CustodyMode custodyMode;
+        address custodian;
         uint64 fundingDeadline;
         uint64 executionDeadline;
         uint16 minFundingBps;
@@ -101,7 +103,10 @@ interface INeedsRegistry is IRoleAware {
     ///         - `Pending` after the funding deadline → `Expired`.
     ///         - `Funding` after the funding deadline → funding closes on what was raised if that meets
     ///           `minFundingBps` (partial execution, tranches scale down), otherwise `Expired` with refunds open.
+    ///           Past the execution deadline it always expires: there is no time left to deliver.
     ///         - `Funded` / `InDelivery` after the execution deadline → `Expired`, refunding the unreleased balance.
+    ///           Work already done wins during a grace period: while a tranche is releasable or a verified
+    ///           delivery is in its challenge window or disputed, expiry waits until `EXPIRY_GRACE_PERIOD` ends.
     function expire(uint256 needId) external;
 
     /// @notice Full need record.
@@ -111,7 +116,7 @@ interface INeedsRegistry is IRoleAware {
     /// @return ngo The need's NGO.
     /// @return targetAmount Funding target.
     /// @return minFundingBps Minimum share of the target required to execute.
-    /// @return open True while the need is `Funding` and its funding deadline has not passed.
+    /// @return open True while the need is `Funding` and neither of its deadlines has passed.
     function fundingTermsOf(uint256 needId)
         external
         view
@@ -134,4 +139,5 @@ interface INeedsRegistry is IRoleAware {
     function trancheBpsOf(uint256 needId) external view returns (uint16[] memory);
     function custodyModeOf(uint256 needId) external view returns (CustodyMode);
     function thirdPartyCostBpsOf(uint256 needId) external view returns (uint16);
+    function custodianOf(uint256 needId) external view returns (address);
 }

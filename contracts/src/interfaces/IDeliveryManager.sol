@@ -66,7 +66,8 @@ interface IDeliveryManager {
     /// @notice Disputes a challengeable delivery before its deadline. Independent verifiers only.
     function challenge(uint256 deliveryId, bytes32 reasonHash) external;
 
-    /// @notice Resolves a dispute. `uphold = true` rejects the delivery. Admin only.
+    /// @notice Resolves a dispute. `uphold = true` rejects the delivery; dismissing it resumes the challenge
+    ///         window with the time that was left when the challenge was raised. Admin only.
     function resolveDispute(uint256 deliveryId, bool uphold) external;
 
     /// @notice Closes an abandoned delivery so its tranche can be attempted again. Admin only.
@@ -80,4 +81,7 @@ interface IDeliveryManager {
     function deliveryCount() external view returns (uint256);
     function lastFinalizedDeliveryOf(uint256 needId) external view returns (uint256);
     function activeDeliveryOf(uint256 needId, uint256 trancheIndex) external view returns (uint256);
+
+    /// @notice True while a verified delivery of the need is in its challenge window or under dispute.
+    function hasDeliveryInFlight(uint256 needId) external view returns (bool);
 }

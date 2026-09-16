@@ -172,7 +172,7 @@ contract AidVaultTest is PoATest {
         assertEq(vault.totalDonated(), 2000e6);
         assertEq(vault.donatedByRef(DONOR_REF), 2000e6);
         assertEq(vault.refPartner(DONOR_REF), bankPartner);
-        assertTrue(factory.paymentRefConsumed(PAYMENT_REF));
+        assertTrue(factory.isPaymentRefConsumed(bankPartner, PAYMENT_REF));
 
         // one digest per deposit is all the resolver needs to check a FundingRecorded attestation
         assertTrue(vault.fiatDepositMatches(PAYMENT_REF, bankPartner, DONOR_REF, 2000e6));

@@ -52,7 +52,7 @@ contract LifecycleTest is PoATest {
 
         _donateOnBehalf(needId, 10_000e6, DONOR_REF, PAYMENT_REF);
         bytes32 fiatUID = _attestFundingRecorded(bankPartner, needId, 10_000e6, PAYMENT_REF, DONOR_REF);
-        assertEq(resolver.fundingAttestationOf(PAYMENT_REF), fiatUID);
+        assertEq(resolver.fundingAttestationOf(bankPartner, PAYMENT_REF), fiatUID);
 
         // ── 6. Target reached → funding closed → tranche 0 (pre-financing) released ──
         assertEq(vault.totalDonated(), TARGET);

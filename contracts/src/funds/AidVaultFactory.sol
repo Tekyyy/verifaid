@@ -31,8 +31,8 @@ contract AidVaultFactory is IAidVaultFactory, RoleAware {
 
     /// @notice What a factory-created address is (one slot per ledger instead of one per flag).
     mapping(address => Kind) public kindOf;
-    /// @notice Payment references already used by any ledger.
-    mapping(bytes32 => bool) public paymentRefConsumed;
+    /// @notice keccak256(provider, paymentRefHash) => already used by some ledger.
+    mapping(bytes32 => bool) private _paymentRefConsumed;
 
     /// @param roles_ System role registry.
     constructor(IRoleRegistry roles_) RoleAware(roles_) {}
@@ -66,11 +66,17 @@ contract AidVaultFactory is IAidVaultFactory, RoleAware {
     }
 
     /// @inheritdoc IAidVaultFactory
-    function consumePaymentRef(bytes32 paymentRefHash) external {
+    function consumePaymentRef(address provider, bytes32 paymentRefHash) external {
         if (kindOf[msg.sender] == Kind.None) revert Errors.NotLedger();
-        if (paymentRefConsumed[paymentRefHash]) revert Errors.PaymentRefAlreadyUsed();
-        paymentRefConsumed[paymentRefHash] = true;
-        emit PaymentRefConsumed(paymentRefHash, msg.sender);
+        bytes32 key = keccak256(abi.encode(provider, paymentRefHash));
+        if (_paymentRefConsumed[key]) revert Errors.PaymentRefAlreadyUsed();
+        _paymentRefConsumed[key] = true;
+        emit PaymentRefConsumed(paymentRefHash, provider, msg.sender);
+    }
+
+    /// @inheritdoc IAidVaultFactory
+    function isPaymentRefConsumed(address provider, bytes32 paymentRefHash) external view returns (bool) {
+        return _paymentRefConsumed[keccak256(abi.encode(provider, paymentRefHash))];
     }
 
     /// @inheritdoc IAidVaultFactory

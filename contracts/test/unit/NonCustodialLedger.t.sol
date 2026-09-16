@@ -67,7 +67,7 @@ contract NonCustodialLedgerTest is PoATest {
         vm.expectRevert(Errors.Unauthorized.selector);
         ledger.recordFunding(bankPartner, 1, 0, 1, EUR, _ref(0), keccak256("donor"));
         vm.expectRevert(Errors.Unauthorized.selector);
-        ledger.recordRelease(0, bankPartner);
+        ledger.recordRelease(0);
 
         NonCustodialLedger implementation = NonCustodialLedger(factory.ledgerImplementation());
         vm.prank(address(resolver));
@@ -92,8 +92,8 @@ contract NonCustodialLedgerTest is PoATest {
         _attestFundingRecorded(bankPartner, needId, 6000e6, 150e6, _ref(1), keccak256("d"));
 
         assertEq(ledger.totalDonated(), 6000e6, "net counts toward the target");
-        assertEq(ledger.recordedBy(bankPartner), 6000e6);
-        assertTrue(factory.paymentRefConsumed(_ref(1)));
+        assertEq(registry.custodianOf(needId), bankPartner);
+        assertTrue(factory.isPaymentRefConsumed(bankPartner, _ref(1)));
         assertFalse(ledger.fundingClosed());
 
         _attestFundingRecorded(bankPartner, needId, 4000e6, 0, _ref(2), keccak256("d2"));
@@ -175,6 +175,7 @@ contract NonCustodialLedgerTest is PoATest {
     function test_expire_belowThresholdMarksTheNeedExpired() public {
         INeedsRegistry.CreateNeedParams memory p = _needParams(programId, TARGET, 1, _threeTrancheBps());
         p.custodyMode = INeedsRegistry.CustodyMode.OffChain;
+        p.custodian = bankPartner;
         p.fundingDeadline = uint64(block.timestamp + 7 days);
         p.minFundingBps = 5000;
         uint256 shortNeed = _verifiedNeedWith(p);
@@ -228,7 +229,7 @@ contract NonCustodialLedgerTest is PoATest {
             Errors.Unauthorized.selector
         );
 
-        // nor can a provider that holds nothing for this need
+        // nor can another provider, even a registered one (review finding F1)
         address otherProvider = makeAddr("otherProvider");
         vm.prank(admin);
         roles.registerBankPartner(otherProvider);
@@ -276,6 +277,7 @@ contract NonCustodialLedgerTest is PoATest {
     function test_expiryAfterExecutionDeadlineWaitsForAnEarnedTranche() public {
         INeedsRegistry.CreateNeedParams memory p = _needParams(programId, TARGET, 1, _threeTrancheBps());
         p.custodyMode = INeedsRegistry.CustodyMode.OffChain;
+        p.custodian = bankPartner;
         p.executionDeadline = uint64(block.timestamp + 60 days);
         uint256 dueNeed = _verifiedNeedWith(p);
         NonCustodialLedger dueLedger = NonCustodialLedger(registry.vaultOf(dueNeed));

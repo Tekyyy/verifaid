@@ -595,20 +595,45 @@ contract DeliveryManagerTest is PoATest {
         assertEq(vault.trancheStatus(1), ITrancheLedger.TrancheStatus.Locked);
     }
 
-    function test_resolveDispute_dismissedRestartsChallengeWindow() public {
+    /// @dev Review finding F2: dismissing a challenge resumes the window that was left, instead of granting a fresh
+    ///      one that a frivolous challenge near a deadline could use to push an earned tranche past it.
+    function test_resolveDispute_dismissedResumesTheRemainingWindow() public {
         uint256 deliveryId = _challengeable();
         uint64 firstDeadline = deliveryManager.getDelivery(deliveryId).challengeDeadline;
 
+        vm.warp(block.timestamp + 4 minutes); // 6 of 10 minutes left
         vm.prank(verifier3);
         deliveryManager.challenge(deliveryId, keccak256("reason"));
-        vm.warp(block.timestamp + 5 minutes);
+        vm.warp(block.timestamp + 2 days); // the dispute takes a while
 
         vm.prank(admin);
         deliveryManager.resolveDispute(deliveryId, false);
 
         IDeliveryManager.Delivery memory d = deliveryManager.getDelivery(deliveryId);
         assertEq(d.status, IDeliveryManager.DeliveryStatus.Challengeable);
-        assertGt(d.challengeDeadline, firstDeadline, "fresh deadline");
+        assertEq(d.challengeDeadline, block.timestamp + 6 minutes, "remaining window resumed");
+        assertGt(d.challengeDeadline, firstDeadline);
+        assertTrue(deliveryManager.hasDeliveryInFlight(needId));
+
+        vm.warp(d.challengeDeadline);
+        deliveryManager.finalize(deliveryId);
+        assertFalse(deliveryManager.hasDeliveryInFlight(needId));
+    }
+
+    function test_hasDeliveryInFlight_onlyForVerifiedDeliveriesAwaitingFinalization() public {
+        assertFalse(deliveryManager.hasDeliveryInFlight(needId));
+        uint256 deliveryId = _open();
+        _attestEvidence(fieldAgent, deliveryId);
+        assertFalse(deliveryManager.hasDeliveryInFlight(needId), "an open delivery is not in flight");
+        _confirm(deliveryId, 7);
+        _attestDeliveryVerified(verifier2, deliveryId, true);
+        assertTrue(deliveryManager.hasDeliveryInFlight(needId), "challengeable");
+        vm.prank(verifier3);
+        deliveryManager.challenge(deliveryId, keccak256("reason"));
+        assertTrue(deliveryManager.hasDeliveryInFlight(needId), "disputed");
+        vm.prank(admin);
+        deliveryManager.resolveDispute(deliveryId, true);
+        assertFalse(deliveryManager.hasDeliveryInFlight(needId), "rejected");
     }
 
     /// @dev A delivery whose field agent never files evidence cannot be rejected by a verifier (there is nothing
