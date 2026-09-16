@@ -6,6 +6,7 @@ import {AidVault} from "../../src/funds/AidVault.sol";
 import {IAidVault} from "../../src/interfaces/IAidVault.sol";
 import {IDeliveryManager} from "../../src/interfaces/IDeliveryManager.sol";
 import {INeedsRegistry} from "../../src/interfaces/INeedsRegistry.sol";
+import {ITrancheLedger} from "../../src/interfaces/ITrancheLedger.sol";
 import {Errors} from "../../src/libraries/Errors.sol";
 import {PoATest} from "../utils/PoATest.sol";
 import {ISemaphore} from "@semaphore-protocol/contracts/interfaces/ISemaphore.sol";
@@ -107,7 +108,7 @@ contract RealSemaphoreTest is PoATest, SemaphoreDeployer {
 
         vm.warp(block.timestamp + CHALLENGE_PERIOD);
         deliveryManager.finalize(deliveryId);
-        assertEq(vault.trancheStatus(1), IAidVault.TrancheStatus.Releasable);
+        assertEq(vault.trancheStatus(1), ITrancheLedger.TrancheStatus.Releasable);
 
         vault.releaseTranche(1);
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.InDelivery);

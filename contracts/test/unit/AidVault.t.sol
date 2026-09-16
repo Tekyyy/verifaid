@@ -3,10 +3,13 @@ pragma solidity ^0.8.24;
 
 import {AidVault} from "../../src/funds/AidVault.sol";
 import {IAidVault} from "../../src/interfaces/IAidVault.sol";
+import {IAidVaultFactory} from "../../src/interfaces/IAidVaultFactory.sol";
+import {IDonationReceipt} from "../../src/interfaces/IDonationReceipt.sol";
 import {INeedsRegistry} from "../../src/interfaces/INeedsRegistry.sol";
+import {ITrancheLedger} from "../../src/interfaces/ITrancheLedger.sol";
 import {Errors} from "../../src/libraries/Errors.sol";
 import {PoATest} from "../utils/PoATest.sol";
-import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract AidVaultTest is PoATest {
     uint256 internal constant TARGET = 10_000e6;
@@ -23,10 +26,10 @@ contract AidVaultTest is PoATest {
         (needId, programId, vault) = _verifiedNeed(TARGET);
     }
 
-    // ─── initialization ────────────────────────────────────────────────────────
+    // ─── clone configuration ───────────────────────────────────────────────────
 
-    function test_initialize_setsUpTranches() public view {
-        assertEq(vault.needId(), needId);
+    function test_clone_isConfiguredWithoutAnInitializer() public view {
+        assertEq(vault.needId(), needId, "need id read from the clone's code");
         assertEq(address(vault.registry()), address(registry));
         assertEq(address(vault.token()), address(token));
         assertEq(address(vault.receipt()), address(receipt));
@@ -34,36 +37,43 @@ contract AidVaultTest is PoATest {
         assertEq(address(vault.factory()), address(factory));
         assertEq(vault.deliveryManager(), address(deliveryManager));
         assertEq(vault.trancheCount(), 3);
+        assertTrue(factory.isVault(address(vault)));
+        assertTrue(factory.isLedger(address(vault)));
 
-        IAidVault.Tranche[] memory tranches = vault.getTranches();
+        ITrancheLedger.Tranche[] memory tranches = vault.getTranches();
         assertEq(tranches[0].bps, 3000);
         assertEq(tranches[1].bps, 4000);
         assertEq(tranches[2].bps, 3000);
         for (uint256 i; i < tranches.length; ++i) {
             assertEq(tranches[i].amount, 0);
-            assertEq(tranches[i].status, IAidVault.TrancheStatus.Locked);
+            assertEq(tranches[i].status, ITrancheLedger.TrancheStatus.Locked);
         }
     }
 
-    function test_initialize_revertsOnImplementationAndSecondCall() public {
+    /// @dev The implementation is shared code, not a vault: nothing may be deposited into it or closed on it.
+    function test_implementation_rejectsDirectUse() public {
         AidVault implementation = AidVault(factory.implementation());
-        vm.expectRevert(Errors.AlreadyInitialized.selector);
-        implementation.initialize(1, address(token), address(registry), address(deliveryManager), address(receipt));
-
-        vm.expectRevert(Errors.AlreadyInitialized.selector);
-        vault.initialize(1, address(token), address(registry), address(deliveryManager), address(receipt));
+        vm.expectRevert(Errors.NotLedger.selector);
+        implementation.donate(1);
+        vm.expectRevert(Errors.NotLedger.selector);
+        implementation.closeFunding();
+        vm.expectRevert(Errors.NotLedger.selector);
+        implementation.releaseTranche(0);
+        vm.expectRevert(Errors.NotLedger.selector);
+        implementation.claimRefund();
     }
 
-    function test_initialize_revertsOnZeroAddresses() public {
-        AidVault fresh = AidVault(Clones.clone(factory.implementation()));
+    function test_constructor_revertsOnZeroAddresses() public {
+        IAidVaultFactory f = IAidVaultFactory(address(factory));
+        IDonationReceipt r = IDonationReceipt(address(receipt));
         vm.expectRevert(Errors.ZeroAddress.selector);
-        fresh.initialize(1, address(0), address(registry), address(deliveryManager), address(receipt));
+        new AidVault(roles, registry, address(deliveryManager), f, IERC20(address(0)), r);
         vm.expectRevert(Errors.ZeroAddress.selector);
-        fresh.initialize(1, address(token), address(0), address(deliveryManager), address(receipt));
+        new AidVault(roles, registry, address(deliveryManager), f, IERC20(address(token)), IDonationReceipt(address(0)));
         vm.expectRevert(Errors.ZeroAddress.selector);
-        fresh.initialize(1, address(token), address(registry), address(0), address(receipt));
+        new AidVault(roles, INeedsRegistry(address(0)), address(deliveryManager), f, IERC20(address(token)), r);
         vm.expectRevert(Errors.ZeroAddress.selector);
-        fresh.initialize(1, address(token), address(registry), address(deliveryManager), address(0));
+        new AidVault(roles, registry, address(0), f, IERC20(address(token)), r);
     }
 
     // ─── direct donations ──────────────────────────────────────────────────────
@@ -141,13 +151,13 @@ contract AidVaultTest is PoATest {
 
         _fundDonor(donor2, needId, 1e6);
         vm.expectEmit(true, false, false, true, address(vault));
-        emit IAidVault.FundingClosed(needId, TARGET);
+        emit ITrancheLedger.FundingClosed(needId, TARGET);
         vm.prank(donor2);
         vault.donate(1e6);
 
         assertTrue(vault.fundingClosed());
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Funded);
-        assertEq(vault.trancheStatus(0), IAidVault.TrancheStatus.Releasable);
+        assertEq(vault.trancheStatus(0), ITrancheLedger.TrancheStatus.Releasable);
     }
 
     // ─── fiat donations ────────────────────────────────────────────────────────
@@ -161,15 +171,14 @@ contract AidVaultTest is PoATest {
 
         assertEq(vault.totalDonated(), 2000e6);
         assertEq(vault.donatedByRef(DONOR_REF), 2000e6);
-        assertTrue(vault.paymentRefUsed(PAYMENT_REF));
         assertEq(vault.refPartner(DONOR_REF), bankPartner);
         assertTrue(factory.paymentRefConsumed(PAYMENT_REF));
 
-        IAidVault.FiatDonationRecord memory record = vault.fiatDonation(PAYMENT_REF);
-        assertEq(record.partner, bankPartner);
-        assertEq(record.amount, 2000e6);
-        assertEq(record.donorRefHash, DONOR_REF);
-        assertEq(record.timestamp, uint64(block.timestamp));
+        // one digest per deposit is all the resolver needs to check a FundingRecorded attestation
+        assertTrue(vault.fiatDepositMatches(PAYMENT_REF, bankPartner, DONOR_REF, 2000e6));
+        assertFalse(vault.fiatDepositMatches(PAYMENT_REF, bankPartner, DONOR_REF, 1999e6));
+        assertFalse(vault.fiatDepositMatches(PAYMENT_REF, outsider, DONOR_REF, 2000e6));
+        assertFalse(vault.fiatDepositMatches(keccak256("unknown"), bankPartner, DONOR_REF, 2000e6));
 
         // no NFT receipt is minted for fiat donors
         assertEq(receipt.totalMinted(), 0);
@@ -244,13 +253,13 @@ contract AidVaultTest is PoATest {
         vault.closeFunding();
 
         uint256 total = vault.totalDonated();
-        IAidVault.Tranche[] memory tranches = vault.getTranches();
+        ITrancheLedger.Tranche[] memory tranches = vault.getTranches();
         assertEq(tranches[0].amount, (total * 3000) / 10_000);
         assertEq(tranches[1].amount, (total * 4000) / 10_000);
         assertEq(tranches[2].amount, total - tranches[0].amount - tranches[1].amount);
         assertEq(tranches[0].amount + tranches[1].amount + tranches[2].amount, total);
-        assertEq(tranches[0].status, IAidVault.TrancheStatus.Releasable);
-        assertEq(tranches[1].status, IAidVault.TrancheStatus.Locked);
+        assertEq(tranches[0].status, ITrancheLedger.TrancheStatus.Releasable);
+        assertEq(tranches[1].status, ITrancheLedger.TrancheStatus.Locked);
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Funded);
     }
 
@@ -296,12 +305,12 @@ contract AidVaultTest is PoATest {
         uint256 expected = vault.getTranches()[0].amount;
 
         vm.expectEmit(true, true, false, true, address(vault));
-        emit IAidVault.TrancheReleased(needId, 0, expected, ngoPayout);
+        emit ITrancheLedger.TrancheReleased(needId, 0, expected, ngoPayout);
         vault.releaseTranche(0);
 
         assertEq(token.balanceOf(ngoPayout), expected);
         assertEq(vault.totalReleased(), expected);
-        assertEq(vault.trancheStatus(0), IAidVault.TrancheStatus.Released);
+        assertEq(vault.trancheStatus(0), ITrancheLedger.TrancheStatus.Released);
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.InDelivery);
         assertVaultInvariant(vault);
     }
@@ -385,7 +394,7 @@ contract AidVaultTest is PoATest {
         vault.markReleasable(2, 1);
 
         vault.markReleasable(1, 7);
-        assertEq(vault.trancheStatus(1), IAidVault.TrancheStatus.Releasable);
+        assertEq(vault.trancheStatus(1), ITrancheLedger.TrancheStatus.Releasable);
         assertEq(vault.getTranches()[1].deliveryId, 7);
 
         vm.expectRevert(Errors.InvalidTrancheStatus.selector);
@@ -458,7 +467,7 @@ contract AidVaultTest is PoATest {
         _donate(donor1, needId, 100e6);
 
         vm.prank(donor1);
-        vm.expectRevert(Errors.NotCancelled.selector);
+        vm.expectRevert(Errors.NotRefundable.selector);
         vault.claimRefund();
 
         vm.prank(ngo);
@@ -471,7 +480,7 @@ contract AidVaultTest is PoATest {
         vm.prank(donor1);
         vault.claimRefund();
         vm.prank(donor1);
-        vm.expectRevert(Errors.RefundAlreadyClaimed.selector);
+        vm.expectRevert(Errors.NothingToRefund.selector);
         vault.claimRefund();
     }
 
@@ -521,7 +530,7 @@ contract AidVaultTest is PoATest {
         vault.claimRefundByRef(DONOR_REF, address(0));
 
         vm.prank(bankPartner);
-        vm.expectRevert(Errors.NotCancelled.selector);
+        vm.expectRevert(Errors.NotRefundable.selector);
         vault.claimRefundByRef(DONOR_REF, bankPartner);
 
         vm.prank(ngo);
@@ -535,7 +544,7 @@ contract AidVaultTest is PoATest {
         vm.prank(bankPartner);
         vault.claimRefundByRef(DONOR_REF, bankPartner);
         vm.prank(bankPartner);
-        vm.expectRevert(Errors.RefundAlreadyClaimed.selector);
+        vm.expectRevert(Errors.NothingToRefund.selector);
         vault.claimRefundByRef(DONOR_REF, bankPartner);
     }
 

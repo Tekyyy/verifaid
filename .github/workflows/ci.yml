@@ -54,6 +54,9 @@ jobs:
             src/needs/NeedsRegistry.sol \
             src/funds/AidVault.sol \
             src/funds/AidVaultFactory.sol \
+            src/funds/TrancheLedger.sol \
+            src/funds/NonCustodialLedger.sol \
+            src/resolvers/ProofOfAidResolver.sol \
             src/funds/DonationReceipt.sol \
             src/delivery/DeliveryManager.sol \
             src/identity/BeneficiaryGroups.sol

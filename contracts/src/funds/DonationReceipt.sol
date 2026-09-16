@@ -45,7 +45,9 @@ contract DonationReceipt is IDonationReceipt, ERC721, RoleAware {
     function mint(address to, uint256 needId, uint256 amount) external returns (uint256 tokenId) {
         if (!factory.isVault(msg.sender) || IAidVault(msg.sender).needId() != needId) revert Errors.NotVault();
         tokenId = ++totalMinted;
-        _receipts[tokenId] = Receipt({needId: needId, amount: amount, timestamp: uint64(block.timestamp)});
+        // One slot per receipt; vault accounting bounds both values far below these widths.
+        _receipts[tokenId] =
+            Receipt({needId: uint64(needId), timestamp: uint64(block.timestamp), amount: uint128(amount)});
         // _mint (not _safeMint): no receiver callback, so minting can never re-enter the donating vault.
         _mint(to, tokenId);
         emit Locked(tokenId);
@@ -99,10 +101,10 @@ contract DonationReceipt is IDonationReceipt, ERC721, RoleAware {
             '{"name":"Proof of Aid Receipt #',
             tokenId.toString(),
             '","description":"Soulbound receipt for a donation to Proof of Aid need #',
-            r.needId.toString(),
+            uint256(r.needId).toString(),
             '. Follow the money on the public dashboard.","external_url":"',
             dashboardBaseURI,
-            r.needId.toString(),
+            uint256(r.needId).toString(),
             '","image":"data:image/svg+xml;base64,',
             Base64.encode(bytes(_svg(tokenId, r.needId, amount))),
             '","attributes":',
@@ -122,7 +124,7 @@ contract DonationReceipt is IDonationReceipt, ERC721, RoleAware {
     function _attributes(Receipt memory r, string memory amount) internal pure returns (string memory) {
         return string.concat(
             '[{"trait_type":"Need","display_type":"number","value":',
-            r.needId.toString(),
+            uint256(r.needId).toString(),
             '},{"trait_type":"Amount","value":"',
             amount,
             '"},{"trait_type":"Donated at","display_type":"date","value":',

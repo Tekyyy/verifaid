@@ -5,6 +5,7 @@ import {RoleRegistry} from "../../src/access/RoleRegistry.sol";
 import {AidVault} from "../../src/funds/AidVault.sol";
 import {IAidVault} from "../../src/interfaces/IAidVault.sol";
 import {INeedsRegistry} from "../../src/interfaces/INeedsRegistry.sol";
+import {ITrancheLedger} from "../../src/interfaces/ITrancheLedger.sol";
 import {MockEURC} from "../../src/mocks/MockEURC.sol";
 import {NeedsRegistry} from "../../src/needs/NeedsRegistry.sol";
 import {PoATest} from "../utils/PoATest.sol";
@@ -12,7 +13,8 @@ import {CommonBase} from "forge-std/Base.sol";
 import {StdCheats} from "forge-std/StdCheats.sol";
 import {StdUtils} from "forge-std/StdUtils.sol";
 
-/// @notice Drives one vault through random but legal sequences of donations, releases, cancellation and refunds.
+/// @notice Drives one vault through random but legal sequences of donations, releases, cancellation, the passage
+///         of time (funding and execution deadlines, partial execution) and refunds.
 contract VaultHandler is CommonBase, StdCheats, StdUtils {
     AidVault public immutable vault;
     MockEURC public immutable token;
@@ -33,6 +35,7 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
     uint256 public releaseCalls;
     uint256 public refundCalls;
     uint256 public cancelCalls;
+    uint256 public expireCalls;
 
     constructor(
         AidVault vault_,
@@ -60,12 +63,22 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
         return registry.statusOf(needId);
     }
 
+    function _fundingOpen() internal view returns (bool open) {
+        (,,, open) = registry.fundingTermsOf(needId);
+        open = open && !vault.fundingClosed();
+    }
+
+    function _refundable() internal view returns (bool) {
+        INeedsRegistry.NeedStatus s = _status();
+        return s == INeedsRegistry.NeedStatus.Cancelled || s == INeedsRegistry.NeedStatus.Expired;
+    }
+
     function _remaining() internal view returns (uint256) {
         return registry.targetAmountOf(needId) - vault.totalDonated();
     }
 
     function donate(uint256 actorSeed, uint256 amount) external {
-        if (_status() != INeedsRegistry.NeedStatus.Funding || vault.fundingClosed()) return;
+        if (!_fundingOpen()) return;
         uint256 remaining = _remaining();
         if (remaining == 0) return;
         address donor = donors[actorSeed % donors.length];
@@ -80,7 +93,7 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
     }
 
     function donateOnBehalf(uint256 refSeed, uint256 amount) external {
-        if (_status() != INeedsRegistry.NeedStatus.Funding || vault.fundingClosed()) return;
+        if (!_fundingOpen()) return;
         uint256 remaining = _remaining();
         if (remaining == 0) return;
         bytes32 donorRef = donorRefs[refSeed % donorRefs.length];
@@ -96,11 +109,23 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
     }
 
     function closeFunding() external {
-        if (_status() != INeedsRegistry.NeedStatus.Funding || vault.fundingClosed() || vault.totalDonated() == 0) {
-            return;
-        }
+        if (!_fundingOpen() || vault.totalDonated() == 0) return;
+        (, uint256 target, uint16 minFundingBps,) = registry.fundingTermsOf(needId);
+        if (vault.totalDonated() * 10_000 < target * minFundingBps) return;
         vm.prank(ngo);
         vault.closeFunding();
+    }
+
+    /// @dev Moves time forward so the funding and execution deadlines come into play.
+    function warp(uint256 secondsSeed) external {
+        vm.warp(block.timestamp + bound(secondsSeed, 1 hours, 25 days));
+    }
+
+    /// @dev Anyone may apply a passed deadline; outside its preconditions `expire` simply reverts.
+    function expire() external {
+        try registry.expire(needId) {
+            expireCalls++;
+        } catch {}
     }
 
     /// @dev Releases whatever is releasable, then unlocks the next tranche the way a finalized delivery would.
@@ -110,7 +135,7 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
 
         uint256 count = vault.trancheCount();
         for (uint256 i; i < count; ++i) {
-            if (vault.trancheStatus(i) == IAidVault.TrancheStatus.Releasable) {
+            if (vault.trancheStatus(i) == ITrancheLedger.TrancheStatus.Releasable) {
                 vault.releaseTranche(i);
                 releaseCalls++;
                 return;
@@ -120,8 +145,8 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
         if (seed % 2 == 0) return;
         for (uint256 i = 1; i < count; ++i) {
             if (
-                vault.trancheStatus(i) == IAidVault.TrancheStatus.Locked
-                    && vault.trancheStatus(i - 1) == IAidVault.TrancheStatus.Released
+                vault.trancheStatus(i) == ITrancheLedger.TrancheStatus.Locked
+                    && vault.trancheStatus(i - 1) == ITrancheLedger.TrancheStatus.Released
                     && _status() == INeedsRegistry.NeedStatus.InDelivery
             ) {
                 vm.prank(deliveryManager);
@@ -135,25 +160,28 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
         // cancel rarely, otherwise most runs would end in the refund phase immediately
         if (seed % 8 != 0) return;
         INeedsRegistry.NeedStatus status = _status();
-        if (status == INeedsRegistry.NeedStatus.Completed || status == INeedsRegistry.NeedStatus.Cancelled) return;
+        if (
+            status == INeedsRegistry.NeedStatus.Completed || status == INeedsRegistry.NeedStatus.Cancelled
+                || status == INeedsRegistry.NeedStatus.Expired
+        ) return;
         vm.prank(admin);
         registry.cancelNeed(needId);
         cancelCalls++;
     }
 
     function claimRefund(uint256 actorSeed) external {
-        if (_status() != INeedsRegistry.NeedStatus.Cancelled) return;
+        if (!_refundable()) return;
         address donor = donors[actorSeed % donors.length];
-        if (vault.donatedBy(donor) == 0 || vault.refundClaimed(donor)) return;
+        if (vault.donatedBy(donor) == 0) return; // cleared once refunded
         vm.prank(donor);
         vault.claimRefund();
         refundCalls++;
     }
 
     function claimRefundByRef(uint256 refSeed) external {
-        if (_status() != INeedsRegistry.NeedStatus.Cancelled) return;
+        if (!_refundable()) return;
         bytes32 donorRef = donorRefs[refSeed % donorRefs.length];
-        if (vault.donatedByRef(donorRef) == 0 || vault.refundClaimedByRef(donorRef)) return;
+        if (vault.donatedByRef(donorRef) == 0) return; // cleared once refunded
         vm.prank(bankPartner);
         vault.claimRefundByRef(donorRef, bankPartner);
         refundCalls++;
@@ -167,11 +195,21 @@ contract AidVaultInvariantTest is PoATest {
 
     function setUp() public override {
         super.setUp();
-        (needId,, vault) = _verifiedNeed(50_000e6);
+        // Above the high-value threshold (two verifiers), with deadlines and a 60% partial-execution threshold.
+        uint256 programId = _createProgram(ngo, 10);
+        INeedsRegistry.CreateNeedParams memory p = _needParams(programId, 50_000e6, 2, _threeTrancheBps());
+        p.fundingDeadline = uint64(block.timestamp + 30 days);
+        p.executionDeadline = uint64(block.timestamp + 90 days);
+        p.minFundingBps = 6000;
+        vm.prank(ngo);
+        needId = registry.createNeed(p);
+        _attestNeedVerified(verifier1, needId, true);
+        _attestNeedVerified(verifier2, needId, true);
+        vault = AidVault(registry.vaultOf(needId));
 
         handler = new VaultHandler(vault, token, registry, admin, ngo, address(deliveryManager), bankPartner);
 
-        bytes4[] memory selectors = new bytes4[](7);
+        bytes4[] memory selectors = new bytes4[](9);
         selectors[0] = VaultHandler.donate.selector;
         selectors[1] = VaultHandler.donateOnBehalf.selector;
         selectors[2] = VaultHandler.closeFunding.selector;
@@ -179,6 +217,8 @@ contract AidVaultInvariantTest is PoATest {
         selectors[4] = VaultHandler.cancel.selector;
         selectors[5] = VaultHandler.claimRefund.selector;
         selectors[6] = VaultHandler.claimRefundByRef.selector;
+        selectors[7] = VaultHandler.warp.selector;
+        selectors[8] = VaultHandler.expire.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
         targetContract(address(handler));
     }
@@ -202,12 +242,12 @@ contract AidVaultInvariantTest is PoATest {
 
     function invariant_trancheAmountsMatchDonations() public view {
         if (!vault.fundingClosed()) return;
-        IAidVault.Tranche[] memory tranches = vault.getTranches();
+        ITrancheLedger.Tranche[] memory tranches = vault.getTranches();
         uint256 sum;
         uint256 released;
         for (uint256 i; i < tranches.length; ++i) {
             sum += tranches[i].amount;
-            if (tranches[i].status == IAidVault.TrancheStatus.Released) released += tranches[i].amount;
+            if (tranches[i].status == ITrancheLedger.TrancheStatus.Released) released += tranches[i].amount;
         }
         assertEq(sum, vault.totalDonated(), "tranche plan covers every donated unit");
         assertEq(released, vault.totalReleased(), "released tranches equal totalReleased");
@@ -218,11 +258,18 @@ contract AidVaultInvariantTest is PoATest {
         assertLe(vault.totalReleased(), vault.totalDonated());
     }
 
+    /// @dev Funding only ever closes on at least the minimum the NGO committed to.
+    function invariant_closedFundingMeetsTheThreshold() public view {
+        if (!vault.fundingClosed()) return;
+        (, uint256 target, uint16 minFundingBps,) = registry.fundingTermsOf(needId);
+        assertGe(vault.totalDonated() * 10_000, target * minFundingBps, "closed below the threshold");
+    }
+
     function invariant_callSummary() public view {
         // Surfaced with -vvv so a run that exercised nothing is visible rather than silently green.
         assertTrue(
             handler.donateCalls() + handler.donateOnBehalfCalls() + handler.releaseCalls() + handler.refundCalls()
-                    + handler.cancelCalls() >= 0
+                    + handler.cancelCalls() + handler.expireCalls() >= 0
         );
     }
 }

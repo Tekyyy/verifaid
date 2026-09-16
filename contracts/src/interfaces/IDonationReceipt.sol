@@ -5,9 +5,9 @@ pragma solidity ^0.8.24;
 /// @notice Soulbound ERC-721 receipt minted for every direct donation.
 interface IDonationReceipt {
     struct Receipt {
-        uint256 needId;
-        uint256 amount;
+        uint64 needId;
         uint64 timestamp;
+        uint128 amount;
     }
 
     /// @notice ERC-5192: emitted when a token becomes locked (always, at mint).

@@ -2,20 +2,22 @@
 pragma solidity ^0.8.24;
 
 import {RoleAware} from "../access/RoleAware.sol";
-import {IAidVault} from "../interfaces/IAidVault.sol";
 import {IAidVaultFactory} from "../interfaces/IAidVaultFactory.sol";
 import {IBeneficiaryGroups} from "../interfaces/IBeneficiaryGroups.sol";
 import {INeedsRegistry} from "../interfaces/INeedsRegistry.sol";
 import {IRoleRegistry} from "../interfaces/IRoleRegistry.sol";
+import {ITrancheLedger} from "../interfaces/ITrancheLedger.sol";
 import {Errors} from "../libraries/Errors.sol";
 
 /// @title NeedsRegistry
 /// @notice Registers previously verified needs and drives their lifecycle:
-///         Pending → Verified → Funding → Funded → InDelivery → Completed (or Cancelled).
+///         Pending → Verified → Funding → Funded → InDelivery → Completed (or Cancelled / Expired).
 /// @dev Verification happens through EAS `NeedVerified` attestations; the resolver forwards them here.
 contract NeedsRegistry is INeedsRegistry, RoleAware {
     uint16 public constant BPS_DENOMINATOR = 10_000;
     uint256 public constant MAX_TRANCHES = 5;
+    /// @notice Hard cap on disclosed intermediary costs: above 20% a need is not a credible aid channel.
+    uint16 public constant MAX_THIRD_PARTY_COST_BPS = 2000;
 
     /// @notice Needs with `targetAmount` above this value require at least two independent verifications.
     uint256 public immutable HIGH_VALUE_THRESHOLD;
@@ -23,13 +25,37 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     IAidVaultFactory public vaultFactory;
     IBeneficiaryGroups public beneficiaryGroups;
     address public deliveryManager;
-    address public needVerifiedResolver;
+    address public resolver;
     bool public wired;
 
     /// @inheritdoc INeedsRegistry
     uint256 public needCount;
 
-    mapping(uint256 => Need) private _needs;
+    /// @dev Packed into five slots. Display-only commitments (category, metadata URI, expected outcome, cost
+    ///      disclosure) live in the `NeedCreated` event instead.
+    struct NeedRecord {
+        // slot 0
+        address ngo;
+        uint8 verificationsRequired;
+        uint8 verificationCount;
+        NeedStatus status;
+        CustodyMode custodyMode;
+        uint16 minFundingBps;
+        uint16 thirdPartyCostBps;
+        // slot 1
+        address vault;
+        uint40 fundingDeadline;
+        uint40 executionDeadline;
+        // slot 2
+        uint96 targetAmount;
+        uint64 programId;
+        uint80 trancheBps; // up to five 16-bit entries, lowest first; every entry is non-zero
+        // slots 3-4
+        bytes32 regionCode;
+        bytes32 dossierHash;
+    }
+
+    mapping(uint256 => NeedRecord) private _needs;
 
     /// @notice needId => verifier => has a live (non-revoked) verification recorded.
     mapping(uint256 => mapping(address => bool)) public verifiedBy;
@@ -57,7 +83,7 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         vaultFactory = IAidVaultFactory(vaultFactory_);
         beneficiaryGroups = IBeneficiaryGroups(beneficiaryGroups_);
         deliveryManager = deliveryManager_;
-        needVerifiedResolver = resolver_;
+        resolver = resolver_;
         emit Wired(vaultFactory_, beneficiaryGroups_, deliveryManager_, resolver_);
     }
 
@@ -68,44 +94,74 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         if (!wired) revert Errors.NotWired();
         if (!roles.isActiveNgo(msg.sender)) revert Errors.Unauthorized();
         if (beneficiaryGroups.programNgo(p.programId) != msg.sender) revert Errors.ProgramMismatch();
-        if (p.targetAmount == 0) revert Errors.ZeroAmount();
-        if (p.category == bytes32(0) || p.regionCode == bytes32(0) || p.dossierHash == bytes32(0)) {
-            revert Errors.InvalidParameter();
-        }
-        _validateTranches(p.trancheBps);
+        _validateTerms(p);
         if (p.verificationsRequired == 0 || (p.targetAmount > HIGH_VALUE_THRESHOLD && p.verificationsRequired < 2)) {
             revert Errors.InsufficientVerifications();
         }
 
         needId = ++needCount;
-        Need storage n = _needs[needId];
-        n.id = needId;
+        NeedRecord storage n = _needs[needId];
         n.ngo = msg.sender;
-        n.programId = p.programId;
-        n.category = p.category;
-        n.targetAmount = p.targetAmount;
+        n.verificationsRequired = p.verificationsRequired;
+        n.custodyMode = p.custodyMode;
+        n.minFundingBps = p.minFundingBps;
+        n.thirdPartyCostBps = p.thirdPartyCostBps;
+        n.fundingDeadline = uint40(p.fundingDeadline);
+        n.executionDeadline = uint40(p.executionDeadline);
+        n.targetAmount = uint96(p.targetAmount);
+        n.programId = uint64(p.programId);
+        n.trancheBps = _packTranches(p.trancheBps);
         n.regionCode = p.regionCode;
         n.dossierHash = p.dossierHash;
-        n.metadataURI = p.metadataURI;
-        n.verificationsRequired = p.verificationsRequired;
-        n.trancheBps = p.trancheBps;
-        n.status = NeedStatus.Pending;
-        n.createdAt = uint64(block.timestamp);
+        // status is Pending (the zero value)
 
-        _emitNeedCreated(n);
+        emit NeedCreated(needId, msg.sender, p.programId, p);
     }
 
     /// @inheritdoc INeedsRegistry
     function cancelNeed(uint256 needId) external {
-        Need storage n = _need(needId);
+        NeedRecord storage n = _need(needId);
         NeedStatus s = n.status;
-        if (s == NeedStatus.Completed || s == NeedStatus.Cancelled) revert Errors.InvalidNeedStatus();
+        if (_isTerminal(s)) revert Errors.InvalidNeedStatus();
         if (!roles.isAdmin(msg.sender)) {
             if (msg.sender != n.ngo) revert Errors.Unauthorized();
             // NGOs may only cancel before funding closes; afterwards cancellation is an admin (dispute) decision.
             if (uint8(s) >= uint8(NeedStatus.Funded)) revert Errors.InvalidNeedStatus();
         }
-        _cancel(n, msg.sender);
+        _cancel(needId, n, msg.sender);
+    }
+
+    // ─── anyone ────────────────────────────────────────────────────────────────
+
+    /// @inheritdoc INeedsRegistry
+    function expire(uint256 needId) external whenNotPaused {
+        NeedRecord storage n = _need(needId);
+        NeedStatus s = n.status;
+
+        if (s == NeedStatus.Pending) {
+            if (!_passed(n.fundingDeadline)) revert Errors.DeadlineNotReached();
+            _expire(needId, n, 0);
+        } else if (s == NeedStatus.Funding) {
+            if (!_passed(n.fundingDeadline)) revert Errors.DeadlineNotReached();
+            ITrancheLedger ledger = ITrancheLedger(n.vault);
+            uint256 raised = ledger.totalDonated();
+            // Reaching the target closes funding on the spot, so here raised < target: execute partially if the
+            // NGO's own threshold allows it, otherwise give the money back.
+            if (raised != 0 && _meetsMinimum(n, raised)) {
+                emit PartialFundingAccepted(needId, raised, n.targetAmount);
+                ledger.closeFundingAtDeadline(); // calls back setStatus(Funded)
+            } else {
+                _expire(needId, n, raised);
+            }
+        } else if (s == NeedStatus.Funded || s == NeedStatus.InDelivery) {
+            if (!_passed(n.executionDeadline)) revert Errors.DeadlineNotReached();
+            ITrancheLedger ledger = ITrancheLedger(n.vault);
+            // A tranche someone already earned must be paid before the rest is returned; releasing is permissionless.
+            if (ledger.hasReleasableTranche()) revert Errors.ReleasePending();
+            _expire(needId, n, ledger.totalDonated());
+        } else {
+            revert Errors.InvalidNeedStatus();
+        }
     }
 
     // ─── resolver callbacks ────────────────────────────────────────────────────
@@ -115,9 +171,10 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         external
         whenNotPaused
     {
-        if (msg.sender != needVerifiedResolver || msg.sender == address(0)) revert Errors.Unauthorized();
-        Need storage n = _need(needId);
+        if (msg.sender != resolver || msg.sender == address(0)) revert Errors.Unauthorized();
+        NeedRecord storage n = _need(needId);
         if (n.status != NeedStatus.Pending) revert Errors.InvalidNeedStatus();
+        if (_passed(n.fundingDeadline)) revert Errors.DeadlinePassed();
         if (!roles.isIndependent(verifier, n.ngo)) revert Errors.NotIndependent();
         if (verifiedBy[needId][verifier]) revert Errors.AlreadyVerified();
 
@@ -127,25 +184,25 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         if (!approved) {
             // A rejection by an independent verifier blocks the need; the NGO must create a new one.
             emit NeedVerificationRecorded(needId, verifier, false, attestationUID, n.verificationCount);
-            _cancel(n, verifier);
+            _cancel(needId, n, verifier);
             return;
         }
 
         uint8 count = ++n.verificationCount;
         emit NeedVerificationRecorded(needId, verifier, true, attestationUID, count);
-        if (count == n.verificationsRequired) _onVerified(n);
+        if (count == n.verificationsRequired) _onVerified(needId, n);
     }
 
     /// @inheritdoc INeedsRegistry
-    /// @dev Honored only while `Pending`, or `Funding` with zero donations (the need drops back to `Pending`).
+    /// @dev Honored only while `Pending`, or `Funding` with nothing raised (the need drops back to `Pending`).
     ///      Otherwise the revocation is logged for the dispute process and state is left untouched.
     function onVerificationRevoked(uint256 needId, address verifier, bytes32 attestationUID) external {
-        if (msg.sender != needVerifiedResolver || msg.sender == address(0)) revert Errors.Unauthorized();
-        Need storage n = _need(needId);
+        if (msg.sender != resolver || msg.sender == address(0)) revert Errors.Unauthorized();
+        NeedRecord storage n = _need(needId);
         if (verificationUID[needId][verifier] != attestationUID) revert Errors.UnknownVerification();
 
         bool honored = n.status == NeedStatus.Pending
-            || (n.status == NeedStatus.Funding && IAidVault(n.vault).totalDonated() == 0);
+            || (n.status == NeedStatus.Funding && ITrancheLedger(n.vault).totalDonated() == 0);
         if (!honored) {
             emit VerificationRevokedAfterFunding(needId, verifier, attestationUID);
             return;
@@ -156,31 +213,69 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         delete verificationUID[needId][verifier];
         uint8 count = --n.verificationCount;
         emit NeedVerificationRevoked(needId, verifier, attestationUID, count);
-        if (n.status == NeedStatus.Funding) _transition(n, NeedStatus.Pending);
+        if (n.status == NeedStatus.Funding) _transition(needId, n, NeedStatus.Pending);
     }
 
-    // ─── vault / delivery callbacks ────────────────────────────────────────────
+    // ─── ledger callbacks ──────────────────────────────────────────────────────
 
     /// @inheritdoc INeedsRegistry
-    /// @dev Only the need's own vault. The spec also names the DeliveryManager, but it never calls this — and
+    /// @dev Only the need's own ledger. The spec also names the DeliveryManager, but it never calls this — and
     ///      an unused, unscoped authority here is dangerous: with it, a `Funded` need could be walked to
     ///      `Completed` without tranche 0 ever being released, locking the escrow with no refund path.
     function setStatus(uint256 needId, NeedStatus next) external {
-        Need storage n = _need(needId);
+        NeedRecord storage n = _need(needId);
         if (msg.sender != n.vault || msg.sender == address(0)) revert Errors.Unauthorized();
         NeedStatus current = n.status;
         bool allowed = (current == NeedStatus.Funding && next == NeedStatus.Funded)
             || (current == NeedStatus.Funded && next == NeedStatus.InDelivery)
             || (current == NeedStatus.InDelivery && next == NeedStatus.Completed);
         if (!allowed) revert Errors.InvalidTransition();
-        _transition(n, next);
+        _transition(needId, n, next);
     }
 
     // ─── views ─────────────────────────────────────────────────────────────────
 
     /// @inheritdoc INeedsRegistry
-    function getNeed(uint256 needId) external view returns (Need memory) {
-        return _need(needId);
+    function getNeed(uint256 needId) external view returns (Need memory need) {
+        NeedRecord storage n = _need(needId);
+        need = Need({
+            id: needId,
+            ngo: n.ngo,
+            programId: n.programId,
+            targetAmount: n.targetAmount,
+            regionCode: n.regionCode,
+            dossierHash: n.dossierHash,
+            verificationsRequired: n.verificationsRequired,
+            verificationCount: n.verificationCount,
+            trancheBps: _unpackTranches(n.trancheBps),
+            vault: n.vault,
+            status: n.status,
+            custodyMode: n.custodyMode,
+            fundingDeadline: n.fundingDeadline,
+            executionDeadline: n.executionDeadline,
+            minFundingBps: n.minFundingBps,
+            thirdPartyCostBps: n.thirdPartyCostBps
+        });
+    }
+
+    /// @inheritdoc INeedsRegistry
+    function fundingTermsOf(uint256 needId)
+        external
+        view
+        returns (address ngo, uint256 targetAmount, uint16 minFundingBps, bool open)
+    {
+        NeedRecord storage n = _need(needId);
+        return (n.ngo, n.targetAmount, n.minFundingBps, n.status == NeedStatus.Funding && !_passed(n.fundingDeadline));
+    }
+
+    /// @inheritdoc INeedsRegistry
+    function coreOf(uint256 needId)
+        external
+        view
+        returns (address ngo, address vault, uint256 programId, NeedStatus status)
+    {
+        NeedRecord storage n = _need(needId);
+        return (n.ngo, n.vault, n.programId, n.status);
     }
 
     /// @inheritdoc INeedsRegistry
@@ -220,14 +315,49 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
 
     /// @inheritdoc INeedsRegistry
     function trancheBpsOf(uint256 needId) external view returns (uint16[] memory) {
-        return _need(needId).trancheBps;
+        return _unpackTranches(_need(needId).trancheBps);
+    }
+
+    /// @inheritdoc INeedsRegistry
+    function custodyModeOf(uint256 needId) external view returns (CustodyMode) {
+        return _need(needId).custodyMode;
+    }
+
+    /// @inheritdoc INeedsRegistry
+    function thirdPartyCostBpsOf(uint256 needId) external view returns (uint16) {
+        return _need(needId).thirdPartyCostBps;
     }
 
     // ─── internal ──────────────────────────────────────────────────────────────
 
-    function _need(uint256 needId) internal view returns (Need storage n) {
+    function _need(uint256 needId) internal view returns (NeedRecord storage n) {
         n = _needs[needId];
-        if (n.id == 0) revert Errors.NeedNotFound();
+        if (n.ngo == address(0)) revert Errors.NeedNotFound();
+    }
+
+    function _validateTerms(CreateNeedParams calldata p) internal view {
+        if (p.targetAmount == 0) revert Errors.ZeroAmount();
+        if (
+            p.category == bytes32(0) || p.regionCode == bytes32(0) || p.dossierHash == bytes32(0)
+                || p.expectedOutcomeHash == bytes32(0)
+        ) revert Errors.InvalidParameter();
+        // Bounds of the packed storage layout (none of them is reachable by a real need).
+        if (
+            p.targetAmount > type(uint96).max || p.programId > type(uint64).max || p.fundingDeadline > type(uint40).max
+                || p.executionDeadline > type(uint40).max
+        ) revert Errors.InvalidParameter();
+        if (p.minFundingBps == 0 || p.minFundingBps > BPS_DENOMINATOR) revert Errors.InvalidParameter();
+        // Costs are either zero or capped and backed by a published disclosure.
+        if (p.thirdPartyCostBps > MAX_THIRD_PARTY_COST_BPS) revert Errors.InvalidParameter();
+        if ((p.thirdPartyCostBps == 0) != (p.costDisclosureHash == bytes32(0))) revert Errors.InvalidParameter();
+        if (p.fundingDeadline != 0 && p.fundingDeadline <= block.timestamp) revert Errors.InvalidParameter();
+        if (p.executionDeadline != 0) {
+            // Delivery cannot be due before money can have arrived.
+            if (p.executionDeadline <= block.timestamp || p.executionDeadline <= p.fundingDeadline) {
+                revert Errors.InvalidParameter();
+            }
+        }
+        _validateTranches(p.trancheBps);
     }
 
     function _validateTranches(uint16[] calldata bps) internal pure {
@@ -241,36 +371,54 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         if (sum != BPS_DENOMINATOR) revert Errors.InvalidTrancheSplit();
     }
 
-    /// @dev Verification threshold reached: deploy (or reuse) the vault and open funding.
-    function _onVerified(Need storage n) internal {
-        _transition(n, NeedStatus.Verified);
-        if (n.vault == address(0)) n.vault = vaultFactory.createVault(n.id);
-        emit NeedVerified(n.id, n.vault);
-        _transition(n, NeedStatus.Funding);
+    function _packTranches(uint16[] calldata bps) internal pure returns (uint80 packed) {
+        for (uint256 i; i < bps.length; ++i) {
+            packed |= uint80(bps[i]) << uint80(16 * i);
+        }
     }
 
-    function _cancel(Need storage n, address by) internal {
-        _transition(n, NeedStatus.Cancelled);
-        emit NeedCancelled(n.id, by);
+    /// @dev Entries are validated non-zero, so the plan ends at the first zero word.
+    function _unpackTranches(uint80 packed) internal pure returns (uint16[] memory bps) {
+        uint256 len;
+        while (len < MAX_TRANCHES && uint16(packed >> uint80(16 * len)) != 0) ++len;
+        bps = new uint16[](len);
+        for (uint256 i; i < len; ++i) {
+            bps[i] = uint16(packed >> uint80(16 * i));
+        }
     }
 
-    function _transition(Need storage n, NeedStatus next) internal {
-        emit NeedStatusChanged(n.id, n.status, next);
+    function _meetsMinimum(NeedRecord storage n, uint256 raised) internal view returns (bool) {
+        return raised * BPS_DENOMINATOR >= uint256(n.targetAmount) * n.minFundingBps;
+    }
+
+    function _passed(uint40 deadline) internal view returns (bool) {
+        return deadline != 0 && block.timestamp >= deadline;
+    }
+
+    function _isTerminal(NeedStatus s) internal pure returns (bool) {
+        return s == NeedStatus.Completed || s == NeedStatus.Cancelled || s == NeedStatus.Expired;
+    }
+
+    /// @dev Verification threshold reached: deploy (or reuse) the ledger and open funding.
+    function _onVerified(uint256 needId, NeedRecord storage n) internal {
+        _transition(needId, n, NeedStatus.Verified);
+        if (n.vault == address(0)) n.vault = vaultFactory.createVault(needId, n.custodyMode);
+        emit NeedVerified(needId, n.vault);
+        _transition(needId, n, NeedStatus.Funding);
+    }
+
+    function _cancel(uint256 needId, NeedRecord storage n, address by) internal {
+        _transition(needId, n, NeedStatus.Cancelled);
+        emit NeedCancelled(needId, by);
+    }
+
+    function _expire(uint256 needId, NeedRecord storage n, uint256 raised) internal {
+        emit NeedExpired(needId, n.status, raised);
+        _transition(needId, n, NeedStatus.Expired);
+    }
+
+    function _transition(uint256 needId, NeedRecord storage n, NeedStatus next) internal {
+        emit NeedStatusChanged(needId, n.status, next);
         n.status = next;
-    }
-
-    function _emitNeedCreated(Need storage n) internal {
-        emit NeedCreated(
-            n.id,
-            n.ngo,
-            n.programId,
-            n.category,
-            n.targetAmount,
-            n.regionCode,
-            n.dossierHash,
-            n.verificationsRequired,
-            n.trancheBps,
-            n.metadataURI
-        );
     }
 }

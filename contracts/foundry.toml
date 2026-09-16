@@ -33,8 +33,11 @@ ignore = ["test/**", "script/**", "src/mocks/**"]
 #  - reentrancy-events / reentrancy-no-eth: external calls only target trusted system contracts; every
 #    token-moving entry point is nonReentrant.
 #  - unsafe-oz-erc721-mint: receipts use _mint on purpose so minting cannot call back into the vault.
-#  - unsafe-typecast: uint64(block.timestamp) cannot overflow for ~584 billion years.
-#  - block-timestamp: the challenge window is a coarse, minutes-to-days timer.
+#  - unsafe-typecast: every narrowing cast is bounds-checked at the entry point (packed storage, see NeedsRegistry)
+#    or cannot overflow (uint40 timestamps last ~35,000 years).
+#  - block-timestamp: challenge windows and need deadlines are coarse, minutes-to-months timers.
+#  - unused-return: flagged on partial tuple destructuring of our own views; every ignored value is deliberate.
+#  - calls-loop: the only loop with an external call validates a batch of proofs bounded by expectedRecipients.
 #  - missing-events-access-control / uninitialized-local / require-revert-in-loop: false positives here.
 exclude_lints = [
   "reentrancy-events",
@@ -45,6 +48,8 @@ exclude_lints = [
   "missing-events-access-control",
   "uninitialized-local",
   "require-revert-in-loop",
+  "unused-return",
+  "calls-loop",
 ]
 
 [profile.ci]

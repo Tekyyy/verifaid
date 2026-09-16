@@ -11,9 +11,11 @@ import {Script} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
 
 /// @title SeedDemo
-/// @notice Registers the demo NGO, verifiers, bank partner and field agent, enrols the demo beneficiary
-///         commitments and creates two needs — one below and one above the high-value threshold, so the demo
-///         shows both single and M-of-N verification.
+/// @notice Registers the demo NGO, verifiers, payment provider and field agent, enrols the demo beneficiary
+///         commitments and creates three needs that between them show every term a need can carry:
+///         - FOOD: on-chain custody, deadlines, partial execution above 60%, a disclosed 1.5% cost cap;
+///         - SHELTER: above the high-value threshold (two verifiers), all or nothing, no intermediary costs;
+///         - CASH: off-chain custody through the payment provider (Model A), with a 2.5% cost cap.
 /// @dev Role wallets are derived from DEMO_MNEMONIC (the anvil default when unset) and topped up from the
 ///      deployer on networks where they have no gas. Beneficiary commitments come from
 ///      script/fixtures/demo-identities.json, generated from a public seed.
@@ -72,31 +74,24 @@ contract SeedDemo is Script, DeploymentIO {
         );
         groups.addMembers(programId, _demoCommitments());
 
-        // ── 3. two needs: one single-verifier, one that needs M-of-N ──
+        // ── 3. three needs covering both custody models and every funding rule ──
         uint256 foodNeed = registry.createNeed(
-            INeedsRegistry.CreateNeedParams({
-                programId: programId,
-                category: keccak256("FOOD"),
-                targetAmount: 5000e6,
-                regionCode: bytes32("ES-CM"),
-                dossierHash: keccak256("demo-dossier-food-2026-09"),
-                metadataURI: "ipfs://demo-need-food",
-                verificationsRequired: 1,
-                trancheBps: _bps(3000, 4000, 3000)
-            })
+            _need(programId, "FOOD", 5000e6, 1, _bps(3000, 4000, 3000), INeedsRegistry.CustodyMode.OnChain, 6000, 150)
         );
-
         uint256 shelterNeed = registry.createNeed(
-            INeedsRegistry.CreateNeedParams({
-                programId: programId,
-                category: keccak256("SHELTER"),
-                targetAmount: highValueThreshold + 2000e6, // above the threshold → two verifiers required
-                regionCode: bytes32("ES-CM"),
-                dossierHash: keccak256("demo-dossier-shelter-2026-09"),
-                metadataURI: "ipfs://demo-need-shelter",
-                verificationsRequired: 2,
-                trancheBps: _bps(5000, 5000, 0)
-            })
+            _need(
+                programId,
+                "SHELTER",
+                highValueThreshold + 2000e6, // above the threshold → two verifiers required
+                2,
+                _bps(5000, 5000, 0),
+                INeedsRegistry.CustodyMode.OnChain,
+                10_000,
+                0
+            )
+        );
+        uint256 cashNeed = registry.createNeed(
+            _need(programId, "CASH", 3000e6, 1, _bps(4000, 6000, 0), INeedsRegistry.CustodyMode.OffChain, 5000, 250)
         );
         vm.stopBroadcast();
 
@@ -112,7 +107,8 @@ contract SeedDemo is Script, DeploymentIO {
         console2.log("  donors         ", a.donor1, a.donor2);
         console2.log("  program        ", programId);
         console2.log("  need FOOD      ", foodNeed, "target 5000 (1 verification)");
-        console2.log("  need SHELTER   ", shelterNeed, "above threshold (2 verifications)");
+        console2.log("  need SHELTER   ", shelterNeed, "above threshold (2 verifications), all or nothing");
+        console2.log("  need CASH      ", cashNeed, "target 3000, off-chain custody (Model A)");
     }
 
     // ─── helpers ───────────────────────────────────────────────────────────────
@@ -168,6 +164,39 @@ contract SeedDemo is Script, DeploymentIO {
             console2.log("  token is not mintable, fund the donors from a faucet:", token);
         }
         vm.stopBroadcast();
+    }
+
+    /// @dev Demo needs: funding open 30 days, delivery due within 120 days.
+    function _need(
+        uint256 programId,
+        string memory category,
+        uint256 target,
+        uint8 verificationsRequired,
+        uint16[] memory trancheBps,
+        INeedsRegistry.CustodyMode custodyMode,
+        uint16 minFundingBps,
+        uint16 thirdPartyCostBps
+    ) internal view returns (INeedsRegistry.CreateNeedParams memory) {
+        string memory slug = vm.toLowercase(category);
+        return INeedsRegistry.CreateNeedParams({
+            programId: programId,
+            category: keccak256(bytes(category)),
+            targetAmount: target,
+            regionCode: bytes32("ES-CM"),
+            dossierHash: keccak256(bytes(string.concat("demo-dossier-", slug, "-2026-09"))),
+            metadataURI: string.concat("ipfs://demo-need-", slug),
+            verificationsRequired: verificationsRequired,
+            trancheBps: trancheBps,
+            custodyMode: custodyMode,
+            fundingDeadline: uint64(block.timestamp + 30 days),
+            executionDeadline: uint64(block.timestamp + 120 days),
+            minFundingBps: minFundingBps,
+            thirdPartyCostBps: thirdPartyCostBps,
+            expectedOutcomeHash: keccak256(bytes(string.concat("demo-outcome-", slug))),
+            costDisclosureHash: thirdPartyCostBps == 0
+                ? bytes32(0)
+                : keccak256(bytes(string.concat("demo-cost-disclosure-", slug)))
+        });
     }
 
     function _demoCommitments() internal view returns (uint256[] memory) {

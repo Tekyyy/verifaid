@@ -20,7 +20,7 @@ contract NeedsRegistryTest is PoATest {
     function test_wire_revertsWhenAlreadyWired() public {
         vm.prank(admin);
         vm.expectRevert(Errors.AlreadyWired.selector);
-        registry.wire(address(factory), address(groups), address(deliveryManager), address(needVerifiedResolver));
+        registry.wire(address(factory), address(groups), address(deliveryManager), address(resolver));
     }
 
     function test_wire_revertsForNonAdminAndZeroAddress() public {
@@ -28,14 +28,14 @@ contract NeedsRegistryTest is PoATest {
 
         vm.prank(outsider);
         vm.expectRevert(Errors.Unauthorized.selector);
-        fresh.wire(address(factory), address(groups), address(deliveryManager), address(needVerifiedResolver));
+        fresh.wire(address(factory), address(groups), address(deliveryManager), address(resolver));
 
         vm.prank(admin);
         vm.expectRevert(Errors.ZeroAddress.selector);
-        fresh.wire(address(0), address(groups), address(deliveryManager), address(needVerifiedResolver));
+        fresh.wire(address(0), address(groups), address(deliveryManager), address(resolver));
 
         vm.prank(admin);
-        fresh.wire(address(factory), address(groups), address(deliveryManager), address(needVerifiedResolver));
+        fresh.wire(address(factory), address(groups), address(deliveryManager), address(resolver));
         assertTrue(fresh.wired());
     }
 
@@ -59,18 +59,20 @@ contract NeedsRegistryTest is PoATest {
         assertEq(n.id, needId);
         assertEq(n.ngo, ngo);
         assertEq(n.programId, programId);
-        assertEq(n.category, FOOD);
         assertEq(n.targetAmount, 5000e6);
         assertEq(n.regionCode, REGION);
         assertEq(n.dossierHash, DOSSIER_HASH);
-        assertEq(n.metadataURI, "ipfs://need");
         assertEq(n.verificationsRequired, 1);
         assertEq(n.verificationCount, 0);
         assertEq(n.trancheBps.length, 3);
         assertEq(n.trancheBps[1], 4000);
         assertEq(n.vault, address(0));
         assertEq(n.status, INeedsRegistry.NeedStatus.Pending);
-        assertEq(n.createdAt, uint64(block.timestamp));
+        assertEq(uint8(n.custodyMode), uint8(INeedsRegistry.CustodyMode.OnChain));
+        assertEq(n.fundingDeadline, 0);
+        assertEq(n.executionDeadline, 0);
+        assertEq(n.minFundingBps, 1);
+        assertEq(n.thirdPartyCostBps, 0);
 
         // convenience views
         assertEq(registry.ngoOf(needId), ngo);
@@ -80,12 +82,21 @@ contract NeedsRegistryTest is PoATest {
         assertEq(registry.regionCodeOf(needId), REGION);
         assertEq(registry.trancheBpsOf(needId).length, 3);
         assertEq(registry.vaultOf(needId), address(0));
+        assertEq(uint8(registry.custodyModeOf(needId)), uint8(INeedsRegistry.CustodyMode.OnChain));
+        assertEq(registry.thirdPartyCostBpsOf(needId), 0);
+        (address coreNgo, address coreVault, uint256 coreProgram, INeedsRegistry.NeedStatus coreStatus) =
+            registry.coreOf(needId);
+        assertEq(coreNgo, ngo);
+        assertEq(coreVault, address(0));
+        assertEq(coreProgram, programId);
+        assertEq(coreStatus, INeedsRegistry.NeedStatus.Pending);
     }
 
     function test_createNeed_emitsEvent() public {
         uint16[] memory bps = _threeTrancheBps();
         vm.expectEmit(true, true, true, true, address(registry));
-        emit INeedsRegistry.NeedCreated(1, ngo, programId, FOOD, 5000e6, REGION, DOSSIER_HASH, 1, bps, "ipfs://need");
+        // display-only commitments (category, metadata, expected outcome) live only in this event
+        emit INeedsRegistry.NeedCreated(1, ngo, programId, _needParams(programId, 5000e6, 1, bps));
         vm.prank(ngo);
         registry.createNeed(_needParams(programId, 5000e6, 1, bps));
     }
@@ -202,7 +213,6 @@ contract NeedsRegistryTest is PoATest {
         assertEq(n.status, INeedsRegistry.NeedStatus.Funding);
         assertEq(n.verificationCount, 1);
         assertTrue(n.vault != address(0));
-        assertEq(factory.vaultOf(needId), n.vault);
         assertTrue(factory.isVault(n.vault));
         assertTrue(registry.verifiedBy(needId, verifier1));
         assertEq(registry.verificationUID(needId, verifier1), uid);
@@ -248,7 +258,7 @@ contract NeedsRegistryTest is PoATest {
         uint256 needId = _createNeed(ngo, programId, 5000e6, 2);
         _attestNeedVerified(verifier1, needId, true);
 
-        vm.prank(address(needVerifiedResolver));
+        vm.prank(address(resolver));
         vm.expectRevert(Errors.AlreadyVerified.selector);
         registry.onVerificationAttested(needId, verifier1, true, keccak256("uid2"));
     }
@@ -256,11 +266,11 @@ contract NeedsRegistryTest is PoATest {
     function test_onVerificationAttested_rejectsNonIndependentAndUnknownNeed() public {
         uint256 needId = _createNeed(ngo, programId, 5000e6, 1);
 
-        vm.prank(address(needVerifiedResolver));
+        vm.prank(address(resolver));
         vm.expectRevert(Errors.NotIndependent.selector);
         registry.onVerificationAttested(needId, ngo, true, keccak256("uid"));
 
-        vm.prank(address(needVerifiedResolver));
+        vm.prank(address(resolver));
         vm.expectRevert(Errors.NeedNotFound.selector);
         registry.onVerificationAttested(404, verifier1, true, keccak256("uid"));
     }
@@ -269,7 +279,7 @@ contract NeedsRegistryTest is PoATest {
         uint256 needId = _createNeed(ngo, programId, 5000e6, 1);
         _attestNeedVerified(verifier1, needId, true);
 
-        vm.prank(address(needVerifiedResolver));
+        vm.prank(address(resolver));
         vm.expectRevert(Errors.InvalidNeedStatus.selector);
         registry.onVerificationAttested(needId, verifier2, true, keccak256("uid"));
     }
@@ -278,7 +288,7 @@ contract NeedsRegistryTest is PoATest {
         uint256 needId = _createNeed(ngo, programId, 5000e6, 1);
         vm.prank(admin);
         roles.pause();
-        vm.prank(address(needVerifiedResolver));
+        vm.prank(address(resolver));
         vm.expectRevert(Errors.SystemPaused.selector);
         registry.onVerificationAttested(needId, verifier1, true, keccak256("uid"));
     }
@@ -341,7 +351,7 @@ contract NeedsRegistryTest is PoATest {
         vm.expectRevert(Errors.Unauthorized.selector);
         registry.onVerificationRevoked(needId, verifier1, keccak256("uid"));
 
-        vm.prank(address(needVerifiedResolver));
+        vm.prank(address(resolver));
         vm.expectRevert(Errors.UnknownVerification.selector);
         registry.onVerificationRevoked(needId, verifier1, keccak256("other-uid"));
     }

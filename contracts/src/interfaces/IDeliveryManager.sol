@@ -46,18 +46,21 @@ interface IDeliveryManager {
     event DeliveryCancelled(uint256 indexed deliveryId, address indexed by);
     event DeliveryFinalized(uint256 indexed deliveryId, uint256 indexed needId, uint256 trancheIndex);
     event DeliveryRejected(uint256 indexed deliveryId, uint256 indexed needId, uint256 trancheIndex);
-    event Wired(address evidenceResolver, address verifiedResolver);
+    event Wired(address resolver);
 
     /// @notice Opens a delivery for `trancheIndex` of `needId`. Caller must be a field agent of the need's NGO.
     function openDelivery(uint256 needId, uint256 trancheIndex, uint32 expectedRecipients) external returns (uint256);
 
-    /// @notice Links a DeliveryEvidence attestation. DeliveryEvidenceResolver only.
+    /// @notice Links a DeliveryEvidence attestation. Resolver only.
     function onEvidenceAttested(uint256 deliveryId, bytes32 uid) external;
 
     /// @notice Anonymous receipt confirmation by a beneficiary; anyone may relay the proof.
     function confirmReceipt(uint256 deliveryId, ISemaphore.SemaphoreProof calldata proof) external;
 
-    /// @notice Links a DeliveryVerified attestation. DeliveryVerifiedResolver only.
+    /// @notice Several anonymous confirmations in one transaction, so a relayer pays the fixed costs once.
+    function confirmReceiptBatch(uint256 deliveryId, ISemaphore.SemaphoreProof[] calldata proofs) external;
+
+    /// @notice Links a DeliveryVerified attestation. Resolver only.
     function onDeliveryVerified(uint256 deliveryId, address verifier, bool approved, bytes32 uid) external;
 
     /// @notice Disputes a challengeable delivery before its deadline. Independent verifiers only.

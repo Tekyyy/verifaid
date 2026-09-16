@@ -7,18 +7,16 @@ import {DeliveryManager} from "../../src/delivery/DeliveryManager.sol";
 import {AidVault} from "../../src/funds/AidVault.sol";
 import {AidVaultFactory} from "../../src/funds/AidVaultFactory.sol";
 import {DonationReceipt} from "../../src/funds/DonationReceipt.sol";
+import {NonCustodialLedger} from "../../src/funds/NonCustodialLedger.sol";
 import {BeneficiaryGroups} from "../../src/identity/BeneficiaryGroups.sol";
 import {IAidVault} from "../../src/interfaces/IAidVault.sol";
 import {IDeliveryManager} from "../../src/interfaces/IDeliveryManager.sol";
 import {INeedsRegistry} from "../../src/interfaces/INeedsRegistry.sol";
+import {ITrancheLedger} from "../../src/interfaces/ITrancheLedger.sol";
 import {MockEURC} from "../../src/mocks/MockEURC.sol";
 import {MockSemaphore} from "../../src/mocks/MockSemaphore.sol";
 import {NeedsRegistry} from "../../src/needs/NeedsRegistry.sol";
-import {DeliveryEvidenceResolver} from "../../src/resolvers/DeliveryEvidenceResolver.sol";
-import {DeliveryVerifiedResolver} from "../../src/resolvers/DeliveryVerifiedResolver.sol";
-import {FiatDonationResolver} from "../../src/resolvers/FiatDonationResolver.sol";
-import {ImpactReportResolver} from "../../src/resolvers/ImpactReportResolver.sol";
-import {NeedVerifiedResolver} from "../../src/resolvers/NeedVerifiedResolver.sol";
+import {ProofOfAidResolver} from "../../src/resolvers/ProofOfAidResolver.sol";
 import {
     AttestationRequest,
     AttestationRequestData,
@@ -32,7 +30,7 @@ import {ISemaphore} from "@semaphore-protocol/contracts/interfaces/ISemaphore.so
 import {Test} from "forge-std/Test.sol";
 
 /// @title PoATest
-/// @notice Shared fixture: deploys the full Proof of Aid system (local EAS + MockSemaphore), registers the five
+/// @notice Shared fixture: deploys the full Proof of Aid system (local EAS + MockSemaphore), registers the six
 ///         schemas and provides helpers for the recurring flows (needs, donations, deliveries, attestations).
 abstract contract PoATest is Test, SystemDeployer {
     // ─── protocol parameters used in tests ─────────────────────────────────────
@@ -55,6 +53,11 @@ abstract contract PoATest is Test, SystemDeployer {
     bytes32 internal constant REPORT_HASH = keccak256("verifier-report");
     bytes32 internal constant EVIDENCE_HASH = keccak256("ciphertext");
     bytes32 internal constant KPI_HASH = keccak256("kpis");
+    bytes32 internal constant OUTCOME_HASH = keccak256("expected-outcome");
+    bytes32 internal constant COST_DISCLOSURE_HASH = keccak256("cost-disclosure");
+    bytes32 internal constant EUR = bytes32("EUR");
+    bytes32 internal constant SUPPLIER_REF = keccak256("supplier-invoice-1");
+    bytes32 internal constant FX_REF = keccak256("ecb-rate-2026-09-16");
     string internal constant EVIDENCE_CID = "bafkreieviDenceCidPlaceholder";
     string internal constant REPORT_CID = "bafkreiReportCidPlaceholder";
 
@@ -88,16 +91,13 @@ abstract contract PoATest is Test, SystemDeployer {
     IEAS internal eas;
     ISchemaRegistry internal schemaRegistry;
 
-    NeedVerifiedResolver internal needVerifiedResolver;
-    DeliveryEvidenceResolver internal evidenceResolver;
-    DeliveryVerifiedResolver internal deliveryVerifiedResolver;
-    FiatDonationResolver internal fiatDonationResolver;
-    ImpactReportResolver internal impactReportResolver;
+    ProofOfAidResolver internal resolver;
 
     bytes32 internal needVerifiedSchema;
+    bytes32 internal fundingRecordedSchema;
     bytes32 internal deliveryEvidenceSchema;
     bytes32 internal deliveryVerifiedSchema;
-    bytes32 internal fiatDonationSchema;
+    bytes32 internal settlementSchema;
     bytes32 internal impactReportSchema;
 
     /// @dev Which Semaphore implementation the system is deployed against. Overridden by the integration test
@@ -136,11 +136,7 @@ abstract contract PoATest is Test, SystemDeployer {
         groups = sys.groups;
         deliveryManager = sys.deliveryManager;
         token = MockEURC(sys.token);
-        needVerifiedResolver = sys.needVerifiedResolver;
-        evidenceResolver = sys.evidenceResolver;
-        deliveryVerifiedResolver = sys.deliveryVerifiedResolver;
-        fiatDonationResolver = sys.fiatDonationResolver;
-        impactReportResolver = sys.impactReportResolver;
+        resolver = sys.resolver;
 
         _registerSchemas();
         _registerActors();
@@ -149,27 +145,15 @@ abstract contract PoATest is Test, SystemDeployer {
     // ─── setup helpers ─────────────────────────────────────────────────────────
 
     function _registerSchemas() internal {
-        needVerifiedSchema = schemaRegistry.register(
-            needVerifiedResolver.SCHEMA(), ISchemaResolver(address(needVerifiedResolver)), true
-        );
-        deliveryEvidenceSchema =
-            schemaRegistry.register(evidenceResolver.SCHEMA(), ISchemaResolver(address(evidenceResolver)), false);
-        deliveryVerifiedSchema = schemaRegistry.register(
-            deliveryVerifiedResolver.SCHEMA(), ISchemaResolver(address(deliveryVerifiedResolver)), false
-        );
-        fiatDonationSchema = schemaRegistry.register(
-            fiatDonationResolver.SCHEMA(), ISchemaResolver(address(fiatDonationResolver)), false
-        );
-        impactReportSchema = schemaRegistry.register(
-            impactReportResolver.SCHEMA(), ISchemaResolver(address(impactReportResolver)), true
-        );
-
-        // Each resolver derives the UID it accepts from its own address; the registry must agree.
-        assertEq(needVerifiedSchema, needVerifiedResolver.SCHEMA_UID(), "NeedVerified schema uid");
-        assertEq(deliveryEvidenceSchema, evidenceResolver.SCHEMA_UID(), "DeliveryEvidence schema uid");
-        assertEq(deliveryVerifiedSchema, deliveryVerifiedResolver.SCHEMA_UID(), "DeliveryVerified schema uid");
-        assertEq(fiatDonationSchema, fiatDonationResolver.SCHEMA_UID(), "FiatDonation schema uid");
-        assertEq(impactReportSchema, impactReportResolver.SCHEMA_UID(), "ImpactReport schema uid");
+        bytes32[6] memory uids;
+        for (uint256 i; i < 6; ++i) {
+            (string memory schema, bool revocable, bytes32 expected) = resolver.schemaAt(i);
+            uids[i] = schemaRegistry.register(schema, ISchemaResolver(address(resolver)), revocable);
+            // The resolver derives the UIDs it accepts from its own address; the registry must agree.
+            assertEq(uids[i], expected, "schema uid");
+        }
+        (needVerifiedSchema, fundingRecordedSchema, deliveryEvidenceSchema) = (uids[0], uids[1], uids[2]);
+        (deliveryVerifiedSchema, settlementSchema, impactReportSchema) = (uids[3], uids[4], uids[5]);
     }
 
     function _registerActors() internal {
@@ -216,6 +200,7 @@ abstract contract PoATest is Test, SystemDeployer {
         bps[0] = 10_000;
     }
 
+    /// @dev v1-equivalent terms: on-chain custody, no deadlines, any amount may execute, no intermediary costs.
     function _needParams(uint256 programId, uint256 target, uint8 verificationsRequired, uint16[] memory bps)
         internal
         pure
@@ -229,7 +214,14 @@ abstract contract PoATest is Test, SystemDeployer {
             dossierHash: DOSSIER_HASH,
             metadataURI: "ipfs://need",
             verificationsRequired: verificationsRequired,
-            trancheBps: bps
+            trancheBps: bps,
+            custodyMode: INeedsRegistry.CustodyMode.OnChain,
+            fundingDeadline: 0,
+            executionDeadline: 0,
+            minFundingBps: 1,
+            thirdPartyCostBps: 0,
+            expectedOutcomeHash: OUTCOME_HASH,
+            costDisclosureHash: bytes32(0)
         });
     }
 
@@ -257,6 +249,27 @@ abstract contract PoATest is Test, SystemDeployer {
         (needId, programId, vault) = _verifiedNeed(target);
         _donate(donor1, needId, target); // reaching the target closes funding
         vault.releaseTranche(0); // pre-financing paid out → InDelivery
+    }
+
+    /// @dev Creates and verifies a need with custom terms (single verifier, so keep `targetAmount` ≤ threshold).
+    function _verifiedNeedWith(INeedsRegistry.CreateNeedParams memory p) internal returns (uint256 needId) {
+        vm.prank(ngo);
+        needId = registry.createNeed(p);
+        _attestNeedVerified(verifier1, needId, true);
+    }
+
+    /// @dev A verified off-chain (Model A) need funded through the payment provider's ledger.
+    function _verifiedOffChainNeed(uint256 target, uint16 thirdPartyCostBps)
+        internal
+        returns (uint256 needId, uint256 programId, NonCustodialLedger ledger)
+    {
+        programId = _createProgram(ngo, 10);
+        INeedsRegistry.CreateNeedParams memory p = _needParams(programId, target, 1, _threeTrancheBps());
+        p.custodyMode = INeedsRegistry.CustodyMode.OffChain;
+        p.thirdPartyCostBps = thirdPartyCostBps;
+        p.costDisclosureHash = thirdPartyCostBps == 0 ? bytes32(0) : COST_DISCLOSURE_HASH;
+        needId = _verifiedNeedWith(p);
+        ledger = NonCustodialLedger(registry.vaultOf(needId));
     }
 
     // ─── attestations ──────────────────────────────────────────────────────────
@@ -333,20 +346,46 @@ abstract contract PoATest is Test, SystemDeployer {
         );
     }
 
-    function _attestFiatDonation(
+    /// @dev A provider vouching for a payment with no fee (gross == net).
+    function _attestFundingRecorded(
         address partner,
         uint256 needId,
         uint256 amount,
         bytes32 paymentRefHash,
         bytes32 donorRefHash
     ) internal returns (bytes32 uid) {
+        return _attestFundingRecorded(partner, needId, amount, 0, paymentRefHash, donorRefHash);
+    }
+
+    function _attestFundingRecorded(
+        address partner,
+        uint256 needId,
+        uint256 net,
+        uint256 fee,
+        bytes32 paymentRefHash,
+        bytes32 donorRefHash
+    ) internal returns (bytes32 uid) {
         uid = _attest(
-            fiatDonationSchema,
+            fundingRecordedSchema,
             partner,
             registry.vaultOf(needId),
             bytes32(0),
             false,
-            abi.encode(needId, amount, paymentRefHash, donorRefHash)
+            abi.encode(needId, net + fee, fee, net, EUR, paymentRefHash, donorRefHash)
+        );
+    }
+
+    function _attestSettlement(address attester, uint256 needId, uint256 trancheIndex, uint256 gross, uint256 fee)
+        internal
+        returns (bytes32 uid)
+    {
+        uid = _attest(
+            settlementSchema,
+            attester,
+            registry.vaultOf(needId),
+            bytes32(0),
+            false,
+            abi.encode(needId, trancheIndex, gross, fee, gross - fee, SUPPLIER_REF, FX_REF)
         );
     }
 
@@ -466,11 +505,11 @@ abstract contract PoATest is Test, SystemDeployer {
         assertEq(uint8(a), uint8(b), err);
     }
 
-    function assertEq(IAidVault.TrancheStatus a, IAidVault.TrancheStatus b) internal pure {
+    function assertEq(ITrancheLedger.TrancheStatus a, ITrancheLedger.TrancheStatus b) internal pure {
         assertEq(uint8(a), uint8(b), "tranche status");
     }
 
-    function assertEq(IAidVault.TrancheStatus a, IAidVault.TrancheStatus b, string memory err) internal pure {
+    function assertEq(ITrancheLedger.TrancheStatus a, ITrancheLedger.TrancheStatus b, string memory err) internal pure {
         assertEq(uint8(a), uint8(b), err);
     }
 

@@ -8,294 +8,193 @@ import {INeedsRegistry} from "../interfaces/INeedsRegistry.sol";
 import {IRoleRegistry} from "../interfaces/IRoleRegistry.sol";
 import {Errors} from "../libraries/Errors.sol";
 import {Roles} from "../libraries/Roles.sol";
+import {TrancheLedger} from "./TrancheLedger.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /// @title AidVault
-/// @notice Escrow for a single need. Holds stablecoin until tranches are unlocked by verified deliveries.
-/// @dev Deployed as minimal-proxy clones by AidVaultFactory. There is intentionally no admin withdrawal path:
-///      funds leave only as tranche releases to the NGO's registered payout address or as pro-rata refunds.
+/// @notice Escrow for a single need (`CustodyMode.OnChain`). Holds stablecoin until tranches are unlocked by
+///         verified deliveries.
+/// @dev There is intentionally no admin withdrawal path: funds leave only as tranche releases to the NGO's
+///      registered payout address or as pro-rata refunds.
 ///      Invariant: token.balanceOf(vault) + totalReleased + totalRefunded == totalDonated.
-contract AidVault is IAidVault, ReentrancyGuard {
+contract AidVault is TrancheLedger, IAidVault {
     using SafeERC20 for IERC20;
 
-    uint16 private constant BPS_DENOMINATOR = 10_000;
+    IERC20 public immutable token;
+    IDonationReceipt public immutable receipt;
 
-    IERC20 public token;
-    /// @inheritdoc IAidVault
-    uint256 public needId;
-    INeedsRegistry public registry;
-    address public deliveryManager;
-    IDonationReceipt public receipt;
-    IRoleRegistry public roles;
-    IAidVaultFactory public factory;
+    /// @dev Shares the flags slot with `_fundingClosed` / `_trancheCount`.
+    uint128 private _totalRefunded;
 
-    /// @inheritdoc IAidVault
-    uint256 public totalDonated;
-    /// @inheritdoc IAidVault
-    uint256 public totalReleased;
-    /// @inheritdoc IAidVault
-    uint256 public totalRefunded;
-    /// @inheritdoc IAidVault
-    bool public fundingClosed;
-
-    /// @notice Tranche plan copied from the need at initialization; amounts are set when funding closes.
-    Tranche[] public tranches;
-
-    /// @notice Direct donations per donor address.
+    /// @notice Unrefunded direct donations per donor address (cleared when the refund is paid).
     mapping(address => uint256) public donatedBy;
-    /// @notice Fiat donations per salted donor reference hash.
+    /// @notice Unrefunded fiat donations per salted donor reference hash (cleared when the refund is paid).
     mapping(bytes32 => uint256) public donatedByRef;
-    /// @notice Fiat payment references already deposited into this vault.
-    mapping(bytes32 => bool) public paymentRefUsed;
-    /// @notice Bank partner that owns a donor reference (only it may claim refunds for that reference).
+    /// @notice Payment provider that owns a donor reference (only it may claim refunds for that reference).
     mapping(bytes32 => address) public refPartner;
-    mapping(address => bool) public refundClaimed;
-    mapping(bytes32 => bool) public refundClaimedByRef;
+    /// @notice paymentRefHash => keccak256(partner, donorRefHash, amount): one slot per deposit, enough for the
+    ///         resolver to check a `FundingRecorded` attestation against what was actually deposited.
+    mapping(bytes32 => bytes32) public fiatDepositDigest;
 
-    mapping(bytes32 => FiatDonationRecord) private _fiatDonations;
-    bool private _initialized;
-
-    /// @dev Locks the implementation contract; clones are initialized by the factory.
-    constructor() {
-        _initialized = true;
-    }
-
-    /// @inheritdoc IAidVault
-    function initialize(uint256 needId_, address token_, address registry_, address deliveryManager_, address receipt_)
-        external
-    {
-        if (_initialized) revert Errors.AlreadyInitialized();
-        if (token_ == address(0) || registry_ == address(0) || deliveryManager_ == address(0) || receipt_ == address(0))
-        {
+    constructor(
+        IRoleRegistry roles_,
+        INeedsRegistry registry_,
+        address deliveryManager_,
+        IAidVaultFactory factory_,
+        IERC20 token_,
+        IDonationReceipt receipt_
+    ) TrancheLedger(roles_, registry_, deliveryManager_, factory_) {
+        if (address(token_) == address(0) || address(receipt_) == address(0)) {
             revert Errors.ZeroAddress();
         }
-        _initialized = true;
-
-        needId = needId_;
-        token = IERC20(token_);
-        registry = INeedsRegistry(registry_);
-        deliveryManager = deliveryManager_;
-        receipt = IDonationReceipt(receipt_);
-        factory = IAidVaultFactory(msg.sender);
-        roles = registry.roles();
-
-        uint16[] memory bps = registry.trancheBpsOf(needId_);
-        for (uint256 i; i < bps.length; ++i) {
-            tranches.push(Tranche({bps: bps[i], amount: 0, status: TrancheStatus.Locked, deliveryId: 0}));
-        }
+        token = token_;
+        receipt = receipt_;
     }
 
     // ─── donations ─────────────────────────────────────────────────────────────
 
     /// @inheritdoc IAidVault
-    function donate(uint256 amount) external nonReentrant returns (uint256 receiptId) {
+    function donate(uint256 amount) external nonReentrant onlyClone returns (uint256 receiptId) {
         _requireNotPaused();
-        uint256 target = _checkDonation(amount);
+        uint256 id = needId();
+        uint256 target = _checkFunding(id, amount);
 
-        totalDonated += amount;
+        _totalDonated += uint128(amount);
         donatedBy[msg.sender] += amount;
 
         token.safeTransferFrom(msg.sender, address(this), amount);
-        receiptId = receipt.mint(msg.sender, needId, amount);
-        emit Donated(needId, msg.sender, amount, receiptId);
+        receiptId = receipt.mint(msg.sender, id, amount);
+        emit Donated(id, msg.sender, amount, receiptId);
 
-        if (totalDonated == target) _closeFunding();
+        if (_totalDonated == target) _closeFunding(id);
     }
 
     /// @inheritdoc IAidVault
     /// @dev No receipt NFT is minted for fiat donations: the donor is represented only by `donorRefHash`.
-    function donateOnBehalf(uint256 amount, bytes32 donorRefHash, bytes32 paymentRefHash) external nonReentrant {
+    function donateOnBehalf(uint256 amount, bytes32 donorRefHash, bytes32 paymentRefHash)
+        external
+        nonReentrant
+        onlyClone
+    {
         _requireNotPaused();
         if (!roles.hasRole(Roles.BANK_PARTNER_ROLE, msg.sender)) revert Errors.Unauthorized();
         if (donorRefHash == bytes32(0) || paymentRefHash == bytes32(0)) revert Errors.InvalidParameter();
-        if (paymentRefUsed[paymentRefHash]) revert Errors.PaymentRefAlreadyUsed();
         address owner = refPartner[donorRefHash];
         if (owner != address(0) && owner != msg.sender) revert Errors.DonorRefPartnerMismatch();
-        uint256 target = _checkDonation(amount);
+        uint256 id = needId();
+        uint256 target = _checkFunding(id, amount);
 
-        totalDonated += amount;
+        _totalDonated += uint128(amount);
         donatedByRef[donorRefHash] += amount;
-        paymentRefUsed[paymentRefHash] = true;
-        refPartner[donorRefHash] = msg.sender;
-        _fiatDonations[paymentRefHash] = FiatDonationRecord({
-            partner: msg.sender, donorRefHash: donorRefHash, amount: amount, timestamp: uint64(block.timestamp)
-        });
+        if (owner == address(0)) refPartner[donorRefHash] = msg.sender;
+        fiatDepositDigest[paymentRefHash] = _digest(msg.sender, donorRefHash, amount);
 
-        factory.consumePaymentRef(paymentRefHash);
+        factory.consumePaymentRef(paymentRefHash); // reverts if any ledger already used this reference
         token.safeTransferFrom(msg.sender, address(this), amount);
-        emit DonatedOnBehalf(needId, msg.sender, amount, donorRefHash, paymentRefHash);
+        emit DonatedOnBehalf(id, msg.sender, amount, donorRefHash, paymentRefHash);
 
-        if (totalDonated == target) _closeFunding();
-    }
-
-    /// @inheritdoc IAidVault
-    function closeFunding() external nonReentrant {
-        _requireNotPaused();
-        if (msg.sender != registry.ngoOf(needId)) revert Errors.Unauthorized();
-        if (fundingClosed || registry.statusOf(needId) != INeedsRegistry.NeedStatus.Funding) {
-            revert Errors.FundingNotOpen();
-        }
-        if (totalDonated == 0) revert Errors.NothingDonated();
-        _closeFunding();
+        if (_totalDonated == target) _closeFunding(id);
     }
 
     // ─── tranches ──────────────────────────────────────────────────────────────
 
     /// @inheritdoc IAidVault
-    function markReleasable(uint256 index, uint256 deliveryId) external {
-        if (msg.sender != deliveryManager) revert Errors.Unauthorized();
-        if (index == 0 || index >= tranches.length) revert Errors.InvalidTrancheIndex();
-        if (registry.statusOf(needId) != INeedsRegistry.NeedStatus.InDelivery) revert Errors.InvalidNeedStatus();
-        Tranche storage t = tranches[index];
-        if (t.status != TrancheStatus.Locked) revert Errors.InvalidTrancheStatus();
-        if (tranches[index - 1].status != TrancheStatus.Released) revert Errors.PreviousTrancheNotReleased();
-
-        t.status = TrancheStatus.Releasable;
-        t.deliveryId = deliveryId;
-        emit TrancheReleasable(needId, index, deliveryId);
-    }
-
-    /// @inheritdoc IAidVault
-    function releaseTranche(uint256 index) external nonReentrant {
+    function releaseTranche(uint256 index) external nonReentrant onlyClone {
         _requireNotPaused();
-        if (index >= tranches.length) revert Errors.InvalidTrancheIndex();
-        Tranche storage t = tranches[index];
-        if (t.status != TrancheStatus.Releasable) revert Errors.InvalidTrancheStatus();
-        INeedsRegistry.NeedStatus s = registry.statusOf(needId);
-        if (s != INeedsRegistry.NeedStatus.Funded && s != INeedsRegistry.NeedStatus.InDelivery) {
-            revert Errors.InvalidNeedStatus();
-        }
-        address ngo = registry.ngoOf(needId);
-        if (!roles.isActiveNgo(ngo)) revert Errors.NgoInactive();
-        address payout = roles.payoutOf(ngo);
-
-        uint256 amount = t.amount;
-        t.status = TrancheStatus.Released;
-        totalReleased += amount;
-
-        // Tranche 0 (pre-financing) starts the delivery phase; the final tranche completes the need.
-        if (index == 0) registry.setStatus(needId, INeedsRegistry.NeedStatus.InDelivery);
-        if (index == tranches.length - 1) registry.setStatus(needId, INeedsRegistry.NeedStatus.Completed);
-
+        uint256 id = needId();
+        (uint256 amount, address payout) = _release(id, index);
         token.safeTransfer(payout, amount);
-        emit TrancheReleased(needId, index, amount, payout);
+        emit TrancheReleased(id, index, amount, payout);
     }
 
     // ─── refunds ───────────────────────────────────────────────────────────────
 
     /// @inheritdoc IAidVault
-    function claimRefund() external nonReentrant returns (uint256 amount) {
+    function claimRefund() external nonReentrant onlyClone returns (uint256 amount) {
         _requireNotPaused();
-        _requireCancelled();
+        uint256 id = needId();
+        _requireRefundable(id);
         uint256 donated = donatedBy[msg.sender];
         if (donated == 0) revert Errors.NothingToRefund();
-        if (refundClaimed[msg.sender]) revert Errors.RefundAlreadyClaimed();
 
         amount = _refundAmount(donated);
-        refundClaimed[msg.sender] = true;
-        totalRefunded += amount;
+        delete donatedBy[msg.sender];
+        _totalRefunded += uint128(amount);
 
         token.safeTransfer(msg.sender, amount);
-        emit Refunded(needId, msg.sender, amount);
+        emit Refunded(id, msg.sender, amount);
     }
 
     /// @inheritdoc IAidVault
     /// @dev Authorization is ownership of the reference, deliberately *not* a live BANK_PARTNER_ROLE check:
     ///      the partner that deposited the money must still be able to return it to its donor after the admin
     ///      de-registers it, otherwise revoking a partner's role would strand its donors' refunds forever.
-    function claimRefundByRef(bytes32 donorRefHash, address to) external nonReentrant returns (uint256 amount) {
+    function claimRefundByRef(bytes32 donorRefHash, address to)
+        external
+        nonReentrant
+        onlyClone
+        returns (uint256 amount)
+    {
         _requireNotPaused();
         if (refPartner[donorRefHash] != msg.sender) revert Errors.Unauthorized();
         // Refunding into the vault itself would inflate totalRefunded without moving tokens, breaking the
         // balance + released + refunded == donated identity and stranding the amount.
         if (to == address(0) || to == address(this)) revert Errors.ZeroAddress();
-        _requireCancelled();
+        uint256 id = needId();
+        _requireRefundable(id);
         uint256 donated = donatedByRef[donorRefHash];
         if (donated == 0) revert Errors.NothingToRefund();
-        if (refundClaimedByRef[donorRefHash]) revert Errors.RefundAlreadyClaimed();
 
         amount = _refundAmount(donated);
-        refundClaimedByRef[donorRefHash] = true;
-        totalRefunded += amount;
+        delete donatedByRef[donorRefHash];
+        _totalRefunded += uint128(amount);
 
         token.safeTransfer(to, amount);
-        emit RefundedByRef(needId, donorRefHash, to, amount);
+        emit RefundedByRef(id, donorRefHash, to, amount);
     }
 
     // ─── views ─────────────────────────────────────────────────────────────────
 
     /// @inheritdoc IAidVault
-    function trancheCount() external view returns (uint256) {
-        return tranches.length;
+    function totalRefunded() external view returns (uint256) {
+        return _totalRefunded;
     }
 
     /// @inheritdoc IAidVault
-    function trancheStatus(uint256 index) external view returns (TrancheStatus) {
-        if (index >= tranches.length) revert Errors.InvalidTrancheIndex();
-        return tranches[index].status;
+    function fiatDepositMatches(bytes32 paymentRefHash, address partner, bytes32 donorRefHash, uint256 amount)
+        external
+        view
+        returns (bool)
+    {
+        bytes32 digest = fiatDepositDigest[paymentRefHash];
+        return digest != bytes32(0) && digest == _digest(partner, donorRefHash, amount);
     }
 
-    /// @inheritdoc IAidVault
-    function getTranches() external view returns (Tranche[] memory) {
-        return tranches;
-    }
-
-    /// @inheritdoc IAidVault
-    function fiatDonation(bytes32 paymentRefHash) external view returns (FiatDonationRecord memory) {
-        return _fiatDonations[paymentRefHash];
-    }
-
-    /// @notice Refund a direct donor could claim right now (0 unless the need is cancelled and unclaimed).
+    /// @notice Refund a direct donor could claim right now (0 unless the need is cancelled or expired).
     function refundableAmount(address donor) external view returns (uint256) {
-        if (registry.statusOf(needId) != INeedsRegistry.NeedStatus.Cancelled || refundClaimed[donor]) return 0;
+        if (!_isRefundable(registry.statusOf(needId()))) return 0;
         uint256 donated = donatedBy[donor];
         return donated == 0 ? 0 : _refundAmount(donated);
     }
 
     // ─── internal ──────────────────────────────────────────────────────────────
 
-    function _checkDonation(uint256 amount) internal view returns (uint256 target) {
-        if (amount == 0) revert Errors.ZeroAmount();
-        if (fundingClosed || registry.statusOf(needId) != INeedsRegistry.NeedStatus.Funding) {
-            revert Errors.FundingNotOpen();
-        }
-        // A suspended NGO cannot receive a release, so accepting more money would only trap it in escrow.
-        if (!roles.isActiveNgo(registry.ngoOf(needId))) revert Errors.NgoInactive();
-        target = registry.targetAmountOf(needId);
-        if (totalDonated + amount > target) revert Errors.ExceedsTarget();
-    }
-
-    /// @dev Splits `totalDonated` by basis points (rounding dust goes to the last tranche) and unlocks tranche 0.
-    function _closeFunding() internal {
-        fundingClosed = true;
-        uint256 len = tranches.length;
-        uint256 allocated;
-        for (uint256 i; i < len; ++i) {
-            Tranche storage t = tranches[i];
-            uint256 amount = i == len - 1 ? totalDonated - allocated : (totalDonated * t.bps) / BPS_DENOMINATOR;
-            t.amount = amount;
-            allocated += amount;
-        }
-        tranches[0].status = TrancheStatus.Releasable;
-
-        emit FundingClosed(needId, totalDonated);
-        registry.setStatus(needId, INeedsRegistry.NeedStatus.Funded);
-        emit TrancheReleasable(needId, 0, 0);
-    }
-
     function _refundAmount(uint256 donated) internal view returns (uint256) {
-        // totalDonated and totalReleased are frozen once a need is cancelled, so the pro-rata shares sum to at
-        // most the unreleased balance (floor rounding leaves at most a few base units of dust in the vault).
-        return (donated * (totalDonated - totalReleased)) / totalDonated;
+        // totalDonated and totalReleased are frozen once a need is cancelled or expired, so the pro-rata shares sum
+        // to at most the unreleased balance (floor rounding leaves at most a few base units of dust in the vault).
+        return (donated * (uint256(_totalDonated) - _totalReleased)) / _totalDonated;
     }
 
-    function _requireCancelled() internal view {
-        if (registry.statusOf(needId) != INeedsRegistry.NeedStatus.Cancelled) revert Errors.NotCancelled();
+    function _requireRefundable(uint256 id) internal view {
+        if (!_isRefundable(registry.statusOf(id))) revert Errors.NotRefundable();
     }
 
-    function _requireNotPaused() internal view {
-        if (roles.paused()) revert Errors.SystemPaused();
+    function _isRefundable(INeedsRegistry.NeedStatus s) internal pure returns (bool) {
+        return s == INeedsRegistry.NeedStatus.Cancelled || s == INeedsRegistry.NeedStatus.Expired;
+    }
+
+    function _digest(address partner, bytes32 donorRefHash, uint256 amount) internal pure returns (bytes32) {
+        return keccak256(abi.encode(partner, donorRefHash, amount));
     }
 }

@@ -2,11 +2,11 @@
 pragma solidity ^0.8.24;
 
 import {RoleAware} from "../access/RoleAware.sol";
-import {IAidVault} from "../interfaces/IAidVault.sol";
 import {IBeneficiaryGroups} from "../interfaces/IBeneficiaryGroups.sol";
 import {IDeliveryManager} from "../interfaces/IDeliveryManager.sol";
 import {INeedsRegistry} from "../interfaces/INeedsRegistry.sol";
 import {IRoleRegistry} from "../interfaces/IRoleRegistry.sol";
+import {ITrancheLedger} from "../interfaces/ITrancheLedger.sol";
 import {Errors} from "../libraries/Errors.sol";
 import {ISemaphore} from "@semaphore-protocol/contracts/interfaces/ISemaphore.sol";
 
@@ -15,7 +15,7 @@ import {ISemaphore} from "@semaphore-protocol/contracts/interfaces/ISemaphore.so
 ///         (1) field evidence attested by the NGO's field agent,
 ///         (2) anonymous Semaphore receipt confirmations from enrolled beneficiaries,
 ///         (3) an approving attestation from a verifier independent of the NGO,
-///         followed by a challenge window.
+///         followed by a challenge window. Works identically for custodial and non-custodial needs.
 contract DeliveryManager is IDeliveryManager, RoleAware {
     uint16 public constant BPS_DENOMINATOR = 10_000;
 
@@ -36,8 +36,7 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
     /// @notice Minimum `expectedRecipients` per delivery, so small counts cannot de-anonymize beneficiaries.
     uint32 public immutable minExpectedRecipients;
 
-    address public evidenceResolver;
-    address public verifiedResolver;
+    address public resolver;
     bool public wired;
 
     /// @inheritdoc IDeliveryManager
@@ -54,7 +53,26 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
     ///      reject every retry of a tranche forever — a cheaper veto than the rate-limited challenge path.
     mapping(uint256 => mapping(uint256 => mapping(address => bool))) public hasRejectedTranche;
 
-    mapping(uint256 => Delivery) private _deliveries;
+    /// @dev Packed into five slots. `programId` is cached at open so confirmations never ask the registry for it.
+    struct DeliveryRecord {
+        // slot 0
+        address fieldAgent;
+        uint32 expectedRecipients;
+        uint32 confirmations;
+        uint8 trancheIndex;
+        DeliveryStatus status;
+        // slot 1
+        address verifier;
+        uint40 challengeDeadline;
+        // slot 2
+        uint128 needId;
+        uint128 programId;
+        // slots 3-4
+        bytes32 evidenceAttestationUID;
+        bytes32 verifierAttestationUID;
+    }
+
+    mapping(uint256 => DeliveryRecord) private _deliveries;
 
     constructor(
         IRoleRegistry roles_,
@@ -71,6 +89,7 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
             revert Errors.InvalidParameter();
         }
         if (minExpectedRecipients_ < ABSOLUTE_MIN_RECIPIENTS) revert Errors.InvalidParameter();
+        if (challengePeriod_ > type(uint32).max) revert Errors.InvalidParameter();
         registry = registry_;
         beneficiaryGroups = beneficiaryGroups_;
         confirmationThresholdBps = confirmationThresholdBps_;
@@ -78,14 +97,13 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
         minExpectedRecipients = minExpectedRecipients_;
     }
 
-    /// @notice One-time wiring of the attestation resolvers. Admin only.
-    function wire(address evidenceResolver_, address verifiedResolver_) external onlyAdmin {
+    /// @notice One-time wiring of the attestation resolver. Admin only.
+    function wire(address resolver_) external onlyAdmin {
         if (wired) revert Errors.AlreadyWired();
-        if (evidenceResolver_ == address(0) || verifiedResolver_ == address(0)) revert Errors.ZeroAddress();
+        if (resolver_ == address(0)) revert Errors.ZeroAddress();
         wired = true;
-        evidenceResolver = evidenceResolver_;
-        verifiedResolver = verifiedResolver_;
-        emit Wired(evidenceResolver_, verifiedResolver_);
+        resolver = resolver_;
+        emit Wired(resolver_);
     }
 
     // ─── field agent ───────────────────────────────────────────────────────────
@@ -97,35 +115,35 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
         returns (uint256 deliveryId)
     {
         if (!wired) revert Errors.NotWired();
-        address ngo = registry.ngoOf(needId);
+        (address ngo, address vault, uint256 programId, INeedsRegistry.NeedStatus status) = registry.coreOf(needId);
         if (!roles.isFieldAgentOf(msg.sender, ngo)) revert Errors.Unauthorized();
         if (!roles.isActiveNgo(ngo)) revert Errors.NgoInactive();
-        _requireInDelivery(needId);
+        if (status != INeedsRegistry.NeedStatus.InDelivery) revert Errors.InvalidNeedStatus();
 
-        IAidVault vault = IAidVault(registry.vaultOf(needId));
-        if (trancheIndex == 0 || trancheIndex >= vault.trancheCount()) revert Errors.InvalidTrancheIndex();
-        if (vault.trancheStatus(trancheIndex - 1) != IAidVault.TrancheStatus.Released) {
+        ITrancheLedger ledger = ITrancheLedger(vault);
+        if (trancheIndex == 0 || trancheIndex >= ledger.trancheCount()) revert Errors.InvalidTrancheIndex();
+        if (ledger.trancheStatus(trancheIndex - 1) != ITrancheLedger.TrancheStatus.Released) {
             revert Errors.PreviousTrancheNotReleased();
         }
-        if (vault.trancheStatus(trancheIndex) != IAidVault.TrancheStatus.Locked) revert Errors.InvalidTrancheStatus();
+        if (ledger.trancheStatus(trancheIndex) != ITrancheLedger.TrancheStatus.Locked) {
+            revert Errors.InvalidTrancheStatus();
+        }
 
         uint256 current = activeDeliveryOf[needId][trancheIndex];
         if (current != 0 && _deliveries[current].status != DeliveryStatus.Rejected) {
             revert Errors.DeliveryAlreadyActive();
         }
         if (expectedRecipients < minExpectedRecipients) revert Errors.TooFewRecipients();
-        if (expectedRecipients > beneficiaryGroups.memberCount(registry.programOf(needId))) {
-            revert Errors.TooManyRecipients();
-        }
+        if (expectedRecipients > beneficiaryGroups.memberCount(programId)) revert Errors.TooManyRecipients();
 
         deliveryId = ++deliveryCount;
-        Delivery storage d = _deliveries[deliveryId];
-        d.id = deliveryId;
-        d.needId = needId;
-        d.trancheIndex = trancheIndex;
+        DeliveryRecord storage d = _deliveries[deliveryId];
         d.fieldAgent = msg.sender;
         d.expectedRecipients = expectedRecipients;
-        d.status = DeliveryStatus.Open;
+        d.trancheIndex = uint8(trancheIndex); // < MAX_TRANCHES
+        d.needId = uint128(needId);
+        d.programId = uint128(programId);
+        // status is Open (the zero value)
         activeDeliveryOf[needId][trancheIndex] = deliveryId;
 
         emit DeliveryOpened(deliveryId, needId, trancheIndex, msg.sender, expectedRecipients);
@@ -133,9 +151,9 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
 
     /// @inheritdoc IDeliveryManager
     function onEvidenceAttested(uint256 deliveryId, bytes32 uid) external whenNotPaused {
-        if (msg.sender != evidenceResolver || msg.sender == address(0)) revert Errors.Unauthorized();
+        if (msg.sender != resolver || msg.sender == address(0)) revert Errors.Unauthorized();
         if (uid == bytes32(0)) revert Errors.InvalidParameter();
-        Delivery storage d = _delivery(deliveryId);
+        DeliveryRecord storage d = _delivery(deliveryId);
         if (d.status != DeliveryStatus.Open) revert Errors.InvalidDeliveryStatus();
         if (d.evidenceAttestationUID != bytes32(0)) revert Errors.EvidenceAlreadyLinked();
         _requireInDelivery(d.needId);
@@ -149,20 +167,27 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
     /// @inheritdoc IDeliveryManager
     /// @dev Stores and emits only the nullifier and the running count — never anything identifying the member.
     function confirmReceipt(uint256 deliveryId, ISemaphore.SemaphoreProof calldata proof) external whenNotPaused {
-        Delivery storage d = _delivery(deliveryId);
-        if (d.status != DeliveryStatus.Open) revert Errors.InvalidDeliveryStatus();
-        if (d.evidenceAttestationUID == bytes32(0)) revert Errors.EvidenceMissing();
-        if (proof.scope != deliveryId) revert Errors.InvalidScope();
-        if (proof.message != AID_RECEIVED_MESSAGE) revert Errors.InvalidMessage();
-        if (d.confirmations >= d.expectedRecipients) revert Errors.TooManyConfirmations();
-        _requireInDelivery(d.needId);
+        DeliveryRecord storage d = _confirmable(deliveryId, 1);
+        uint32 count = ++d.confirmations; // effects before the proof check's external call
+        _validate(deliveryId, d.programId, proof, count);
+        _tryAdvance(deliveryId, d);
+    }
 
-        uint32 count = ++d.confirmations;
-        // Semaphore reverts on invalid proofs and on nullifiers already used in this group.
-        beneficiaryGroups.validateProof(registry.programOf(d.needId), proof);
-        emit ReceiptConfirmed(deliveryId, proof.nullifier, count);
-
-        _tryAdvance(d);
+    /// @inheritdoc IDeliveryManager
+    function confirmReceiptBatch(uint256 deliveryId, ISemaphore.SemaphoreProof[] calldata proofs)
+        external
+        whenNotPaused
+    {
+        uint256 len = proofs.length;
+        if (len == 0) revert Errors.InvalidParameter();
+        DeliveryRecord storage d = _confirmable(deliveryId, len);
+        uint256 programId = d.programId;
+        uint32 count = d.confirmations;
+        d.confirmations = count + uint32(len); // bounded by expectedRecipients in _confirmable
+        for (uint256 i; i < len; ++i) {
+            _validate(deliveryId, programId, proofs[i], ++count);
+        }
+        _tryAdvance(deliveryId, d);
     }
 
     // ─── verifiers ─────────────────────────────────────────────────────────────
@@ -172,14 +197,14 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
         external
         whenNotPaused
     {
-        if (msg.sender != verifiedResolver || msg.sender == address(0)) revert Errors.Unauthorized();
+        if (msg.sender != resolver || msg.sender == address(0)) revert Errors.Unauthorized();
         if (uid == bytes32(0)) revert Errors.InvalidParameter();
-        Delivery storage d = _delivery(deliveryId);
+        DeliveryRecord storage d = _delivery(deliveryId);
         if (d.status != DeliveryStatus.Open) revert Errors.InvalidDeliveryStatus();
         if (d.evidenceAttestationUID == bytes32(0)) revert Errors.EvidenceMissing();
         if (d.verifierAttestationUID != bytes32(0)) revert Errors.VerificationAlreadyLinked();
-        _requireInDelivery(d.needId);
-        if (!roles.isIndependent(verifier, registry.ngoOf(d.needId))) revert Errors.NotIndependent();
+        address ngo = _requireInDelivery(d.needId);
+        if (!roles.isIndependent(verifier, ngo)) revert Errors.NotIndependent();
 
         // One rejection per verifier per tranche: a rejection is immediate and terminal, so an unbounded veto
         // would let any independent verifier stall an NGO's tranche indefinitely by rejecting every retry.
@@ -192,14 +217,14 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
         d.verifier = verifier;
         emit DeliveryVerifiedLinked(deliveryId, uid, verifier, approved);
 
-        if (approved) _tryAdvance(d);
-        else _reject(d);
+        if (approved) _tryAdvance(deliveryId, d);
+        else _reject(deliveryId, d);
     }
 
     /// @inheritdoc IDeliveryManager
     /// @dev Deliberately not pausable: challenging only ever makes the system safer.
     function challenge(uint256 deliveryId, bytes32 reasonHash) external {
-        Delivery storage d = _delivery(deliveryId);
+        DeliveryRecord storage d = _delivery(deliveryId);
         if (!roles.isIndependent(msg.sender, registry.ngoOf(d.needId))) revert Errors.NotIndependent();
         if (d.status != DeliveryStatus.Challengeable) revert Errors.InvalidDeliveryStatus();
         if (block.timestamp >= d.challengeDeadline) revert Errors.ChallengePeriodOver();
@@ -220,73 +245,108 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
     ///      `Open`: an NGO could otherwise cancel deliveries whose confirmations are lagging and reopen them
     ///      with a smaller `expectedRecipients` to game the threshold.
     function cancelDelivery(uint256 deliveryId) external onlyAdmin {
-        Delivery storage d = _delivery(deliveryId);
+        DeliveryRecord storage d = _delivery(deliveryId);
         if (d.status != DeliveryStatus.Open) revert Errors.InvalidDeliveryStatus();
         emit DeliveryCancelled(deliveryId, msg.sender);
-        _reject(d);
+        _reject(deliveryId, d);
     }
 
     /// @inheritdoc IDeliveryManager
     function resolveDispute(uint256 deliveryId, bool uphold) external onlyAdmin {
-        Delivery storage d = _delivery(deliveryId);
+        DeliveryRecord storage d = _delivery(deliveryId);
         if (d.status != DeliveryStatus.Disputed) revert Errors.InvalidDeliveryStatus();
         emit DisputeResolved(deliveryId, uphold);
-        if (uphold) _reject(d);
-        else _startChallengePeriod(d);
+        if (uphold) _reject(deliveryId, d);
+        else _startChallengePeriod(deliveryId, d);
     }
 
     // ─── anyone ────────────────────────────────────────────────────────────────
 
     /// @inheritdoc IDeliveryManager
     function finalize(uint256 deliveryId) external whenNotPaused {
-        Delivery storage d = _delivery(deliveryId);
+        DeliveryRecord storage d = _delivery(deliveryId);
         if (d.status != DeliveryStatus.Challengeable) revert Errors.InvalidDeliveryStatus();
         if (block.timestamp < d.challengeDeadline) revert Errors.ChallengePeriodActive();
-        _requireInDelivery(d.needId);
+        uint256 needId = d.needId;
+        (, address vault,, INeedsRegistry.NeedStatus status) = registry.coreOf(needId);
+        if (status != INeedsRegistry.NeedStatus.InDelivery) revert Errors.InvalidNeedStatus();
 
         d.status = DeliveryStatus.Finalized;
-        lastFinalizedDeliveryOf[d.needId] = deliveryId;
-        emit DeliveryFinalized(deliveryId, d.needId, d.trancheIndex);
+        lastFinalizedDeliveryOf[needId] = deliveryId;
+        emit DeliveryFinalized(deliveryId, needId, d.trancheIndex);
 
-        IAidVault(registry.vaultOf(d.needId)).markReleasable(d.trancheIndex, deliveryId);
+        ITrancheLedger(vault).markReleasable(d.trancheIndex, deliveryId);
     }
 
     // ─── views ─────────────────────────────────────────────────────────────────
 
     /// @inheritdoc IDeliveryManager
     function getDelivery(uint256 deliveryId) external view returns (Delivery memory) {
-        return _delivery(deliveryId);
+        DeliveryRecord storage d = _delivery(deliveryId);
+        return Delivery({
+            id: deliveryId,
+            needId: d.needId,
+            trancheIndex: d.trancheIndex,
+            fieldAgent: d.fieldAgent,
+            expectedRecipients: d.expectedRecipients,
+            confirmations: d.confirmations,
+            evidenceAttestationUID: d.evidenceAttestationUID,
+            verifierAttestationUID: d.verifierAttestationUID,
+            verifier: d.verifier,
+            challengeDeadline: d.challengeDeadline,
+            status: d.status
+        });
     }
 
     /// @notice Confirmations still needed before the delivery can become challengeable (0 when reached).
     function confirmationsNeeded(uint256 deliveryId) external view returns (uint256) {
-        Delivery storage d = _delivery(deliveryId);
+        DeliveryRecord storage d = _delivery(deliveryId);
         uint256 required = _requiredConfirmations(d.expectedRecipients);
         return d.confirmations >= required ? 0 : required - d.confirmations;
     }
 
     // ─── internal ──────────────────────────────────────────────────────────────
 
+    /// @dev Checks that `count` more confirmations may be submitted right now.
+    function _confirmable(uint256 deliveryId, uint256 count) internal view returns (DeliveryRecord storage d) {
+        d = _delivery(deliveryId);
+        if (d.status != DeliveryStatus.Open) revert Errors.InvalidDeliveryStatus();
+        if (d.evidenceAttestationUID == bytes32(0)) revert Errors.EvidenceMissing();
+        if (uint256(d.confirmations) + count > d.expectedRecipients) revert Errors.TooManyConfirmations();
+        _requireInDelivery(d.needId);
+    }
+
+    /// @dev Scope and message are checked here; Semaphore reverts on invalid proofs and reused nullifiers.
+    function _validate(uint256 deliveryId, uint256 programId, ISemaphore.SemaphoreProof calldata proof, uint32 count)
+        internal
+    {
+        if (proof.scope != deliveryId) revert Errors.InvalidScope();
+        if (proof.message != AID_RECEIVED_MESSAGE) revert Errors.InvalidMessage();
+        beneficiaryGroups.validateProof(programId, proof);
+        emit ReceiptConfirmed(deliveryId, proof.nullifier, count);
+    }
+
     /// @dev Moves an Open delivery to Challengeable once evidence, confirmations and an independent approval exist.
-    function _tryAdvance(Delivery storage d) internal {
+    function _tryAdvance(uint256 deliveryId, DeliveryRecord storage d) internal {
         if (d.status != DeliveryStatus.Open) return;
         if (d.evidenceAttestationUID == bytes32(0) || d.verifierAttestationUID == bytes32(0)) return;
         if (uint256(d.confirmations) * BPS_DENOMINATOR < uint256(d.expectedRecipients) * confirmationThresholdBps) {
             return;
         }
         if (!roles.isIndependent(d.verifier, registry.ngoOf(d.needId))) return;
-        _startChallengePeriod(d);
+        _startChallengePeriod(deliveryId, d);
     }
 
-    function _startChallengePeriod(Delivery storage d) internal {
+    function _startChallengePeriod(uint256 deliveryId, DeliveryRecord storage d) internal {
         d.status = DeliveryStatus.Challengeable;
-        d.challengeDeadline = uint64(block.timestamp) + challengePeriod;
-        emit DeliveryChallengeable(d.id, d.challengeDeadline);
+        uint40 deadline = uint40(block.timestamp + challengePeriod);
+        d.challengeDeadline = deadline;
+        emit DeliveryChallengeable(deliveryId, deadline);
     }
 
-    function _reject(Delivery storage d) internal {
+    function _reject(uint256 deliveryId, DeliveryRecord storage d) internal {
         d.status = DeliveryStatus.Rejected;
-        emit DeliveryRejected(d.id, d.needId, d.trancheIndex);
+        emit DeliveryRejected(deliveryId, d.needId, d.trancheIndex);
     }
 
     function _requiredConfirmations(uint32 expectedRecipients) internal view returns (uint256) {
@@ -294,12 +354,15 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
         return (numerator + BPS_DENOMINATOR - 1) / BPS_DENOMINATOR; // ceil
     }
 
-    function _requireInDelivery(uint256 needId) internal view {
-        if (registry.statusOf(needId) != INeedsRegistry.NeedStatus.InDelivery) revert Errors.InvalidNeedStatus();
+    /// @dev Reverts unless the need is in delivery; returns its NGO.
+    function _requireInDelivery(uint256 needId) internal view returns (address ngo) {
+        INeedsRegistry.NeedStatus status;
+        (ngo,,, status) = registry.coreOf(needId);
+        if (status != INeedsRegistry.NeedStatus.InDelivery) revert Errors.InvalidNeedStatus();
     }
 
-    function _delivery(uint256 deliveryId) internal view returns (Delivery storage d) {
+    function _delivery(uint256 deliveryId) internal view returns (DeliveryRecord storage d) {
         d = _deliveries[deliveryId];
-        if (d.id == 0) revert Errors.DeliveryNotFound();
+        if (d.fieldAgent == address(0)) revert Errors.DeliveryNotFound();
     }
 }

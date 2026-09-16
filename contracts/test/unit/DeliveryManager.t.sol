@@ -8,6 +8,7 @@ import {IBeneficiaryGroups} from "../../src/interfaces/IBeneficiaryGroups.sol";
 import {IDeliveryManager} from "../../src/interfaces/IDeliveryManager.sol";
 import {INeedsRegistry} from "../../src/interfaces/INeedsRegistry.sol";
 import {IRoleRegistry} from "../../src/interfaces/IRoleRegistry.sol";
+import {ITrancheLedger} from "../../src/interfaces/ITrancheLedger.sol";
 import {Errors} from "../../src/libraries/Errors.sol";
 import {PoATest} from "../utils/PoATest.sol";
 import {
@@ -67,21 +68,21 @@ contract DeliveryManagerTest is PoATest {
 
         vm.prank(outsider);
         vm.expectRevert(Errors.Unauthorized.selector);
-        fresh.wire(address(evidenceResolver), address(deliveryVerifiedResolver));
+        fresh.wire(address(resolver));
 
         vm.prank(admin);
         vm.expectRevert(Errors.ZeroAddress.selector);
-        fresh.wire(address(0), address(deliveryVerifiedResolver));
+        fresh.wire(address(0));
 
         vm.prank(fieldAgent);
         vm.expectRevert(Errors.NotWired.selector);
         fresh.openDelivery(needId, 1, EXPECTED);
 
         vm.prank(admin);
-        fresh.wire(address(evidenceResolver), address(deliveryVerifiedResolver));
+        fresh.wire(address(resolver));
         vm.prank(admin);
         vm.expectRevert(Errors.AlreadyWired.selector);
-        fresh.wire(address(evidenceResolver), address(deliveryVerifiedResolver));
+        fresh.wire(address(resolver));
     }
 
     // ─── openDelivery ──────────────────────────────────────────────────────────
@@ -185,7 +186,7 @@ contract DeliveryManagerTest is PoATest {
 
     function test_onEvidenceAttested_validates() public {
         uint256 deliveryId = _open();
-        vm.startPrank(address(evidenceResolver));
+        vm.startPrank(address(resolver));
 
         vm.expectRevert(Errors.InvalidParameter.selector);
         deliveryManager.onEvidenceAttested(deliveryId, bytes32(0));
@@ -285,6 +286,84 @@ contract DeliveryManagerTest is PoATest {
         vm.prank(relayer);
         vm.expectRevert(Errors.SystemPaused.selector);
         deliveryManager.confirmReceipt(deliveryId, _proof(deliveryId, 0));
+    }
+
+    // ─── batched confirmations ─────────────────────────────────────────────────
+
+    function _proofs(uint256 deliveryId, uint256 from, uint256 count)
+        internal
+        pure
+        returns (ISemaphore.SemaphoreProof[] memory proofs)
+    {
+        proofs = new ISemaphore.SemaphoreProof[](count);
+        for (uint256 i; i < count; ++i) {
+            proofs[i] = _proof(deliveryId, from + i);
+        }
+    }
+
+    function test_confirmReceiptBatch_countsEveryProofAndAdvances() public {
+        uint256 deliveryId = _open();
+        _attestEvidence(fieldAgent, deliveryId);
+        _attestDeliveryVerified(verifier2, deliveryId, true);
+
+        ISemaphore.SemaphoreProof[] memory proofs = _proofs(deliveryId, 0, 7);
+        vm.expectEmit(true, false, false, true, address(deliveryManager));
+        emit IDeliveryManager.ReceiptConfirmed(deliveryId, proofs[6].nullifier, 7);
+        vm.prank(relayer);
+        deliveryManager.confirmReceiptBatch(deliveryId, proofs);
+
+        IDeliveryManager.Delivery memory d = deliveryManager.getDelivery(deliveryId);
+        assertEq(d.confirmations, 7);
+        assertEq(d.status, IDeliveryManager.DeliveryStatus.Challengeable, "threshold reached in one transaction");
+    }
+
+    function test_confirmReceiptBatch_isAllOrNothing() public {
+        uint256 deliveryId = _open();
+        _attestEvidence(fieldAgent, deliveryId);
+
+        ISemaphore.SemaphoreProof[] memory proofs = _proofs(deliveryId, 0, 3);
+        proofs[2].scope = deliveryId + 1;
+        vm.prank(relayer);
+        vm.expectRevert(Errors.InvalidScope.selector);
+        deliveryManager.confirmReceiptBatch(deliveryId, proofs);
+
+        // a nullifier repeated inside the batch is caught by Semaphore
+        proofs = _proofs(deliveryId, 0, 2);
+        proofs[1] = proofs[0];
+        vm.prank(relayer);
+        vm.expectRevert(ISemaphore.Semaphore__YouAreUsingTheSameNullifierTwice.selector);
+        deliveryManager.confirmReceiptBatch(deliveryId, proofs);
+
+        assertEq(deliveryManager.getDelivery(deliveryId).confirmations, 0, "nothing counted");
+    }
+
+    function test_confirmReceiptBatch_validatesSizeAndState() public {
+        uint256 deliveryId = _open();
+
+        vm.prank(relayer);
+        vm.expectRevert(Errors.EvidenceMissing.selector);
+        deliveryManager.confirmReceiptBatch(deliveryId, _proofs(deliveryId, 0, 1));
+
+        _attestEvidence(fieldAgent, deliveryId);
+
+        vm.prank(relayer);
+        vm.expectRevert(Errors.InvalidParameter.selector);
+        deliveryManager.confirmReceiptBatch(deliveryId, new ISemaphore.SemaphoreProof[](0));
+
+        vm.prank(relayer);
+        vm.expectRevert(Errors.TooManyConfirmations.selector);
+        deliveryManager.confirmReceiptBatch(deliveryId, _proofs(deliveryId, 0, EXPECTED + 1));
+
+        _confirm(deliveryId, 8);
+        vm.prank(relayer);
+        vm.expectRevert(Errors.TooManyConfirmations.selector);
+        deliveryManager.confirmReceiptBatch(deliveryId, _proofs(deliveryId, 100, 3));
+
+        vm.prank(admin);
+        roles.pause();
+        vm.prank(relayer);
+        vm.expectRevert(Errors.SystemPaused.selector);
+        deliveryManager.confirmReceiptBatch(deliveryId, _proofs(deliveryId, 100, 1));
     }
 
     // ─── verifier sign-off and advancement ─────────────────────────────────────
@@ -405,7 +484,7 @@ contract DeliveryManagerTest is PoATest {
         vm.expectRevert(Errors.Unauthorized.selector);
         deliveryManager.onDeliveryVerified(deliveryId, verifier2, true, keccak256("uid"));
 
-        vm.startPrank(address(deliveryVerifiedResolver));
+        vm.startPrank(address(resolver));
         vm.expectRevert(Errors.InvalidParameter.selector);
         deliveryManager.onDeliveryVerified(deliveryId, verifier2, true, bytes32(0));
 
@@ -415,7 +494,7 @@ contract DeliveryManagerTest is PoATest {
 
         _attestEvidence(fieldAgent, deliveryId);
 
-        vm.startPrank(address(deliveryVerifiedResolver));
+        vm.startPrank(address(resolver));
         vm.expectRevert(Errors.NotIndependent.selector);
         deliveryManager.onDeliveryVerified(deliveryId, ngo, true, keccak256("uid"));
 
@@ -513,7 +592,7 @@ contract DeliveryManagerTest is PoATest {
         deliveryManager.resolveDispute(deliveryId, true);
 
         assertEq(deliveryManager.getDelivery(deliveryId).status, IDeliveryManager.DeliveryStatus.Rejected);
-        assertEq(vault.trancheStatus(1), IAidVault.TrancheStatus.Locked);
+        assertEq(vault.trancheStatus(1), ITrancheLedger.TrancheStatus.Locked);
     }
 
     function test_resolveDispute_dismissedRestartsChallengeWindow() public {
@@ -555,7 +634,7 @@ contract DeliveryManagerTest is PoATest {
         // the field agent can now start over, and the tranche can still be earned
         uint256 redone = _runDelivery(needId, 1, EXPECTED);
         assertEq(deliveryManager.getDelivery(redone).status, IDeliveryManager.DeliveryStatus.Finalized);
-        assertEq(vault.trancheStatus(1), IAidVault.TrancheStatus.Releasable);
+        assertEq(vault.trancheStatus(1), ITrancheLedger.TrancheStatus.Releasable);
     }
 
     function test_cancelDelivery_onlyWhileOpen() public {
@@ -587,7 +666,7 @@ contract DeliveryManagerTest is PoATest {
 
         assertEq(deliveryManager.getDelivery(deliveryId).status, IDeliveryManager.DeliveryStatus.Finalized);
         assertEq(deliveryManager.lastFinalizedDeliveryOf(needId), deliveryId);
-        assertEq(vault.trancheStatus(1), IAidVault.TrancheStatus.Releasable);
+        assertEq(vault.trancheStatus(1), ITrancheLedger.TrancheStatus.Releasable);
         assertEq(vault.getTranches()[1].deliveryId, deliveryId);
     }
 

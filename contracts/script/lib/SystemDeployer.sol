@@ -6,17 +6,17 @@ import {DeliveryManager} from "../../src/delivery/DeliveryManager.sol";
 import {AidVault} from "../../src/funds/AidVault.sol";
 import {AidVaultFactory} from "../../src/funds/AidVaultFactory.sol";
 import {DonationReceipt} from "../../src/funds/DonationReceipt.sol";
+import {NonCustodialLedger} from "../../src/funds/NonCustodialLedger.sol";
 import {BeneficiaryGroups} from "../../src/identity/BeneficiaryGroups.sol";
+import {IAidVaultFactory} from "../../src/interfaces/IAidVaultFactory.sol";
+import {IDonationReceipt} from "../../src/interfaces/IDonationReceipt.sol";
 import {INeedsRegistry} from "../../src/interfaces/INeedsRegistry.sol";
 import {IRoleRegistry} from "../../src/interfaces/IRoleRegistry.sol";
 import {MockEURC} from "../../src/mocks/MockEURC.sol";
 import {NeedsRegistry} from "../../src/needs/NeedsRegistry.sol";
-import {DeliveryEvidenceResolver} from "../../src/resolvers/DeliveryEvidenceResolver.sol";
-import {DeliveryVerifiedResolver} from "../../src/resolvers/DeliveryVerifiedResolver.sol";
-import {FiatDonationResolver} from "../../src/resolvers/FiatDonationResolver.sol";
-import {ImpactReportResolver} from "../../src/resolvers/ImpactReportResolver.sol";
-import {NeedVerifiedResolver} from "../../src/resolvers/NeedVerifiedResolver.sol";
+import {ProofOfAidResolver} from "../../src/resolvers/ProofOfAidResolver.sol";
 import {IEAS} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ISemaphore} from "@semaphore-protocol/contracts/interfaces/ISemaphore.sol";
 import {CommonBase} from "forge-std/Base.sol";
 
@@ -47,63 +47,62 @@ abstract contract SystemDeployer is CommonBase {
         RoleRegistry roles;
         NeedsRegistry registry;
         AidVault vaultImplementation;
+        NonCustodialLedger ledgerImplementation;
         AidVaultFactory factory;
         DonationReceipt receipt;
         BeneficiaryGroups groups;
         DeliveryManager deliveryManager;
-        NeedVerifiedResolver needVerifiedResolver;
-        DeliveryEvidenceResolver evidenceResolver;
-        DeliveryVerifiedResolver deliveryVerifiedResolver;
-        FiatDonationResolver fiatDonationResolver;
-        ImpactReportResolver impactReportResolver;
+        ProofOfAidResolver resolver;
         address token;
         address eas;
         address semaphore;
     }
 
     /// @dev Deploys every contract and wires them together. Must be called by `p.admin`.
+    ///      Order matters: the ledger implementations take the factory, receipt and resolver as immutables, so
+    ///      those exist first and the factory learns the implementations through `wire`.
     function _deploySystem(Params memory p) internal returns (System memory s) {
         s.eas = p.eas;
         s.semaphore = p.semaphore;
         s.token = p.token == address(0) ? address(new MockEURC()) : p.token;
+        IRoleRegistry roles = IRoleRegistry(address(s.roles = new RoleRegistry(p.admin)));
 
-        s.roles = new RoleRegistry(p.admin);
-        s.registry = new NeedsRegistry(IRoleRegistry(address(s.roles)), p.highValueThreshold);
-        s.vaultImplementation = new AidVault();
-        s.factory = new AidVaultFactory(IRoleRegistry(address(s.roles)), address(s.vaultImplementation));
-        s.receipt = new DonationReceipt(IRoleRegistry(address(s.roles)), s.factory, p.dashboardBaseURI);
-        s.groups = new BeneficiaryGroups(IRoleRegistry(address(s.roles)), ISemaphore(p.semaphore));
+        s.registry = new NeedsRegistry(roles, p.highValueThreshold);
+        s.groups = new BeneficiaryGroups(roles, ISemaphore(p.semaphore));
         s.deliveryManager = new DeliveryManager(
-            IRoleRegistry(address(s.roles)),
+            roles,
             INeedsRegistry(address(s.registry)),
             s.groups,
             p.confirmationThresholdBps,
             p.challengePeriod,
             p.minExpectedRecipients
         );
+        s.resolver = new ProofOfAidResolver(IEAS(p.eas), roles, INeedsRegistry(address(s.registry)), s.deliveryManager);
+        s.factory = new AidVaultFactory(roles);
+        s.receipt = new DonationReceipt(roles, IAidVaultFactory(address(s.factory)), p.dashboardBaseURI);
+        s.vaultImplementation = new AidVault(
+            roles,
+            INeedsRegistry(address(s.registry)),
+            address(s.deliveryManager),
+            IAidVaultFactory(address(s.factory)),
+            IERC20(s.token),
+            IDonationReceipt(address(s.receipt))
+        );
+        s.ledgerImplementation = new NonCustodialLedger(
+            roles,
+            INeedsRegistry(address(s.registry)),
+            address(s.deliveryManager),
+            IAidVaultFactory(address(s.factory)),
+            address(s.resolver)
+        );
 
-        s.needVerifiedResolver =
-            new NeedVerifiedResolver(IEAS(p.eas), IRoleRegistry(address(s.roles)), INeedsRegistry(address(s.registry)));
-        s.evidenceResolver = new DeliveryEvidenceResolver(
-            IEAS(p.eas), IRoleRegistry(address(s.roles)), s.deliveryManager, INeedsRegistry(address(s.registry))
-        );
-        s.deliveryVerifiedResolver = new DeliveryVerifiedResolver(
-            IEAS(p.eas), IRoleRegistry(address(s.roles)), s.deliveryManager, INeedsRegistry(address(s.registry))
-        );
-        s.fiatDonationResolver =
-            new FiatDonationResolver(IEAS(p.eas), IRoleRegistry(address(s.roles)), INeedsRegistry(address(s.registry)));
-        s.impactReportResolver = new ImpactReportResolver(
-            IEAS(p.eas), IRoleRegistry(address(s.roles)), INeedsRegistry(address(s.registry)), s.deliveryManager
-        );
-
-        s.registry
-            .wire(address(s.factory), address(s.groups), address(s.deliveryManager), address(s.needVerifiedResolver));
-        s.factory.wire(address(s.registry), address(s.deliveryManager), s.token, address(s.receipt));
+        s.registry.wire(address(s.factory), address(s.groups), address(s.deliveryManager), address(s.resolver));
+        s.factory.wire(address(s.registry), s.token, address(s.vaultImplementation), address(s.ledgerImplementation));
         s.groups.wire(address(s.deliveryManager));
-        s.deliveryManager.wire(address(s.evidenceResolver), address(s.deliveryVerifiedResolver));
+        s.deliveryManager.wire(address(s.resolver));
     }
 
-    /// @dev Deploys EAS + SchemaRegistry from the published artifacts (local chains only).
+    /// @dev Deploys EAS/ + SchemaRegistry from the published artifacts (local chains only).
     function _deployLocalEAS() internal returns (address schemaRegistry, address eas) {
         schemaRegistry = vm.deployCode(SCHEMA_REGISTRY_ARTIFACT);
         eas = vm.deployCode(EAS_ARTIFACT, abi.encode(schemaRegistry));

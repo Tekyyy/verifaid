@@ -33,10 +33,13 @@ library Errors {
     error UnknownVerification();
     error DossierMismatch();
     error ProgramMismatch();
+    error DeadlineNotReached();
+    error DeadlinePassed();
+    error BelowMinimumFunding();
+    error ReleasePending();
 
-    // ─── vaults ────────────────────────────────────────────────────────────────
-    error AlreadyInitialized();
-    error VaultAlreadyExists();
+    // ─── ledgers and vaults ────────────────────────────────────────────────────
+    error NotLedger();
     error FundingNotOpen();
     error ExceedsTarget();
     error NothingDonated();
@@ -45,9 +48,8 @@ library Errors {
     error InvalidTrancheIndex();
     error InvalidTrancheStatus();
     error PreviousTrancheNotReleased();
-    error NotCancelled();
+    error NotRefundable();
     error NothingToRefund();
-    error RefundAlreadyClaimed();
 
     // ─── receipts ──────────────────────────────────────────────────────────────
     error Soulbound();
@@ -75,14 +77,17 @@ library Errors {
     error AlreadyChallenged();
     error AlreadyRejected();
 
-    // ─── resolvers ─────────────────────────────────────────────────────────────
+    // ─── resolver ──────────────────────────────────────────────────────────────
     error WrongSchema();
     error InvalidRecipient();
     error InvalidRefUID();
     error ExpiringAttestation();
     error NotRevocable();
     error RegionMismatch();
-    error FiatDonationMismatch();
-    error FiatDonationAlreadyAttested();
+    error FundingMismatch();
+    error FundingAlreadyAttested();
+    error FeeExceedsDisclosure();
+    error AmountMismatch();
+    error SettlementAlreadyRecorded();
     error ReportAlreadyActive();
 }

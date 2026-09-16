@@ -66,6 +66,7 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         console2.log("  RoleRegistry         ", address(s.roles));
         console2.log("  NeedsRegistry        ", address(s.registry));
         console2.log("  AidVaultFactory      ", address(s.factory));
+        console2.log("  ProofOfAidResolver   ", address(s.resolver));
         console2.log("  DonationReceipt      ", address(s.receipt));
         console2.log("  BeneficiaryGroups    ", address(s.groups));
         console2.log("  DeliveryManager      ", address(s.deliveryManager));
@@ -86,15 +87,12 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         contracts.serialize("RoleRegistry", address(s.roles));
         contracts.serialize("NeedsRegistry", address(s.registry));
         contracts.serialize("AidVaultImplementation", address(s.vaultImplementation));
+        contracts.serialize("NonCustodialLedgerImplementation", address(s.ledgerImplementation));
         contracts.serialize("AidVaultFactory", address(s.factory));
         contracts.serialize("DonationReceipt", address(s.receipt));
         contracts.serialize("BeneficiaryGroups", address(s.groups));
         contracts.serialize("DeliveryManager", address(s.deliveryManager));
-        contracts.serialize("NeedVerifiedResolver", address(s.needVerifiedResolver));
-        contracts.serialize("DeliveryEvidenceResolver", address(s.evidenceResolver));
-        contracts.serialize("DeliveryVerifiedResolver", address(s.deliveryVerifiedResolver));
-        contracts.serialize("FiatDonationResolver", address(s.fiatDonationResolver));
-        string memory contractsJson = contracts.serialize("ImpactReportResolver", address(s.impactReportResolver));
+        string memory contractsJson = contracts.serialize("ProofOfAidResolver", address(s.resolver));
 
         string memory external_ = "external";
         external_.serialize("EAS", params.eas);
@@ -113,13 +111,15 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         // Placeholders; RegisterSchemas.s.sol fills these in.
         string memory schemas = "schemas";
         schemas.serialize("NeedVerified", bytes32(0));
+        schemas.serialize("FundingRecorded", bytes32(0));
         schemas.serialize("DeliveryEvidence", bytes32(0));
         schemas.serialize("DeliveryVerified", bytes32(0));
-        schemas.serialize("FiatDonation", bytes32(0));
+        schemas.serialize("Settlement", bytes32(0));
         string memory schemasJson = schemas.serialize("ImpactReport", bytes32(0));
 
         string memory root = "deployment";
         root.serialize("network", _networkName(block.chainid));
+        root.serialize("version", uint256(2));
         root.serialize("chainId", block.chainid);
         root.serialize("startBlock", startBlock);
         root.serialize("deployer", deployer);

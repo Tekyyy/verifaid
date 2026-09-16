@@ -5,6 +5,7 @@ import {AidVault} from "../../src/funds/AidVault.sol";
 import {IAidVault} from "../../src/interfaces/IAidVault.sol";
 import {IDeliveryManager} from "../../src/interfaces/IDeliveryManager.sol";
 import {INeedsRegistry} from "../../src/interfaces/INeedsRegistry.sol";
+import {ITrancheLedger} from "../../src/interfaces/ITrancheLedger.sol";
 import {Errors} from "../../src/libraries/Errors.sol";
 import {PoATest} from "../utils/PoATest.sol";
 import {
@@ -50,8 +51,8 @@ contract LifecycleTest is PoATest {
         assertEq(receipt.receiptOf(receipt1).amount, 12_000e6);
 
         _donateOnBehalf(needId, 10_000e6, DONOR_REF, PAYMENT_REF);
-        bytes32 fiatUID = _attestFiatDonation(bankPartner, needId, 10_000e6, PAYMENT_REF, DONOR_REF);
-        assertEq(fiatDonationResolver.attestationOf(PAYMENT_REF), fiatUID);
+        bytes32 fiatUID = _attestFundingRecorded(bankPartner, needId, 10_000e6, PAYMENT_REF, DONOR_REF);
+        assertEq(resolver.fundingAttestationOf(PAYMENT_REF), fiatUID);
 
         // ── 6. Target reached → funding closed → tranche 0 (pre-financing) released ──
         assertEq(vault.totalDonated(), TARGET);
@@ -80,7 +81,7 @@ contract LifecycleTest is PoATest {
 
         // ── 12. NGO publishes the impact report, chained to the last verifier sign-off ──
         bytes32 reportUID = _attestImpactReport(ngo, needId, 480);
-        assertEq(impactReportResolver.activeReportOf(needId), reportUID);
+        assertEq(resolver.activeReportOf(needId), reportUID);
 
         // the evidence chain is traversable in EAS: report → DeliveryVerified → DeliveryEvidence
         IDeliveryManager.Delivery memory last = deliveryManager.getDelivery(delivery2);
@@ -208,7 +209,7 @@ contract LifecycleTest is PoATest {
         vm.prank(admin);
         deliveryManager.resolveDispute(deliveryId, true);
         assertEq(deliveryManager.getDelivery(deliveryId).status, IDeliveryManager.DeliveryStatus.Rejected);
-        assertEq(vault.trancheStatus(1), IAidVault.TrancheStatus.Locked);
+        assertEq(vault.trancheStatus(1), ITrancheLedger.TrancheStatus.Locked);
         assertEq(token.balanceOf(ngoPayout), 3000e6, "only the pre-financing was paid");
 
         // the field agent redoes the delivery properly and it goes through

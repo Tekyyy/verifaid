@@ -2,73 +2,84 @@
 pragma solidity ^0.8.24;
 
 import {RoleAware} from "../access/RoleAware.sol";
-import {IAidVault} from "../interfaces/IAidVault.sol";
 import {IAidVaultFactory} from "../interfaces/IAidVaultFactory.sol";
+import {INeedsRegistry} from "../interfaces/INeedsRegistry.sol";
 import {IRoleRegistry} from "../interfaces/IRoleRegistry.sol";
 import {Errors} from "../libraries/Errors.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @title AidVaultFactory
-/// @notice Deploys an EIP-1167 minimal-proxy clone of `AidVault` for every verified need.
+/// @notice Deploys an EIP-1167 minimal-proxy ledger for every verified need: an AidVault for on-chain custody or a
+///         NonCustodialLedger for needs funded through a payment provider.
+/// @dev The need id is appended to each clone's code, so a clone is fully configured the moment it exists.
 contract AidVaultFactory is IAidVaultFactory, RoleAware {
-    /// @inheritdoc IAidVaultFactory
-    address public immutable implementation;
+    enum Kind {
+        None,
+        Vault,
+        Ledger
+    }
 
     address public registry;
-    address public deliveryManager;
     /// @inheritdoc IAidVaultFactory
     IERC20 public token;
-    address public receipt;
+    /// @inheritdoc IAidVaultFactory
+    address public implementation;
+    /// @inheritdoc IAidVaultFactory
+    address public ledgerImplementation;
     bool public wired;
 
-    /// @inheritdoc IAidVaultFactory
-    mapping(address => bool) public isVault;
-    /// @inheritdoc IAidVaultFactory
-    mapping(uint256 => address) public vaultOf;
-    /// @notice Fiat payment references already used by any vault.
+    /// @notice What a factory-created address is (one slot per ledger instead of one per flag).
+    mapping(address => Kind) public kindOf;
+    /// @notice Payment references already used by any ledger.
     mapping(bytes32 => bool) public paymentRefConsumed;
 
     /// @param roles_ System role registry.
-    /// @param implementation_ Deployed AidVault implementation (its initializer is locked).
-    constructor(IRoleRegistry roles_, address implementation_) RoleAware(roles_) {
-        if (implementation_ == address(0)) revert Errors.ZeroAddress();
-        implementation = implementation_;
-    }
+    constructor(IRoleRegistry roles_) RoleAware(roles_) {}
 
-    /// @notice One-time wiring. Admin only.
-    function wire(address registry_, address deliveryManager_, address token_, address receipt_) external onlyAdmin {
+    /// @notice One-time wiring. Admin only. The implementations are deployed after this factory because their
+    ///         immutables include its address.
+    function wire(address registry_, address token_, address vaultImplementation_, address ledgerImplementation_)
+        external
+        onlyAdmin
+    {
         if (wired) revert Errors.AlreadyWired();
-        if (registry_ == address(0) || deliveryManager_ == address(0) || token_ == address(0) || receipt_ == address(0))
-        {
-            revert Errors.ZeroAddress();
-        }
+        if (
+            registry_ == address(0) || token_ == address(0) || vaultImplementation_ == address(0)
+                || ledgerImplementation_ == address(0)
+        ) revert Errors.ZeroAddress();
         wired = true;
         registry = registry_;
-        deliveryManager = deliveryManager_;
         token = IERC20(token_);
-        receipt = receipt_;
-        emit Wired(registry_, deliveryManager_, token_, receipt_);
+        implementation = vaultImplementation_;
+        ledgerImplementation = ledgerImplementation_;
+        emit Wired(registry_, token_, vaultImplementation_, ledgerImplementation_);
     }
 
     /// @inheritdoc IAidVaultFactory
-    function createVault(uint256 needId) external returns (address vault) {
+    function createVault(uint256 needId, INeedsRegistry.CustodyMode custodyMode) external returns (address vault) {
         if (msg.sender != registry || msg.sender == address(0)) revert Errors.Unauthorized();
-        if (vaultOf[needId] != address(0)) revert Errors.VaultAlreadyExists();
-
-        vault = Clones.clone(implementation);
-        isVault[vault] = true;
-        vaultOf[needId] = vault;
-        emit VaultCreated(needId, vault);
-
-        IAidVault(vault).initialize(needId, address(token), registry, deliveryManager, receipt);
+        bool onChain = custodyMode == INeedsRegistry.CustodyMode.OnChain;
+        vault = Clones.cloneWithImmutableArgs(onChain ? implementation : ledgerImplementation, abi.encode(needId));
+        kindOf[vault] = onChain ? Kind.Vault : Kind.Ledger;
+        emit VaultCreated(needId, vault, custodyMode);
     }
 
     /// @inheritdoc IAidVaultFactory
     function consumePaymentRef(bytes32 paymentRefHash) external {
-        if (!isVault[msg.sender]) revert Errors.NotVault();
+        if (kindOf[msg.sender] == Kind.None) revert Errors.NotLedger();
         if (paymentRefConsumed[paymentRefHash]) revert Errors.PaymentRefAlreadyUsed();
         paymentRefConsumed[paymentRefHash] = true;
         emit PaymentRefConsumed(paymentRefHash, msg.sender);
+    }
+
+    /// @inheritdoc IAidVaultFactory
+    function isVault(address account) external view returns (bool) {
+        return kindOf[account] == Kind.Vault;
+    }
+
+    /// @inheritdoc IAidVaultFactory
+    function isLedger(address account) external view returns (bool) {
+        return kindOf[account] != Kind.None;
     }
 }
