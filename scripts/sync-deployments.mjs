@@ -5,7 +5,7 @@
  *
  *   pnpm sync:deployments   (also run automatically before building @poa/shared)
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -30,4 +30,6 @@ import type { Deployment } from '../types.js'
 export const deployments = ${JSON.stringify(deployments, null, 2)} as unknown as Record<string, Deployment>
 `,
 )
-console.log(`wrote ${Object.keys(deployments).length} deployment(s) to services/shared/src/generated/deployments.ts`)
+console.log(
+  `wrote ${Object.keys(deployments).length} deployment(s) to services/shared/src/generated/deployments.ts`,
+)
