@@ -42,7 +42,12 @@ export interface Deployment {
 }
 
 /** The five EAS schemas of the system. */
-export type SchemaName = 'NeedVerified' | 'DeliveryEvidence' | 'DeliveryVerified' | 'FiatDonation' | 'ImpactReport'
+export type SchemaName =
+  | 'NeedVerified'
+  | 'DeliveryEvidence'
+  | 'DeliveryVerified'
+  | 'FiatDonation'
+  | 'ImpactReport'
 
 /** Need lifecycle, mirroring INeedsRegistry.NeedStatus. */
 export const NEED_STATUS = [

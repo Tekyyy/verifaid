@@ -1,4 +1,4 @@
-import { type Address, type Hex, type PublicClient, keccak256, toHex } from 'viem'
+import { type Address, type Hex, keccak256, type PublicClient, toHex } from 'viem'
 import { roleRegistryAbi } from './abis/index.js'
 
 /** Role identifiers, matching src/libraries/Roles.sol. */

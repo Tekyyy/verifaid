@@ -1,4 +1,4 @@
-import { type Chain, type Hex, defineChain } from 'viem'
+import { type Chain, defineChain, type Hex } from 'viem'
 import { base, baseSepolia } from 'viem/chains'
 import type { NetworkName } from './types.js'
 

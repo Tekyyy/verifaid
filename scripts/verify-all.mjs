@@ -20,9 +20,13 @@ const run = (command, args, cwd) =>
   spawnSync(command, args, { cwd, stdio: 'inherit', shell: isWindows, env: process.env })
 
 const reachable = (url) => {
-  const probe = spawnSync('node', ['-e', `fetch(${JSON.stringify(url)}).then(()=>process.exit(0),()=>process.exit(1))`], {
-    shell: isWindows,
-  })
+  const probe = spawnSync(
+    'node',
+    ['-e', `fetch(${JSON.stringify(url)}).then(()=>process.exit(0),()=>process.exit(1))`],
+    {
+      shell: isWindows,
+    },
+  )
   return probe.status === 0
 }
 
@@ -37,10 +41,7 @@ const steps = [
   {
     name: 'coverage floor (90% lines)',
     cwd: contracts,
-    cmd: [
-      'forge',
-      ['coverage', '--report', 'lcov', '--no-match-coverage', '(script|test|mocks)'],
-    ],
+    cmd: ['forge', ['coverage', '--report', 'lcov', '--no-match-coverage', '(script|test|mocks)']],
     then: {
       cwd: contracts,
       cmd: [

@@ -65,7 +65,11 @@ export const verifySiwe = async (params: VerifySiweParams): Promise<Address> => 
 const encode = (value: object): string => Buffer.from(JSON.stringify(value), 'utf8').toString('base64url')
 
 /** `base64url(payload).base64url(hmac)` — small, stateless, and verifiable without a session store. */
-export const createSessionToken = (secret: string, address: Address, ttlSeconds = SESSION_TTL_SECONDS): string => {
+export const createSessionToken = (
+  secret: string,
+  address: Address,
+  ttlSeconds = SESSION_TTL_SECONDS,
+): string => {
   const payload: SessionPayload = { address, exp: Math.floor(Date.now() / 1000) + ttlSeconds }
   const body = encode(payload)
   return `${body}.${hmac(secret, body).toString('base64url')}`
@@ -85,7 +89,11 @@ export const verifySessionToken = (secret: string, token: string): SessionPayloa
 }
 
 /** Verifies an HMAC webhook signature of the form `sha256=<hex>`. */
-export const verifyWebhookSignature = (secret: string, rawBody: string, header: string | undefined): boolean => {
+export const verifyWebhookSignature = (
+  secret: string,
+  rawBody: string,
+  header: string | undefined,
+): boolean => {
   if (!header) return false
   const expected = `sha256=${hmac(secret, rawBody).toString('hex')}`
   return safeEqual(expected, header)

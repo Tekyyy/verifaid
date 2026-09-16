@@ -1,10 +1,10 @@
 import {
   type AbiParameter,
   type Address,
-  type Hex,
   decodeAbiParameters,
   encodeAbiParameters,
   encodePacked,
+  type Hex,
   keccak256,
 } from 'viem'
 import type { SchemaName } from './types.js'
@@ -27,7 +27,8 @@ export const SCHEMAS: Record<SchemaName, SchemaDefinition> = {
   },
   DeliveryEvidence: {
     name: 'DeliveryEvidence',
-    schema: 'uint256 deliveryId,bytes32 evidenceHash,string evidenceCID,uint32 itemsDelivered,bytes32 regionCode',
+    schema:
+      'uint256 deliveryId,bytes32 evidenceHash,string evidenceCID,uint32 itemsDelivered,bytes32 regionCode',
     revocable: false,
     recipient: 'DeliveryManager',
   },
@@ -93,7 +94,12 @@ export type DeliveryEvidenceData = readonly [
   regionCode: Hex,
 ]
 export type DeliveryVerifiedData = readonly [deliveryId: bigint, approved: boolean, reportHash: Hex]
-export type FiatDonationData = readonly [needId: bigint, amount: bigint, paymentRefHash: Hex, donorRefHash: Hex]
+export type FiatDonationData = readonly [
+  needId: bigint,
+  amount: bigint,
+  paymentRefHash: Hex,
+  donorRefHash: Hex,
+]
 export type ImpactReportData = readonly [
   needId: bigint,
   beneficiariesServed: number,

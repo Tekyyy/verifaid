@@ -9,7 +9,15 @@ export interface SendResult {
   receipt: TransactionReceipt
 }
 
-/** Sends a transaction as `role` and waits for it, failing loudly on revert. */
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Sends a transaction as `role` and waits for it, failing loudly on revert.
+ *
+ * Retries the simulation a few times on a public network: `sepolia.base.org` load-balances across nodes, so an
+ * `eth_call` issued right after a mined transaction can land on one that has not caught up yet and revert with
+ * something misleading like `NeedNotFound`. A genuine revert simply fails all the attempts.
+ */
 export const send = async (
   ctx: DemoContext,
   role: RoleName,
@@ -17,16 +25,28 @@ export const send = async (
 ): Promise<SendResult> => {
   const wallet = ctx.wallets[role]
   const account = ctx.accounts[role]
-  try {
-    // Simulate first so a revert surfaces as a decoded custom error instead of an opaque failed receipt.
-    const { request } = await ctx.publicClient.simulateContract({ ...params, account })
-    const hash = await wallet.writeContract(request)
-    const receipt = await ctx.publicClient.waitForTransactionReceipt({ hash })
-    if (receipt.status !== 'success') fail(`${params.functionName} reverted on-chain (${hash})`)
-    return { hash, receipt }
-  } catch (error) {
-    return fail(`${params.functionName} as ${role}: ${(error as Error).message.split('\n')[0]}`)
+  const attempts = ctx.isLocal ? 1 : 4
+  let lastError: unknown
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      // Simulate first so a revert surfaces as a decoded custom error instead of an opaque failed receipt.
+      const { request } = await ctx.publicClient.simulateContract({ ...params, account })
+      const hash = await wallet.writeContract(request)
+      const receipt = await ctx.publicClient.waitForTransactionReceipt({
+        hash,
+        confirmations: ctx.isLocal ? undefined : 2,
+      })
+      if (receipt.status !== 'success') fail(`${params.functionName} reverted on-chain (${hash})`)
+      return { hash, receipt }
+    } catch (error) {
+      lastError = error
+      if (attempt < attempts) await sleep(3000)
+    }
   }
+
+  const message = (lastError as Error).message ?? String(lastError)
+  return fail(`${params.functionName} as ${role}: ${message.split('\n').slice(0, 4).join(' | ')}`)
 }
 
 export interface AttestParams {

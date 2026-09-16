@@ -16,7 +16,11 @@
       "default": "./dist/db.js"
     }
   },
-  "files": ["dist", "generated", "prisma"],
+  "files": [
+    "dist",
+    "generated",
+    "prisma"
+  ],
   "scripts": {
     "build": "node ../../scripts/sync-deployments.mjs && prisma generate && tsc -p tsconfig.json",
     "typecheck": "node ../../scripts/sync-deployments.mjs && prisma generate && tsc -p tsconfig.json --noEmit",

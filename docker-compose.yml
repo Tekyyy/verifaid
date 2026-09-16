@@ -1,0 +1,100 @@
+# Proof of Aid off-chain services (spec §12, Phase 4).
+#
+# One Postgres holds the encrypted records for all three services; nothing here talks to the chain except through
+# the RPC URL you point it at, so the same compose file works against anvil, Base Sepolia or a fork.
+#
+#   docker compose up -d postgres     # database only, services run from pnpm
+#   docker compose up -d --build      # everything
+#
+# Host ports and secrets come from the repo-level .env (see .env.example). Nothing has a production-safe default:
+# POSTGRES_PASSWORD, SESSION_SECRET, BANK_WEBHOOK_SECRET and BANK_REF_SALT must be set outside development.
+
+name: proof-of-aid
+
+x-service-base: &service-base
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+  environment: &service-env
+    DATABASE_URL: postgresql://poa:${POSTGRES_PASSWORD:-poa}@postgres:5432/poa
+    POA_NETWORK: ${POA_NETWORK:-anvil}
+    # host.docker.internal reaches an anvil running on the host; override for a real RPC.
+    RPC_URL: ${SERVICES_RPC_URL:-http://host.docker.internal:8545}
+    SESSION_SECRET: ${SESSION_SECRET:-}
+    LOG_LEVEL: ${LOG_LEVEL:-info}
+    NGO_KEK_PATH: /run/secrets/ngo-kek.key
+  volumes:
+    - poa-keys:/run/secrets
+  extra_hosts:
+    - host.docker.internal:host-gateway
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: poa
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-poa}
+      POSTGRES_DB: poa
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - poa-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U poa -d poa']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  evidence:
+    <<: *service-base
+    build:
+      context: .
+      dockerfile: services/evidence/Dockerfile
+    ports:
+      - '${EVIDENCE_PORT:-4001}:4001'
+    environment:
+      <<: *service-env
+      PORT: '4001'
+      SIWE_DOMAIN: ${EVIDENCE_SIWE_DOMAIN:-localhost:4001}
+      PINATA_JWT: ${PINATA_JWT:-}
+      IPFS_LOCAL_DIR: /data/ipfs
+    volumes:
+      - poa-keys:/run/secrets
+      - poa-ipfs:/data/ipfs
+
+  pii-vault:
+    <<: *service-base
+    build:
+      context: .
+      dockerfile: services/pii-vault/Dockerfile
+    ports:
+      - '${PII_VAULT_PORT:-4002}:4002'
+    environment:
+      <<: *service-env
+      PORT: '4002'
+      SIWE_DOMAIN: ${PII_VAULT_SIWE_DOMAIN:-localhost:4002}
+
+  bank-connector:
+    <<: *service-base
+    build:
+      context: .
+      dockerfile: services/bank-connector/Dockerfile
+    ports:
+      - '${BANK_CONNECTOR_PORT:-4003}:4003'
+    environment:
+      <<: *service-env
+      PORT: '4003'
+      SIWE_DOMAIN: ${BANK_CONNECTOR_SIWE_DOMAIN:-localhost:4003}
+      BANK_PARTNER_PRIVATE_KEY: ${BANK_PARTNER_PRIVATE_KEY:-}
+      BANK_REF_SALT: ${BANK_REF_SALT:-}
+      BANK_WEBHOOK_SECRET: ${BANK_WEBHOOK_SECRET:-}
+
+volumes:
+  poa-postgres:
+  # The master KEK lives on a named volume shared by the services: losing it makes every stored record
+  # permanently unreadable, which is the same property that makes crypto-shredding work.
+  poa-keys:
+  poa-ipfs:

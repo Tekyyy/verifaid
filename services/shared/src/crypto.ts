@@ -60,7 +60,12 @@ export interface EnvelopeResult {
 }
 
 /** Encrypts `plaintext` under a fresh DEK and wraps that DEK with a key derived for `context`. */
-export const sealEnvelope = (masterKey: Buffer, context: string, plaintext: Buffer, aad?: Buffer): EnvelopeResult => {
+export const sealEnvelope = (
+  masterKey: Buffer,
+  context: string,
+  plaintext: Buffer,
+  aad?: Buffer,
+): EnvelopeResult => {
   const dek = generateDek()
   try {
     return { box: seal(dek, plaintext, aad), wrappedDek: seal(deriveKey(masterKey, context), dek) }

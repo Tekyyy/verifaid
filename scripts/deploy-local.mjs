@@ -24,6 +24,9 @@ const rpcUrl = process.env.ANVIL_RPC_URL ?? 'http://127.0.0.1:8545'
 const env = {
   ...process.env,
   DEPLOYER_PRIVATE_KEY: process.env.DEPLOYER_PRIVATE_KEY ?? ANVIL_KEY,
+  // Always anvil's well-known mnemonic locally, even when .env carries a private one for a public testnet:
+  // the service test suites derive their role wallets from it, so the local seed has to match.
+  DEMO_MNEMONIC: '',
   // Left empty on purpose: a fresh anvil has no EAS/Semaphore, so Deploy.s.sol deploys local instances.
   EAS_ADDRESS: process.env.EAS_ADDRESS ?? '',
   SCHEMA_REGISTRY_ADDRESS: process.env.SCHEMA_REGISTRY_ADDRESS ?? '',

@@ -237,7 +237,7 @@ const fundNeed = async (ctx: DemoContext, needId: bigint, vault: Address): Promi
   tx(ctx.network, 'tx', donation.hash)
 
   // The bank partner converts a SEPA transfer and deposits it on behalf of a donor it never names on-chain.
-  const salt = (process.env.BANK_REF_SALT as Hex | undefined) ?? keccak256(stringToHex('demo-bank-salt'))
+  const salt = toSalt(process.env.BANK_REF_SALT)
   const endToEndId = `SEPA-DEMO-${Date.now()}`
   const paymentRefHash = saltedRefHash(salt, endToEndId)
   const donorRefHash = saltedRefHash(salt, 'donor-reference-jane')
@@ -461,6 +461,16 @@ const summarize = async (ctx: DemoContext, needId: bigint, vault: Address): Prom
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * The partner's reference salt: a 32-byte hex value is used as is, anything else (including an env var that is
+ * present but empty, which is not the same as unset) is hashed into one.
+ */
+const toSalt = (value: string | undefined): Hex => {
+  const trimmed = value?.trim()
+  if (trimmed && /^0x[0-9a-fA-F]{64}$/.test(trimmed)) return trimmed as Hex
+  return keccak256(stringToHex(trimmed || 'demo-bank-salt'))
+}
 
 const mintIfPossible = async (
   ctx: DemoContext,

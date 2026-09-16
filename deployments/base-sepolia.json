@@ -1,0 +1,42 @@
+{
+  "admin": "0x7642C9178a738Dd623Aac1F943bAFB81589E9050",
+  "chainId": 84532,
+  "contracts": {
+    "AidVaultFactory": "0xe4970edD5FB64908a69a3B1a17e608C6402644DA",
+    "AidVaultImplementation": "0x92877f5c8D2b5adf3B5154E35a8dD66eee953F89",
+    "BeneficiaryGroups": "0xA4AcaC78d404783349E58061f7E0EC227d89Fd42",
+    "DeliveryEvidenceResolver": "0xF91c07aff4007B6C86466efFA587b4baBA5391e0",
+    "DeliveryManager": "0xfd4108300Df609043Ba263307179Cc987531f2f5",
+    "DeliveryVerifiedResolver": "0xa8026510965ebF72D3703bD9901F5cf86d1f361F",
+    "DonationReceipt": "0x1025Cd8Ba38F95FAE1F4672B7fF379Ab4161fFDB",
+    "FiatDonationResolver": "0x22FE6E862D9Ac963cc41325558A6fD177486D927",
+    "ImpactReportResolver": "0xb9Fc3f7d06d729BaDbc71e691A84C3B3FfFB3bf4",
+    "NeedVerifiedResolver": "0x8d8C6dd884d4b7C96413Df8811E27007b22b23dA",
+    "NeedsRegistry": "0x3664a0fb745452a3fC7ed75ed221D2132fde471E",
+    "RoleRegistry": "0xC71df0E329f8b304447644a2496Fe6D3b920242e"
+  },
+  "deployer": "0x7642C9178a738Dd623Aac1F943bAFB81589E9050",
+  "external": {
+    "EAS": "0x4200000000000000000000000000000000000021",
+    "SchemaRegistry": "0x4200000000000000000000000000000000000020",
+    "Semaphore": "0x8A1fd199516489B0Fb7153EB5f075cDAC83c693D",
+    "SemaphoreVerifier": "0x0000000000000000000000000000000000000000",
+    "Token": "0xdF3430bCF730A1D065d04FD70d11Aa93dd990e71"
+  },
+  "network": "base-sepolia",
+  "params": {
+    "challengePeriodSeconds": 60,
+    "confirmationThresholdBps": 7000,
+    "dashboardBaseURI": "http://localhost:3000/needs/",
+    "highValueThreshold": 10000000000,
+    "minExpectedRecipients": 5
+  },
+  "schemas": {
+    "DeliveryEvidence": "0xc3133c8ba76fab649c20e88d9c71f2ed771c486422609941ac37f502ffb1ecf3",
+    "DeliveryVerified": "0x66841a481807a3fce7e93d70dc735198ec4fd167979baacd79bfaa2e7689d97b",
+    "FiatDonation": "0xd90b99c67b226db3ede4a06ec28aa7d81700e6d73f41aa56ca814f13734aea99",
+    "ImpactReport": "0xd2b73a63ee900b9200b13fcc6a197a53f235238c0f9972e0c91cb565326d7027",
+    "NeedVerified": "0xa8540fa92cc10109db7db0eb846bfa410da3f5f677bbf9518508cf9271581bc7"
+  },
+  "startBlock": 46876431
+}

@@ -1,12 +1,11 @@
 import { keccak256, stringToHex } from 'viem'
 import { describe, expect, it } from 'vitest'
-import { open, openEnvelope, seal, sealEnvelope } from '../src/crypto.js'
+import { createSessionToken, verifySessionToken, verifyWebhookSignature } from '../src/auth.js'
+import { hmac, open, openEnvelope, seal, sealEnvelope } from '../src/crypto.js'
 import { getDeployment, hasDeployment } from '../src/deployment.js'
 import { categoryHash, categoryLabel, regionCode, regionLabel, saltedRefHash } from '../src/format.js'
 import { AID_RECEIVED_MESSAGE, ROLES } from '../src/roles.js'
-import { SCHEMAS, computeSchemaUid, decodeSchemaData, encodeSchemaData } from '../src/schemas.js'
-import { createSessionToken, verifySessionToken, verifyWebhookSignature } from '../src/auth.js'
-import { hmac } from '../src/crypto.js'
+import { computeSchemaUid, decodeSchemaData, encodeSchemaData, SCHEMAS } from '../src/schemas.js'
 
 describe('roles', () => {
   it('matches the identifiers in Roles.sol', () => {
@@ -27,7 +26,12 @@ describe('roles', () => {
 
 describe('schemas', () => {
   it('round-trips attestation data through ABI encoding', () => {
-    const encoded = encodeSchemaData('NeedVerified', [1n, keccak256(stringToHex('dossier')), true, keccak256('0x')])
+    const encoded = encodeSchemaData('NeedVerified', [
+      1n,
+      keccak256(stringToHex('dossier')),
+      true,
+      keccak256('0x'),
+    ])
     const decoded = decodeSchemaData<[bigint, `0x${string}`, boolean, `0x${string}`]>('NeedVerified', encoded)
     expect(decoded[0]).toBe(1n)
     expect(decoded[2]).toBe(true)

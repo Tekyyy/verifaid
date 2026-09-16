@@ -21,7 +21,10 @@ import {console2} from "forge-std/console2.sol";
 ///      forge script script/SeedDemo.s.sol --rpc-url base_sepolia --broadcast
 contract SeedDemo is Script, DeploymentIO {
     string internal constant DEFAULT_MNEMONIC = "test test test test test test test test test test test junk";
-    uint256 internal constant GAS_TOPUP = 0.003 ether;
+
+    /// @dev Enough for hundreds of transactions on Base Sepolia, where the whole 27M-gas deployment costs about
+    ///      0.0003 ETH. Funding six role wallets must stay well inside what one faucet drip provides.
+    uint256 internal constant GAS_TOPUP = 0.0005 ether;
 
     struct Actors {
         uint256 adminKey;
@@ -36,6 +39,7 @@ contract SeedDemo is Script, DeploymentIO {
         address bankPartner;
         address donor1;
         address donor2;
+        address relayer;
     }
 
     function run() external {
@@ -129,16 +133,27 @@ contract SeedDemo is Script, DeploymentIO {
         a.bankPartner = vm.addr(vm.deriveKey(mnemonic, 6));
         a.donor1 = vm.addr(vm.deriveKey(mnemonic, 7));
         a.donor2 = vm.addr(vm.deriveKey(mnemonic, 8));
+        a.relayer = vm.addr(vm.deriveKey(mnemonic, 9));
     }
 
-    /// @dev Tops up the role wallets that will have to send their own transactions during the demo.
+    /// @dev Tops up the role wallets that will have to send their own transactions during the demo — including
+    ///      the relayer, which submits every beneficiary confirmation so their wallets never appear on-chain.
     function _fundGas(Actors memory a) internal {
-        address[6] memory needsGas = [a.ngo, a.fieldAgent, a.verifier1, a.verifier2, a.bankPartner, a.donor1];
+        address[7] memory needsGas =
+            [a.ngo, a.fieldAgent, a.verifier1, a.verifier2, a.bankPartner, a.donor1, a.relayer];
+        uint256 budget = a.admin.balance;
         vm.startBroadcast(a.adminKey);
         for (uint256 i; i < needsGas.length; ++i) {
             if (needsGas[i].balance >= GAS_TOPUP) continue;
-            (bool ok,) = needsGas[i].call{value: GAS_TOPUP}("");
+            uint256 missing = GAS_TOPUP - needsGas[i].balance;
+            // Never spend the deployer down to nothing: it still has to send the registration transactions.
+            if (budget < missing * 2) {
+                console2.log("  skipping gas top-up, deployer balance is low:", needsGas[i]);
+                continue;
+            }
+            (bool ok,) = needsGas[i].call{value: missing}("");
             require(ok, "gas top-up failed");
+            budget -= missing;
         }
         vm.stopBroadcast();
     }
