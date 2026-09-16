@@ -16,6 +16,8 @@
     "test": "pnpm -r test",
     "contracts:build": "pnpm --filter @poa/contracts build",
     "contracts:test": "pnpm --filter @poa/contracts test",
+    "chain": "anvil --chain-id 31337 --block-time 1",
+    "deploy:local": "node scripts/deploy-local.mjs",
     "abis": "node scripts/export-abis.mjs"
   },
   "devDependencies": {

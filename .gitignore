@@ -21,6 +21,10 @@ dist/
 *.tsbuildinfo
 coverage/
 
+# generated (rebuilt by `pnpm build` / `pnpm typecheck`)
+services/shared/generated/
+services/shared/src/generated/
+
 # next
 app/.next/
 app/next-env.d.ts

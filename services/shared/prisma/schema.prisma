@@ -1,0 +1,116 @@
+// Data layer for the Proof of Aid off-chain services.
+//
+// One schema, one database, three services (evidence, pii-vault, bank-connector). Nothing here is ever written
+// to the chain: personal data lives only in `ciphertext` columns whose data keys are wrapped by a KEK derived
+// per NGO. Deleting `wrappedDek` (crypto-shredding) makes a record permanently unreadable, which is how the
+// right to erasure is honoured without removing rows that on-chain hashes refer to.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// An enrolled beneficiary. The only field that ever reaches the chain is `commitment`,
+/// an unlinkable Semaphore identity commitment.
+model Beneficiary {
+  id          String    @id @default(uuid())
+  ngoAddress  String
+  programId   String
+  /// Semaphore identity commitment, decimal string.
+  commitment  String
+  /// iv ‖ authTag ‖ AES-256-GCM ciphertext of the personal record.
+  ciphertext  Bytes
+  /// DEK sealed with the NGO's key-encryption key. NULL once the record has been crypto-shredded.
+  wrappedDek  Bytes?
+  createdAt   DateTime  @default(now())
+  /// When the data key was destroyed (right to erasure).
+  shreddedAt  DateTime?
+
+  @@unique([programId, commitment])
+  @@index([ngoAddress, programId])
+}
+
+/// Encrypted needs assessment. `hash` is keccak256 of the ciphertext and is what the need carries on-chain.
+model Dossier {
+  hash       String   @id
+  ngoAddress String
+  needId     String?
+  ciphertext Bytes
+  wrappedDek Bytes?
+  createdAt  DateTime @default(now())
+
+  @@index([ngoAddress])
+}
+
+/// Encrypted delivery evidence. The ciphertext itself lives on IPFS; only its key and metadata are stored here.
+model Evidence {
+  cid           String   @id
+  /// keccak256 of the ciphertext — the value anchored in the DeliveryEvidence attestation.
+  evidenceHash  String   @unique
+  deliveryId    String
+  ngoAddress    String
+  uploader      String
+  wrappedDek    Bytes?
+  /// Non-personal manifest: item counts, coarse region, file names and sizes.
+  manifest      Json
+  attestationUID String?
+  createdAt     DateTime @default(now())
+
+  grants KeyGrant[]
+
+  @@index([deliveryId])
+  @@index([ngoAddress])
+}
+
+/// Per-grantee wrapped key: how an NGO shares one evidence bundle with one verifier.
+model KeyGrant {
+  id             String   @id @default(uuid())
+  evidenceCid    String
+  granteeAddress String
+  /// The evidence DEK, re-wrapped for this grantee.
+  wrappedKey     Bytes
+  grantedBy      String
+  createdAt      DateTime @default(now())
+
+  evidence Evidence @relation(fields: [evidenceCid], references: [cid], onDelete: Cascade)
+
+  @@unique([evidenceCid, granteeAddress])
+  @@index([granteeAddress])
+}
+
+/// A fiat donation the bank partner converted and deposited on-chain. Idempotency key: the ISO 20022 reference.
+model FiatTransfer {
+  endToEndId     String   @id
+  needId         String
+  vault          String
+  amountBaseUnits String
+  amountEurCents  Int
+  /// keccak256(abi.encode(partnerSalt, endToEndId)) — the raw reference never leaves this service.
+  paymentRefHash String   @unique
+  /// keccak256(abi.encode(partnerSalt, donorReference)).
+  donorRefHash   String
+  status         String   @default("RECEIVED")
+  donateTxHash   String?
+  attestTxHash   String?
+  attestationUID String?
+  error          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([needId])
+}
+
+/// Single-use SIWE nonces.
+model AuthNonce {
+  value     String   @id
+  address   String?
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  @@index([expiresAt])
+}

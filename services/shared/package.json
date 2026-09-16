@@ -1,0 +1,42 @@
+{
+  "name": "@poa/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ABIs, addresses, schema helpers, crypto and API types shared by the Proof of Aid services, indexer, frontend and demo",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./db": {
+      "types": "./dist/db.d.ts",
+      "default": "./dist/db.js"
+    }
+  },
+  "files": ["dist", "generated", "prisma"],
+  "scripts": {
+    "build": "node ../../scripts/sync-deployments.mjs && prisma generate && tsc -p tsconfig.json",
+    "typecheck": "node ../../scripts/sync-deployments.mjs && prisma generate && tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy"
+  },
+  "prisma": {
+    "schema": "prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3",
+    "viem": "2.56.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.1",
+    "prisma": "6.19.3",
+    "typescript": "5.9.3",
+    "vitest": "5.0.1"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "@poa/bank-connector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Mock SEPA webhook that converts fiat donations to stablecoin, deposits them on-chain and attests them",
+  "main": "./dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fastify/cors": "11.3.0",
+    "@fastify/swagger": "9.8.1",
+    "@fastify/swagger-ui": "6.1.1",
+    "@poa/shared": "workspace:*",
+    "dotenv": "17.4.2",
+    "fastify": "5.12.4",
+    "fastify-type-provider-zod": "7.0.0",
+    "viem": "2.56.5",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.1",
+    "tsx": "4.23.13",
+    "typescript": "5.9.3",
+    "vitest": "5.0.1"
+  }
+}

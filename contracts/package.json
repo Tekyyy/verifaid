@@ -10,7 +10,8 @@
     "fmt": "forge fmt",
     "fmt:check": "forge fmt --check",
     "coverage": "forge coverage --report summary --no-match-coverage \"(script|test|mocks)\"",
-    "fixture:semaphore": "node test/fixtures/generate-semaphore-fixture.mjs"
+    "fixture:semaphore": "node test/fixtures/generate-semaphore-fixture.mjs",
+    "fixture:demo": "node script/fixtures/generate-demo-identities.mjs"
   },
   "dependencies": {
     "@ethereum-attestation-service/eas-contracts": "1.9.0",

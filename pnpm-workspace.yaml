@@ -9,3 +9,21 @@ packages:
 allowBuilds:
   # native speed-up pulled in transitively by hardhat (via eas-contracts); pure-JS fallback is fine
   keccak: false
+  # Prisma needs its postinstall to fetch the query engine and generate the client
+  '@prisma/client': true
+  '@prisma/engines': true
+  prisma: true
+  # esbuild (vitest, tsx) ships a platform binary
+  esbuild: true
+  # Ponder's file watcher and transpiler ship native binaries
+  '@parcel/watcher': true
+  '@swc/core': true
+  # optional websocket speed-ups with pure-JS fallbacks
+  bufferutil: false
+  utf-8-validate: false
+
+minimumReleaseAgeExclude:
+  - '@vitest/mocker@5.0.1'
+  - '@vitest/spy@5.0.1'
+  - vitest@5.0.1
+  - hono@4.13.8

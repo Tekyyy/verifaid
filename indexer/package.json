@@ -1,0 +1,26 @@
+{
+  "name": "@poa/indexer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ponder indexer: contract events and EAS attestations into the tables the dashboard reads",
+  "scripts": {
+    "dev": "ponder dev",
+    "start": "ponder start",
+    "serve": "ponder serve",
+    "codegen": "ponder codegen",
+    "db": "ponder db",
+    "build": "ponder codegen",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@poa/shared": "workspace:*",
+    "hono": "4.13.8",
+    "ponder": "0.17.10",
+    "viem": "2.56.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.1",
+    "typescript": "5.9.3"
+  }
+}
