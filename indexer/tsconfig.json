@@ -1,0 +1,16 @@
+﻿{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "incremental": false,
+    // The indexer is an application, not a library. Emitting declarations would force every drizzle table type
+    // in ponder.schema.ts to be nameable from outside pnpm's virtual store (TS2742).
+    "declaration": false,
+    "declarationMap": false,
+    "types": ["node"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler"
+  },
+  "include": ["ponder.config.ts", "ponder.schema.ts", "src/**/*.ts", "ponder-env.d.ts"]
+}

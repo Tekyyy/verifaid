@@ -138,6 +138,16 @@ export interface DonorTrace {
   receipts: DonorReceiptTrace[]
 }
 
+/**
+ * One tranche as it appears in a donor's trace: the tranche's real amount plus this donor's pro-rata slice of
+ * it. Both numbers are given explicitly, because showing one where the reader expects the other is exactly the
+ * kind of misleading number this project exists to avoid.
+ */
+export interface DonorTrancheSlice extends TrancheView {
+  /** This donor's pro-rata share of `amount`, in token base units. */
+  donorShare: string
+}
+
 export interface DonorReceiptTrace {
   receiptId: string
   needId: string
@@ -147,10 +157,11 @@ export interface DonorReceiptTrace {
   amount: string
   /** Donor's share of the need's funding, in basis points. */
   shareBps: number
-  /** Donor's pro-rata share of each released tranche. */
+  /** Sum of this donor's slices of the tranches that have actually been released to the NGO. */
   releasedToNgo: string
   refunded: string
-  tranches: TrancheView[]
+  /** `amount` is the full tranche; `donorShare` is this donor's part of it. */
+  tranches: DonorTrancheSlice[]
   deliveries: DeliveryView[]
 }
 
