@@ -32,8 +32,12 @@ pnpm services:up                  # optional: evidence, pii-vault, bank-connecto
 Put a funded deployer key and a Basescan key in `.env` (with `CHALLENGE_PERIOD_SECONDS=60`), then:
 
 ```bash
-pnpm deploy:sepolia    # deploy + verify, register the six schemas, seed; archives the previous release first
+pnpm deploy:sepolia    # deploy + verify, register the six schemas, seed, create the test Uniswap pool;
+                       # archives the previous release first
 ```
+
+If donations in USDC start reverting on testnet, someone moved the test pool (the mock tokens are freely
+mintable): `pnpm deploy:sepolia liquidity` swaps it back to the oracle price.
 
 Use a **60-second challenge period** for the demo deployment. The default of 600s is realistic but makes a live
 walkthrough painful; say out loud that production would use 72 hours.
@@ -47,12 +51,14 @@ pnpm demo:run              # anvil
 pnpm demo:run base-sepolia # testnet
 ```
 
-This runs three needs unattended and prints an explorer link for every step: an **on-chain** need (wallet and
+This runs four needs unattended and prints an explorer link for every step: an **on-chain** need (wallet and
 card donors, settlements after every release), an **off-chain** need (the payment provider records every payment
-and payout by attestation, no token moves), and a need whose **funding deadline passes below its minimum**, so it
-expires and the donor is refunded. Run it once before the demo so the Semaphore proving keys are cached, the
+and payout by attestation, no token moves), a need whose **funding deadline passes below its minimum**, so it
+expires and the donor is refunded, and a need funded in **full blockchain mode**: USDC bought by card (mocked on
+testnets, where Coinbase Onramp does not deliver) donated from the donor's own wallet and swapped on Uniswap under
+the Chainlink bound, and an exchange withdrawal to a deposit address that the keeper sweeps. Run it once before the demo so the Semaphore proving keys are cached, the
 dashboard has data, and you have the tracking links it prints at the end. Pass scenario names to run a subset:
-`pnpm demo:run base-sepolia onchain offchain`.
+`pnpm demo:run base-sepolia onchain conversion`.
 
 ---
 
@@ -147,6 +153,14 @@ Open the off-chain need from the demo run, then the expired one.
 > the donor got every unit back. Wallet donors see the same thing through their soulbound receipt at `/donor`,
 > and anyone can download the whole need as a PDF audit report."
 
+**If you have 30 more seconds — full blockchain mode.** Open the converted need from the demo run.
+
+> "This donor paid by card. Coinbase Onramp put USDC in their own passkey wallet — never ours — and one tap donated
+> it. The contract swapped it on Uniswap and refused anything below the Chainlink price minus 1%: fair value
+> 1,851.69, donated 1,851.50, and those 19 cents are on the donation and count against the cost cap the NGO
+> published. This one came from an exchange to a deposit address that commits to this need: only what the need
+> could take was converted, and the rest went back in USDC."
+
 ### 4:15 — Where it can still go wrong (30s)
 
 > "Hash anchoring proves evidence has not changed. It does not prove the photo is real. A staged photo hashes
@@ -174,6 +188,7 @@ Open the off-chain need from the demo run, then the expired one.
 | A role wallet is out of gas on testnet | Re-run `pnpm deploy:sepolia seed`; it tops the role wallets up |
 | Tracking page says "not found" | The indexer has not reached that block yet; the widget refreshes every minute on its own |
 | Card checkout fails | The bank connector is not running (`pnpm services:up`) or the need is not open for funding any more |
+| A USDC or ETH donation reverts | `FeeExceedsDisclosure`: the need allows no intermediary costs, give EURC. `InsufficientOutput` / "Too little received": the pool is off the oracle price, run `pnpm deploy:sepolia liquidity`. `StalePrice`: a Chainlink feed has not updated within its heartbeat |
 
 ## Questions judges actually ask
 
@@ -202,6 +217,12 @@ Yes, for the money itself, and the proposal says so too. What changes is that ev
 signed, dated and specific: this payment, this fee, this payout of this tranche to this supplier reference. An
 auditor compares its books to its attestations line by line. And the provider cannot unlock anything on its own:
 payouts after the first still need evidence, anonymous confirmations and an independent sign-off.
+
+**"Couldn't someone manipulate the swap?"**
+They can make it revert, not steal from it. The minimum output comes from Chainlink, not from the caller or the
+pool; routes can only pass through USDC and WETH; only the donor or our keeper can sweep a deposit address, so
+nobody can wrap a sweep between two trades of their own; and even our admin key needs two public days to change a
+price feed or a route.
 
 **"Why Base?"**
 Cheap enough that a per-beneficiary confirmation is viable, EAS and Semaphore v4 already deployed, and Coinbase

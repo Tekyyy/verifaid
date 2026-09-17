@@ -5,7 +5,8 @@ Solidity 0.8.24, Foundry, OpenZeppelin v5. Dependencies come from npm (`pnpm ins
 ```bash
 pnpm install                # installs OpenZeppelin, EAS, Semaphore, forge-std
 forge build
-forge test                  # 274 tests: unit, fuzz, invariant, end-to-end, real Semaphore, review regressions
+forge test                  # 322 tests: unit, fuzz, invariant, end-to-end, real Semaphore, review regressions
+BASE_MAINNET_RPC_URL=https://mainnet.base.org forge test --match-path test/fork/*   # conversions on real Base
 forge coverage --report summary --no-match-coverage "(script|test|mocks)"
 ```
 
@@ -22,7 +23,10 @@ forge coverage --report summary --no-match-coverage "(script|test|mocks)"
 | `funds/DonationReceipt` | Soulbound (ERC-5192) ERC-721 receipt with fully on-chain metadata. Evidence, not an asset, so it cannot be transferred or sold. |
 | `identity/BeneficiaryGroups` | One Semaphore group per NGO programme. Beneficiaries exist here only as identity commitments. |
 | `delivery/DeliveryManager` | Ties a delivery to a tranche: field evidence, anonymous beneficiary confirmations (single or batched), independent verifier sign-off, challenge window, finalize. |
-| `resolvers/ProofOfAidResolver` | The EAS resolver for all six schemas. Decides who may attest what and forwards accepted attestations into the contracts above. |
+| `resolvers/ProofOfAidResolver` | The EAS resolver for all six schemas. Decides who may attest what and forwards accepted attestations into the contracts above. Also keeps each need's cumulative fees (provider, settlement and conversion) under its cost cap. |
+| `conversion/ConversionRouter` | v3. Swaps a donation in USDC or ETH into the vault token on Uniswap v3 over admin-set routes through fixed hubs, refusing any output below the Chainlink fair value minus the route's bound. Changes to anything money may be waiting on take two days. |
+| `funds/DonationForwarderFactory` | v3. `donate`: a wallet gives USDC or ETH, only what the need can take is converted, and the wallet gets the receipt. Also deploys deposit addresses and registers the keepers that may sweep them. |
+| `funds/DonationForwarder` | v3. A deposit address (CREATE2 clone committing to its need, receipt wallet, refund route and refund key) for money sent from an exchange. Swept by its donor or a keeper; refunds only where the intent says, or where the refund key signs for. |
 
 ## A need's terms
 
@@ -34,7 +38,7 @@ Everything an NGO commits to at creation, and what enforces it:
 | Funding deadline | No verification or donation after it; `expire` then closes funding or expires the need |
 | Minimum funding (`minFundingBps`) | Funding closes early or at the deadline only at or above it; below it the need expires and refunds open. 10000 = all or nothing; lower = partial execution with every tranche scaled down |
 | Execution deadline | After it (plus a 14-day grace period for work already in flight) anyone can expire the need and the unreleased balance is refundable |
-| Third-party cost cap + disclosure hash | Funding and settlement fees together stay within the cap of what donors paid |
+| Third-party cost cap + disclosure hash | Funding, conversion and settlement fees together stay within the cap of what donors paid |
 | Tranche plan, target, region, dossier hash | As in v1; the region is checked against delivery evidence and the dossier against verifications |
 | Category, metadata URI, expected outcome hash | Committed in the `NeedCreated` event (nothing on-chain reads them, so they are not stored) |
 
@@ -42,8 +46,9 @@ Everything an NGO commits to at creation, and what enforces it:
 
 ```
 verified need ──► ledger cloned ──► funding ──────────────────────────► funding closes ──► tranches fixed
-                    │                 on-chain: wallet donations and       (target reached, or the NGO closes
-                    │                   provider deposits into the vault    at/above its minimum, or the
+                    │                 on-chain: wallet donations (EURC,    (target reached, or the NGO closes
+                    │                   or USDC/ETH converted on the way     at/above its minimum, or the
+                    │                   in) and provider deposits
                     │                 off-chain: the custodian's            deadline passes at/above it)
                     │                   FundingRecorded attestations               │
                     │                                                              │
@@ -108,13 +113,17 @@ together, walkable in any EAS explorer.
 | `test/e2e/Lifecycle.t.sol` | The full lifecycle, plus nullifier reuse, non-independent verifiers, challenge and dispute, cancellation and refunds |
 | `test/integration/RealSemaphore.t.sol` | Real Semaphore v4 contracts with real Groth16 proofs from a committed fixture |
 | `test/regression/V2ReviewFindings.t.sol` | Every finding of the adversarial review of v2, replayed against the fix (see `docs/DECISIONS.md` §12) |
+| `test/unit/ConversionRouter.t.sol`, `test/unit/DonationForwarder.t.sol` | The oracle bound, stale prices and the sequencer check, the configuration delay and hubs, how much input fills a need (fuzzed), wallet donations, deposit addresses, sweeps and signed refunds |
+| `test/regression/V3ReviewFindings.t.sol` | Every finding of the adversarial review of the conversions, replayed against the fix (see `docs/DECISIONS.md` §14) |
+| `test/fork/BaseMainnetConversion.t.sol` | Real Circle USDC/EURC, Uniswap v3 pools and Chainlink feeds on a Base mainnet fork (runs when `BASE_MAINNET_RPC_URL` is set) |
 
 The Semaphore fixture is regenerated with `pnpm fixture:semaphore` (downloads the official proving artifacts).
 
 ## Deploying
 
 ```bash
-pnpm deploy:sepolia          # deploy + verify, register schemas, seed; prints every link
+pnpm deploy:sepolia          # deploy + verify, register schemas, seed, create the test Uniswap pool; prints every link
+pnpm deploy:sepolia liquidity   # later: put that pool back at the oracle price
 ```
 
 or step by step:
@@ -123,6 +132,7 @@ or step by step:
 forge script script/Deploy.s.sol --rpc-url base_sepolia --broadcast --verify
 forge script script/RegisterSchemas.s.sol --rpc-url base_sepolia --broadcast
 forge script script/SeedDemo.s.sol --rpc-url base_sepolia --broadcast
+forge script script/SeedLiquidity.s.sol --rpc-url base_sepolia --broadcast
 ```
 
 `Deploy.s.sol` reuses the external contracts that already exist on the target chain and deploys local

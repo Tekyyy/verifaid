@@ -24,7 +24,7 @@ it lives in the code.
 | Requirement | Where it lives |
 |---|---|
 | R1 — register previously verified needs, with their terms | `NeedsRegistry` (deadlines, minimum funding, cost cap, expected outcome) + `NeedVerified` attestations |
-| R2 — track the path of donations | `AidVault` or `NonCustodialLedger`, soulbound `DonationReceipt`, `FundingRecorded` and `Settlement` attestations, public tracking links |
+| R2 — track the path of donations | `AidVault` or `NonCustodialLedger`, soulbound `DonationReceipt`, `FundingRecorded` and `Settlement` attestations, on-chain conversions (`ConversionRouter`, `DonationForwarderFactory`), public tracking links |
 | R3 — evidence of aid delivery | `DeliveryManager`, `DeliveryEvidence` + `DeliveryVerified` attestations, Semaphore receipt proofs |
 | R4 — protect beneficiaries' data | off-chain PII vault, Semaphore identities, encrypted evidence |
 | R5 — verifiable impact | `ImpactReport` attestations, Ponder indexer, public dashboard, PDF audit reports |
@@ -35,7 +35,8 @@ it lives in the code.
 NGO registers a need and its terms ─► independent verifier attests it ─► ledger cloned, funding opens
       │                                                                           │
       │          donors give by wallet, card or bank ◄────────────────────────────┘
-      │          (on-chain custody: into the vault; off-chain: recorded by the payment provider)
+      │          (on-chain custody: into the vault, USDC and ETH converted on the way in under a
+      │           Chainlink bound; off-chain: recorded by the payment provider)
       │                                        │
       │          funding closes at the target, or at the deadline if the minimum was met
       │          (below it the need expires and every donor is refunded)
@@ -46,6 +47,12 @@ field agent delivers aid, files encrypted evidence ─► beneficiaries confirm 
       └──► independent verifier signs off ─► challenge window ─► next tranche ─► Settlement ─► impact report
 ```
 
+**Full blockchain mode.** A donor can give the vault's stablecoin directly, or USDC or ETH from any wallet: the
+contracts swap it on Uniswap v3 in the same transaction and refuse any result below the Chainlink fair value minus
+1%. Card donors buy USDC through Coinbase Onramp into their own passkey wallet and donate it in one tap. Money
+withdrawn from an exchange goes to a deposit address that commits to the need and to where refunds go. Every
+conversion's cost is recorded on the donation and counted against the cost cap the NGO disclosed.
+
 Money only moves forward when three independent signals agree: field evidence, anonymous beneficiary
 confirmations above a threshold, and an approving verifier who is provably unrelated to the NGO. A donor follows
 all of it through five stages — **verified, funded, settled, delivered, impact confirmed** — from a tracking link
@@ -53,26 +60,34 @@ that needs no account.
 
 ## Live on Base Sepolia
 
-v2 is deployed and source-verified on Basescan, and its six schemas are registered in the real EAS
-SchemaRegistry. `pnpm demo:run base-sepolia` runs three needs on it: one in on-chain custody (wallet and card
-donors, settlement after every release), one in off-chain custody (every payment and payout attested by the
-payment provider), and one that expires below its minimum and refunds its donor.
+v3 is deployed and all 15 contracts are source-verified on Basescan; its six schemas are registered in the real EAS
+SchemaRegistry. Conversions run on Uniswap v3's own Base Sepolia deployment and Chainlink's USDC/USD feed there;
+because Base Sepolia has no EUR/USD feed and no liquid pool for the test tokens, those two are mocked and the
+MockUSDC/MockEURC pool is created by the deploy at the oracle price. `pnpm demo:run base-sepolia` runs four needs
+on it: on-chain custody (wallet and card donors, settlement after every release), off-chain custody (every payment
+and payout attested by the payment provider), a need that expires below its minimum and refunds its donor, and a
+need funded in full blockchain mode (card-bought USDC from the donor's own wallet, and an exchange withdrawal to a
+deposit address).
 
 | | |
 |---|---|
-| `NeedsRegistry` | [`0x8931b763c74a1706f78a395dc8b005Ae1E0b7932`](https://sepolia.basescan.org/address/0x8931b763c74a1706f78a395dc8b005Ae1E0b7932) |
-| `DeliveryManager` | [`0xfe628B18d322076da87A03d7f265AA2c4BCc6f09`](https://sepolia.basescan.org/address/0xfe628B18d322076da87A03d7f265AA2c4BCc6f09) |
-| `ProofOfAidResolver` | [`0xf6854EFa8f77648B0e3638a9a9615C96D63dF29B`](https://sepolia.basescan.org/address/0xf6854EFa8f77648B0e3638a9a9615C96D63dF29B) |
-| `RoleRegistry` | [`0x5C4ea3f9A5F704282170890226326Ebab8E522A1`](https://sepolia.basescan.org/address/0x5C4ea3f9A5F704282170890226326Ebab8E522A1) |
-| `AidVaultFactory` | [`0xC4D24C30a900C845E9bF06EC2cE2A13C3E232359`](https://sepolia.basescan.org/address/0xC4D24C30a900C845E9bF06EC2cE2A13C3E232359) |
-| `BeneficiaryGroups` | [`0xec5cdCa8101323574a8953B0c7B7C26B716989c4`](https://sepolia.basescan.org/address/0xec5cdCa8101323574a8953B0c7B7C26B716989c4) |
-| `DonationReceipt` | [`0xe5b765C7b0Bf1FA0af58CC71A3a67E236353F5bA`](https://sepolia.basescan.org/address/0xe5b765C7b0Bf1FA0af58CC71A3a67E236353F5bA) |
-| test token (mEURC) | [`0xBC7c4FEa2d4Fe339d4e9a9f43f2D606F25aD1BD8`](https://sepolia.basescan.org/address/0xBC7c4FEa2d4Fe339d4e9a9f43f2D606F25aD1BD8) |
+| `NeedsRegistry` | [`0x2476F8CEfe3143a76D1995Cf01A9d66ffeFA00CE`](https://sepolia.basescan.org/address/0x2476F8CEfe3143a76D1995Cf01A9d66ffeFA00CE) |
+| `DeliveryManager` | [`0xBE7d731b59C0E3A8ad66f604a1Ad0e3260e04DAf`](https://sepolia.basescan.org/address/0xBE7d731b59C0E3A8ad66f604a1Ad0e3260e04DAf) |
+| `ProofOfAidResolver` | [`0x1A5F05AC4aE7DDE22a5CA869509D8e849E5349da`](https://sepolia.basescan.org/address/0x1A5F05AC4aE7DDE22a5CA869509D8e849E5349da) |
+| `RoleRegistry` | [`0x1e858a0dae31a20815aa85D27Ffb2ec18898ee7F`](https://sepolia.basescan.org/address/0x1e858a0dae31a20815aa85D27Ffb2ec18898ee7F) |
+| `AidVaultFactory` | [`0xAD1582aFfedbddf96252bfe02BbE5F0F183FdFEf`](https://sepolia.basescan.org/address/0xAD1582aFfedbddf96252bfe02BbE5F0F183FdFEf) |
+| `BeneficiaryGroups` | [`0x7B8fb05147dff265842CC804C6326cc5699F598a`](https://sepolia.basescan.org/address/0x7B8fb05147dff265842CC804C6326cc5699F598a) |
+| `DonationReceipt` | [`0x47EC520CCAb71665dDFACD14f5387E106bfaC4df`](https://sepolia.basescan.org/address/0x47EC520CCAb71665dDFACD14f5387E106bfaC4df) |
+| `ConversionRouter` | [`0x227D3Cee9C2eA43d447cdb496C625b30439ED8BD`](https://sepolia.basescan.org/address/0x227D3Cee9C2eA43d447cdb496C625b30439ED8BD) |
+| `DonationForwarderFactory` | [`0x8048f5A99fBDd59BB41DC99BB467915E39ddcd21`](https://sepolia.basescan.org/address/0x8048f5A99fBDd59BB41DC99BB467915E39ddcd21) |
+| test token (mEURC) | [`0x979EfA4EAfAF168E33642875779e7ab42D74dDB7`](https://sepolia.basescan.org/address/0x979EfA4EAfAF168E33642875779e7ab42D74dDB7) |
+| test USDC (mUSDC) | [`0xc42Aae28D9e4fF0E70aFB73B7135CD25d1645693`](https://sepolia.basescan.org/address/0xc42Aae28D9e4fF0E70aFB73B7135CD25d1645693) |
 
 Every address and schema UID is in [`deployments/base-sepolia.json`](deployments/base-sepolia.json); the schemas are
-browsable on the [Base Sepolia EAS explorer](https://base-sepolia.easscan.org). EAS and Semaphore v4 are the ones
-already deployed on Base Sepolia — this project deploys neither. The v1 release (whose need #5 ran the original
-lifecycle) stays on-chain and is recorded in [`deployments/base-sepolia.v1.json`](deployments/base-sepolia.v1.json).
+browsable on the [Base Sepolia EAS explorer](https://base-sepolia.easscan.org). EAS, Semaphore v4, Uniswap v3 and
+the Chainlink feeds are the ones already deployed on Base Sepolia — this project deploys none of them. Earlier
+releases stay on-chain and are recorded in [`deployments/base-sepolia.v1.json`](deployments/base-sepolia.v1.json)
+and [`deployments/base-sepolia.v2.json`](deployments/base-sepolia.v2.json).
 
 ## Repository layout
 
@@ -83,7 +98,7 @@ services/     evidence (encrypt + IPFS), pii-vault (envelope-encrypted records),
 indexer/      Ponder: events → tables → the API, donation tracking and RSS feeds
 app/          Next.js dashboard: public needs and tracking pages, embeddable widget, donor, NGO, verifier, field
               agent and beneficiary tools, PDF reports
-demo/         runs the three lifecycle scenarios against a live chain
+demo/         runs the four lifecycle scenarios against a live chain (including conversions)
 deployments/  addresses + schema UIDs per network, written by the deploy scripts
 docs/         DECISIONS.md, THREAT_MODEL.md, DEMO_SCRIPT.md, ROADMAP.md, GAP_PLAN.md
 ```
@@ -108,14 +123,15 @@ Run the whole system against a local chain:
 ```bash
 pnpm chain          # anvil
 pnpm deploy:local   # deploy + register schemas + seed demo data
-pnpm demo:run       # the three lifecycle scenarios, with explorer links
+pnpm demo:run       # the four lifecycle scenarios, with explorer links
 pnpm indexer:dev    # indexer on :42069
 pnpm app:dev        # dashboard on :3000
 pnpm services:up    # Postgres and the four services (Docker)
 ```
 
 Deploy to Base Sepolia (needs `DEPLOYER_PRIVATE_KEY` and `BASESCAN_API_KEY` in `.env`). The whole system costs
-about 0.0003 ETH, and the script reuses the EAS and Semaphore contracts already deployed there:
+well under 0.001 ETH, and the script reuses the EAS, Semaphore, Uniswap and Chainlink contracts already deployed
+there:
 
 ```bash
 pnpm deploy:sepolia
@@ -133,8 +149,8 @@ commitment from the group. See `docs/THREAT_MODEL.md` for what this does **not**
 
 ## Documentation
 
-- [`docs/DECISIONS.md`](docs/DECISIONS.md) — every open choice and how it was resolved, including v2 and both adversarial reviews
-- [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — threats, mitigations and residual risk, including off-chain custody
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — every open choice and how it was resolved, including v2, v3 conversions and all three adversarial reviews
+- [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — threats, mitigations and residual risk, including off-chain custody and conversions
 - [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) — the five-minute walkthrough
 - [`docs/GAP_PLAN.md`](docs/GAP_PLAN.md) — the proposal, item by item, and where each lives in the code
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — what is deliberately left out, and what it would take
