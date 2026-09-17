@@ -77,6 +77,20 @@ library Errors {
     error AlreadyChallenged();
     error AlreadyRejected();
 
+    // ─── conversions and forwarders ────────────────────────────────────────────
+    error PriceFeedNotSet();
+    error StalePrice();
+    error InvalidPrice();
+    error SequencerDown();
+    error RouteNotSet();
+    error SlippageTooHigh();
+    error InsufficientOutput();
+    error NothingToSweep();
+    error NotAccepting();
+    error InvalidSignature();
+    error SignatureExpired();
+    error TransferFailed();
+
     // ─── resolver ──────────────────────────────────────────────────────────────
     error WrongSchema();
     error InvalidRecipient();

@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {IAidVault} from "../interfaces/IAidVault.sol";
 import {IDeliveryManager} from "../interfaces/IDeliveryManager.sol";
+import {IFeeRecorder} from "../interfaces/IFeeRecorder.sol";
 import {INeedsRegistry} from "../interfaces/INeedsRegistry.sol";
 import {INonCustodialLedger} from "../interfaces/INonCustodialLedger.sol";
 import {IRoleRegistry} from "../interfaces/IRoleRegistry.sol";
@@ -26,7 +27,7 @@ import {SchemaResolver} from "@ethereum-attestation-service/eas-contracts/contra
 ///        DeliveryEvidence  field agent files encrypted evidence                 ┐
 ///        DeliveryVerified  independent verifier signs the delivery off          ┘ → Delivered
 ///        ImpactReport      NGO publishes outcomes, chained to the last sign-off → Impact confirmed
-contract ProofOfAidResolver is SchemaResolver {
+contract ProofOfAidResolver is SchemaResolver, IFeeRecorder {
     uint16 internal constant BPS_DENOMINATOR = 10_000;
     uint256 public constant SCHEMA_COUNT = 6;
 
@@ -104,6 +105,19 @@ contract ProofOfAidResolver is SchemaResolver {
         if (index == 5) return (IMPACT_REPORT_SCHEMA, true, IMPACT_REPORT_UID);
         // forge-lint: disable-end(boolean-cst)
         revert Errors.InvalidParameter();
+    }
+
+    // ─── conversion fees ───────────────────────────────────────────────────────
+
+    /// @inheritdoc IFeeRecorder
+    /// @dev Conversion costs are computed by the contracts (oracle fair value minus swap output), so they need no
+    ///      attestation; they share the attested funding fees' budget under the need's disclosed cap.
+    function recordConversionFee(uint256 needId, uint256 fee) external {
+        INeedsRegistry.Need memory n = registry.getNeed(needId);
+        if (msg.sender != n.vault || n.vault == address(0)) revert Errors.Unauthorized();
+        fundingFeesOf[needId] += fee;
+        _checkCostCap(needId, n.vault, n.thirdPartyCostBps);
+        emit ConversionFeeRecorded(needId, fee);
     }
 
     // ─── dispatch ──────────────────────────────────────────────────────────────

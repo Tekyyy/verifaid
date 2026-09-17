@@ -31,7 +31,8 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
             confirmationThresholdBps: uint16(vm.envOr("CONFIRMATION_THRESHOLD_BPS", uint256(7000))),
             challengePeriod: uint64(vm.envOr("CHALLENGE_PERIOD_SECONDS", uint256(600))),
             minExpectedRecipients: uint32(vm.envOr("MIN_EXPECTED_RECIPIENTS", uint256(5))),
-            dashboardBaseURI: vm.envOr("DASHBOARD_BASE_URI", string("http://localhost:3000/needs/"))
+            dashboardBaseURI: vm.envOr("DASHBOARD_BASE_URI", string("http://localhost:3000/needs/")),
+            conversion: _conversionParams()
         });
 
         address schemaRegistry = vm.envOr("SCHEMA_REGISTRY_ADDRESS", address(0));
@@ -59,6 +60,28 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         _write(s, params, schemaRegistry, semaphoreVerifier, deployer, startBlock);
     }
 
+    /// @dev External DeFi for the conversion path. On anvil every address is unset, so mocks are deployed; on Base
+    ///      Sepolia the real Uniswap v3 SwapRouter02, WETH and Chainlink feeds are passed in and only what does not
+    ///      exist there (EUR/USD) is mocked. See scripts/deploy-sepolia.mjs.
+    function _conversionParams() internal view returns (ConversionParams memory) {
+        return ConversionParams({
+            swapRouter: vm.envOr("SWAP_ROUTER_ADDRESS", address(0)),
+            weth: vm.envOr("WETH_ADDRESS", address(0)),
+            usdc: vm.envOr("USDC_ADDRESS", address(0)),
+            eurUsdFeed: vm.envOr("EUR_USD_FEED", address(0)),
+            usdcUsdFeed: vm.envOr("USDC_USD_FEED", address(0)),
+            ethUsdFeed: vm.envOr("ETH_USD_FEED", address(0)),
+            sequencerUptimeFeed: vm.envOr("SEQUENCER_UPTIME_FEED", address(0)),
+            maxSlippageBps: uint16(vm.envOr("MAX_SLIPPAGE_BPS", uint256(100))),
+            usdcToTokenFee: uint24(vm.envOr("USDC_POOL_FEE", uint256(100))),
+            wethToUsdcFee: uint24(vm.envOr("WETH_POOL_FEE", uint256(500))),
+            ethRoute: vm.envOr("ETH_ROUTE", false),
+            eurHeartbeat: uint32(vm.envOr("EUR_USD_HEARTBEAT", uint256(0))),
+            usdcHeartbeat: uint32(vm.envOr("USDC_USD_HEARTBEAT", uint256(0))),
+            ethHeartbeat: uint32(vm.envOr("ETH_USD_HEARTBEAT", uint256(0)))
+        });
+    }
+
     function _log(System memory s, Params memory params, address schemaRegistry, address deployer) internal pure {
         console2.log("");
         console2.log("Proof of Aid deployed");
@@ -67,6 +90,9 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         console2.log("  NeedsRegistry        ", address(s.registry));
         console2.log("  AidVaultFactory      ", address(s.factory));
         console2.log("  ProofOfAidResolver   ", address(s.resolver));
+        console2.log("  ConversionRouter     ", address(s.router));
+        console2.log("  ForwarderFactory     ", address(s.forwarderFactory));
+        console2.log("  swap router (mock?)  ", s.conversion.swapRouter, s.conversion.mocks);
         console2.log("  DonationReceipt      ", address(s.receipt));
         console2.log("  BeneficiaryGroups    ", address(s.groups));
         console2.log("  DeliveryManager      ", address(s.deliveryManager));
@@ -92,6 +118,9 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         contracts.serialize("DonationReceipt", address(s.receipt));
         contracts.serialize("BeneficiaryGroups", address(s.groups));
         contracts.serialize("DeliveryManager", address(s.deliveryManager));
+        contracts.serialize("ConversionRouter", address(s.router));
+        contracts.serialize("DonationForwarderImplementation", address(s.forwarderImplementation));
+        contracts.serialize("DonationForwarderFactory", address(s.forwarderFactory));
         string memory contractsJson = contracts.serialize("ProofOfAidResolver", address(s.resolver));
 
         string memory external_ = "external";
@@ -99,6 +128,13 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         external_.serialize("SchemaRegistry", schemaRegistry);
         external_.serialize("Semaphore", params.semaphore);
         external_.serialize("SemaphoreVerifier", semaphoreVerifier);
+        external_.serialize("SwapRouter", s.conversion.swapRouter);
+        external_.serialize("WETH", s.conversion.weth);
+        external_.serialize("USDC", s.conversion.usdc);
+        external_.serialize("EurUsdFeed", s.conversion.eurUsdFeed);
+        external_.serialize("UsdcUsdFeed", s.conversion.usdcUsdFeed);
+        external_.serialize("EthUsdFeed", s.conversion.ethUsdFeed);
+        external_.serialize("SequencerUptimeFeed", s.conversion.sequencerUptimeFeed);
         string memory externalJson = external_.serialize("Token", s.token);
 
         string memory protocolParams = "params";
@@ -106,6 +142,8 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         protocolParams.serialize("challengePeriodSeconds", uint256(params.challengePeriod));
         protocolParams.serialize("highValueThreshold", params.highValueThreshold);
         protocolParams.serialize("minExpectedRecipients", uint256(params.minExpectedRecipients));
+        protocolParams.serialize("maxSlippageBps", uint256(params.conversion.maxSlippageBps));
+        protocolParams.serialize("mockSwapRouter", s.conversion.mocks);
         string memory paramsJson = protocolParams.serialize("dashboardBaseURI", params.dashboardBaseURI);
 
         // Placeholders; RegisterSchemas.s.sol fills these in.
@@ -119,7 +157,7 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
 
         string memory root = "deployment";
         root.serialize("network", _networkName(block.chainid));
-        root.serialize("version", uint256(2));
+        root.serialize("version", uint256(3));
         root.serialize("chainId", block.chainid);
         root.serialize("startBlock", startBlock);
         root.serialize("deployer", deployer);

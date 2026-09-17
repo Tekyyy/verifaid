@@ -3,7 +3,9 @@ pragma solidity ^0.8.24;
 
 import {IAidVault} from "../interfaces/IAidVault.sol";
 import {IAidVaultFactory} from "../interfaces/IAidVaultFactory.sol";
+import {IDonationForwarderFactory} from "../interfaces/IDonationForwarderFactory.sol";
 import {IDonationReceipt} from "../interfaces/IDonationReceipt.sol";
+import {IFeeRecorder} from "../interfaces/IFeeRecorder.sol";
 import {INeedsRegistry} from "../interfaces/INeedsRegistry.sol";
 import {IRoleRegistry} from "../interfaces/IRoleRegistry.sol";
 import {Errors} from "../libraries/Errors.sol";
@@ -23,6 +25,10 @@ contract AidVault is TrancheLedger, IAidVault {
 
     IERC20 public immutable token;
     IDonationReceipt public immutable receipt;
+    /// @notice The only source of `donateVia` callers.
+    IDonationForwarderFactory public immutable forwarderFactory;
+    /// @notice Where conversion costs are counted against the need's cost cap.
+    IFeeRecorder public immutable feeRecorder;
 
     uint128 private _totalRefunded;
 
@@ -42,13 +48,20 @@ contract AidVault is TrancheLedger, IAidVault {
         address deliveryManager_,
         IAidVaultFactory factory_,
         IERC20 token_,
-        IDonationReceipt receipt_
+        IDonationReceipt receipt_,
+        IDonationForwarderFactory forwarderFactory_,
+        IFeeRecorder feeRecorder_
     ) TrancheLedger(roles_, registry_, deliveryManager_, factory_) {
-        if (address(token_) == address(0) || address(receipt_) == address(0)) {
+        if (
+            address(token_) == address(0) || address(receipt_) == address(0) || address(forwarderFactory_) == address(0)
+                || address(feeRecorder_) == address(0)
+        ) {
             revert Errors.ZeroAddress();
         }
         token = token_;
         receipt = receipt_;
+        forwarderFactory = forwarderFactory_;
+        feeRecorder = feeRecorder_;
     }
 
     // ─── donations ─────────────────────────────────────────────────────────────
@@ -92,6 +105,43 @@ contract AidVault is TrancheLedger, IAidVault {
         factory.consumePaymentRef(msg.sender, paymentRefHash); // reverts if this provider already used it anywhere
         token.safeTransferFrom(msg.sender, address(this), amount);
         emit DonatedOnBehalf(id, msg.sender, amount, donorRefHash, paymentRefHash);
+
+        if (_totalDonated == target) _closeFunding(id);
+    }
+
+    /// @inheritdoc IAidVault
+    /// @dev A forwarder-credited donation is keyed by the forwarder's own address in `donatedByRef`, with the
+    ///      forwarder as its `refPartner`: the key cannot collide with or be squatted by any other depositor, and
+    ///      refunds reuse `claimRefundByRef`.
+    function donateVia(uint256 amount, uint256 conversionFee, address receiptTo)
+        external
+        nonReentrant
+        onlyClone
+        returns (uint256 receiptId)
+    {
+        _requireNotPaused();
+        // The factory's direct wallet path always credits a wallet; forwarders may credit themselves.
+        bool fromFactory = msg.sender == address(forwarderFactory);
+        if (fromFactory ? receiptTo == address(0) : !forwarderFactory.isForwarder(msg.sender)) {
+            revert Errors.Unauthorized();
+        }
+        uint256 id = needId();
+        uint256 target = _checkFunding(id, amount);
+
+        _totalDonated += uint128(amount);
+        if (receiptTo != address(0)) {
+            donatedBy[receiptTo] += amount;
+        } else {
+            bytes32 key = bytes32(uint256(uint160(msg.sender)));
+            donatedByRef[key] += amount;
+            refPartner[key] = msg.sender;
+        }
+
+        token.safeTransferFrom(msg.sender, address(this), amount);
+        if (receiptTo != address(0)) receiptId = receipt.mint(receiptTo, id, amount);
+        // After the donation is counted, so the cap is checked against what donors have now paid in total.
+        if (conversionFee > 0) feeRecorder.recordConversionFee(id, conversionFee);
+        emit DonatedVia(id, msg.sender, receiptTo, amount, conversionFee, receiptId);
 
         if (_totalDonated == target) _closeFunding(id);
     }

@@ -11,6 +11,16 @@ interface IAidVault is ITrancheLedger {
     event DonatedOnBehalf(
         uint256 indexed needId, address indexed partner, uint256 amount, bytes32 donorRefHash, bytes32 paymentRefHash
     );
+    /// @notice A converted donation delivered by a DonationForwarder (card on-ramp or wallet in another token).
+    /// @param receiptTo Wallet credited with the donation and its receipt; zero when the forwarder holds the claim.
+    event DonatedVia(
+        uint256 indexed needId,
+        address indexed forwarder,
+        address indexed receiptTo,
+        uint256 amount,
+        uint256 conversionFee,
+        uint256 receiptId
+    );
     event Refunded(uint256 indexed needId, address indexed account, uint256 amount);
     event RefundedByRef(uint256 indexed needId, bytes32 indexed donorRefHash, address indexed to, uint256 amount);
 
@@ -19,6 +29,11 @@ interface IAidVault is ITrancheLedger {
 
     /// @notice Deposits a fiat donation converted to stablecoin by a payment provider (BANK_PARTNER_ROLE).
     function donateOnBehalf(uint256 amount, bytes32 donorRefHash, bytes32 paymentRefHash) external;
+
+    /// @notice Deposits a converted donation. Callable only by forwarders from the DonationForwarderFactory.
+    ///         With a `receiptTo` wallet the donation is credited to it and receipted; otherwise it is credited to
+    ///         the forwarder, which alone can claim its refund. `conversionFee` counts against the cost cap.
+    function donateVia(uint256 amount, uint256 conversionFee, address receiptTo) external returns (uint256 receiptId);
 
     /// @notice Pays a releasable tranche to the NGO's registered payout address. Callable by anyone.
     function releaseTranche(uint256 index) external;

@@ -3,18 +3,23 @@ pragma solidity ^0.8.24;
 
 import {RoleRegistry} from "../../src/access/RoleRegistry.sol";
 import {AidVault} from "../../src/funds/AidVault.sol";
+import {DonationForwarderFactory} from "../../src/funds/DonationForwarderFactory.sol";
 import {IAidVault} from "../../src/interfaces/IAidVault.sol";
+import {IDonationForwarder} from "../../src/interfaces/IDonationForwarder.sol";
 import {INeedsRegistry} from "../../src/interfaces/INeedsRegistry.sol";
 import {ITrancheLedger} from "../../src/interfaces/ITrancheLedger.sol";
 import {MockEURC} from "../../src/mocks/MockEURC.sol";
+import {MockUSDC} from "../../src/mocks/MockUSDC.sol";
+import {MockV3Aggregator} from "../../src/mocks/MockV3Aggregator.sol";
 import {NeedsRegistry} from "../../src/needs/NeedsRegistry.sol";
 import {PoATest} from "../utils/PoATest.sol";
 import {CommonBase} from "forge-std/Base.sol";
 import {StdCheats} from "forge-std/StdCheats.sol";
 import {StdUtils} from "forge-std/StdUtils.sol";
 
-/// @notice Drives one vault through random but legal sequences of donations, releases, cancellation, the passage
-///         of time (funding and execution deadlines, partial execution) and refunds.
+/// @notice Drives one vault through random but legal sequences of donations (direct, provider, converted from USDC
+///         and swept from deposit addresses), releases, cancellation, the passage of time (funding and execution
+///         deadlines, partial execution) and refunds (including forwarder-credited ones).
 contract VaultHandler is CommonBase, StdCheats, StdUtils {
     AidVault public immutable vault;
     MockEURC public immutable token;
@@ -36,6 +41,16 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
     uint256 public refundCalls;
     uint256 public cancelCalls;
     uint256 public expireCalls;
+    uint256 public convertedCalls;
+    uint256 public sweepCalls;
+    uint256 public forwarderRefundCalls;
+
+    // ─── conversion path ───────────────────────────────────────────────────────
+    DonationForwarderFactory public forwarderFactory;
+    MockUSDC public usdc;
+    MockV3Aggregator[3] public feeds; // EUR/USD, USDC/USD, ETH/USD
+    int256[3] public prices;
+    address[] public forwarders;
 
     constructor(
         AidVault vault_,
@@ -57,6 +72,69 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
 
         donors = [makeAddr("invDonor1"), makeAddr("invDonor2"), makeAddr("invDonor3")];
         donorRefs = [keccak256("invRef1"), keccak256("invRef2")];
+    }
+
+    function setConversion(
+        DonationForwarderFactory forwarderFactory_,
+        MockUSDC usdc_,
+        MockV3Aggregator[3] memory feeds_,
+        int256[3] memory prices_
+    ) external {
+        forwarderFactory = forwarderFactory_;
+        usdc = usdc_;
+        feeds = feeds_;
+        prices = prices_;
+    }
+
+    /// @dev Mock prices go stale when time is warped; converted donations republish them first.
+    function _refreshPrices() internal {
+        for (uint256 i; i < 3; ++i) {
+            feeds[i].updateAnswer(prices[i]);
+        }
+    }
+
+    /// @dev A wallet gives USDC; the factory converts it and donates up to the remaining target.
+    function donateConverted(uint256 actorSeed, uint256 amount) external {
+        if (!_fundingOpen()) return;
+        _refreshPrices();
+        address donor = donors[actorSeed % donors.length];
+        amount = bound(amount, 1e6, 20_000e6);
+        usdc.mint(donor, amount);
+        vm.startPrank(donor);
+        usdc.approve(address(forwarderFactory), amount);
+        try forwarderFactory.donate(needId, address(usdc), amount) {
+            convertedCalls++;
+        } catch {}
+        vm.stopPrank();
+    }
+
+    /// @dev USDC lands on a fresh deposit address and a stranger sweeps it.
+    function depositAndSweep(uint256 actorSeed, uint256 amount) external {
+        if (!_fundingOpen()) return;
+        _refreshPrices();
+        IDonationForwarder.Intent memory intent = IDonationForwarder.Intent({
+            needId: needId,
+            receiptTo: address(0),
+            refundTo: donors[actorSeed % donors.length],
+            refundSigner: address(0),
+            salt: bytes32(forwarders.length + 1)
+        });
+        address depositAddress = forwarderFactory.forwarderAddress(intent);
+        usdc.mint(depositAddress, bound(amount, 1e6, 20_000e6));
+        try forwarderFactory.sweep(intent, address(usdc)) {
+            forwarders.push(depositAddress);
+            sweepCalls++;
+        } catch {}
+    }
+
+    /// @dev Anyone can trigger a forwarder's vault refund once the need is cancelled or expired.
+    function claimForwarderRefund(uint256 seed) external {
+        if (!_refundable() || forwarders.length == 0) return;
+        address forwarder = forwarders[seed % forwarders.length];
+        bytes32 key = bytes32(uint256(uint160(forwarder)));
+        if (vault.donatedByRef(key) == 0) return;
+        IDonationForwarder(forwarder).claimVaultRefund();
+        forwarderRefundCalls++;
     }
 
     function _status() internal view returns (INeedsRegistry.NeedStatus) {
@@ -201,6 +279,8 @@ contract AidVaultInvariantTest is PoATest {
         p.fundingDeadline = uint64(block.timestamp + 30 days);
         p.executionDeadline = uint64(block.timestamp + 90 days);
         p.minFundingBps = 6000;
+        p.thirdPartyCostBps = 200; // converted donations have a swap cost, which the cap must allow
+        p.costDisclosureHash = COST_DISCLOSURE_HASH;
         vm.prank(ngo);
         needId = registry.createNeed(p);
         _attestNeedVerified(verifier1, needId, true);
@@ -208,8 +288,11 @@ contract AidVaultInvariantTest is PoATest {
         vault = AidVault(registry.vaultOf(needId));
 
         handler = new VaultHandler(vault, token, registry, admin, ngo, address(deliveryManager), bankPartner);
+        handler.setConversion(
+            forwarderFactory, usdc, [eurUsdFeed, usdcUsdFeed, ethUsdFeed], [MOCK_EUR_USD, MOCK_USDC_USD, MOCK_ETH_USD]
+        );
 
-        bytes4[] memory selectors = new bytes4[](9);
+        bytes4[] memory selectors = new bytes4[](12);
         selectors[0] = VaultHandler.donate.selector;
         selectors[1] = VaultHandler.donateOnBehalf.selector;
         selectors[2] = VaultHandler.closeFunding.selector;
@@ -219,6 +302,9 @@ contract AidVaultInvariantTest is PoATest {
         selectors[6] = VaultHandler.claimRefundByRef.selector;
         selectors[7] = VaultHandler.warp.selector;
         selectors[8] = VaultHandler.expire.selector;
+        selectors[9] = VaultHandler.donateConverted.selector;
+        selectors[10] = VaultHandler.depositAndSweep.selector;
+        selectors[11] = VaultHandler.claimForwarderRefund.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
         targetContract(address(handler));
     }
@@ -269,7 +355,8 @@ contract AidVaultInvariantTest is PoATest {
         // Surfaced with -vvv so a run that exercised nothing is visible rather than silently green.
         assertTrue(
             handler.donateCalls() + handler.donateOnBehalfCalls() + handler.releaseCalls() + handler.refundCalls()
-                    + handler.cancelCalls() + handler.expireCalls() >= 0
+                    + handler.cancelCalls() + handler.expireCalls() + handler.convertedCalls() + handler.sweepCalls()
+                    + handler.forwarderRefundCalls() >= 0
         );
     }
 }

@@ -4,7 +4,9 @@ pragma solidity ^0.8.24;
 import {AidVault} from "../../src/funds/AidVault.sol";
 import {IAidVault} from "../../src/interfaces/IAidVault.sol";
 import {IAidVaultFactory} from "../../src/interfaces/IAidVaultFactory.sol";
+import {IDonationForwarderFactory} from "../../src/interfaces/IDonationForwarderFactory.sol";
 import {IDonationReceipt} from "../../src/interfaces/IDonationReceipt.sol";
+import {IFeeRecorder} from "../../src/interfaces/IFeeRecorder.sol";
 import {INeedsRegistry} from "../../src/interfaces/INeedsRegistry.sol";
 import {ITrancheLedger} from "../../src/interfaces/ITrancheLedger.sol";
 import {Errors} from "../../src/libraries/Errors.sol";
@@ -66,14 +68,22 @@ contract AidVaultTest is PoATest {
     function test_constructor_revertsOnZeroAddresses() public {
         IAidVaultFactory f = IAidVaultFactory(address(factory));
         IDonationReceipt r = IDonationReceipt(address(receipt));
+        IDonationForwarderFactory ff = IDonationForwarderFactory(address(forwarderFactory));
+        IFeeRecorder fr = IFeeRecorder(address(resolver));
+        IERC20 t = IERC20(address(token));
+        address dm = address(deliveryManager);
         vm.expectRevert(Errors.ZeroAddress.selector);
-        new AidVault(roles, registry, address(deliveryManager), f, IERC20(address(0)), r);
+        new AidVault(roles, registry, dm, f, IERC20(address(0)), r, ff, fr);
         vm.expectRevert(Errors.ZeroAddress.selector);
-        new AidVault(roles, registry, address(deliveryManager), f, IERC20(address(token)), IDonationReceipt(address(0)));
+        new AidVault(roles, registry, dm, f, t, IDonationReceipt(address(0)), ff, fr);
         vm.expectRevert(Errors.ZeroAddress.selector);
-        new AidVault(roles, INeedsRegistry(address(0)), address(deliveryManager), f, IERC20(address(token)), r);
+        new AidVault(roles, INeedsRegistry(address(0)), dm, f, t, r, ff, fr);
         vm.expectRevert(Errors.ZeroAddress.selector);
-        new AidVault(roles, registry, address(0), f, IERC20(address(token)), r);
+        new AidVault(roles, registry, address(0), f, t, r, ff, fr);
+        vm.expectRevert(Errors.ZeroAddress.selector);
+        new AidVault(roles, registry, dm, f, t, r, IDonationForwarderFactory(address(0)), fr);
+        vm.expectRevert(Errors.ZeroAddress.selector);
+        new AidVault(roles, registry, dm, f, t, r, ff, IFeeRecorder(address(0)));
     }
 
     // ─── direct donations ──────────────────────────────────────────────────────

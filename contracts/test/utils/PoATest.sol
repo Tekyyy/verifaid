@@ -3,9 +3,11 @@ pragma solidity ^0.8.24;
 
 import {SystemDeployer} from "../../script/lib/SystemDeployer.sol";
 import {RoleRegistry} from "../../src/access/RoleRegistry.sol";
+import {ConversionRouter} from "../../src/conversion/ConversionRouter.sol";
 import {DeliveryManager} from "../../src/delivery/DeliveryManager.sol";
 import {AidVault} from "../../src/funds/AidVault.sol";
 import {AidVaultFactory} from "../../src/funds/AidVaultFactory.sol";
+import {DonationForwarderFactory} from "../../src/funds/DonationForwarderFactory.sol";
 import {DonationReceipt} from "../../src/funds/DonationReceipt.sol";
 import {NonCustodialLedger} from "../../src/funds/NonCustodialLedger.sol";
 import {BeneficiaryGroups} from "../../src/identity/BeneficiaryGroups.sol";
@@ -15,6 +17,10 @@ import {INeedsRegistry} from "../../src/interfaces/INeedsRegistry.sol";
 import {ITrancheLedger} from "../../src/interfaces/ITrancheLedger.sol";
 import {MockEURC} from "../../src/mocks/MockEURC.sol";
 import {MockSemaphore} from "../../src/mocks/MockSemaphore.sol";
+import {MockSwapRouter} from "../../src/mocks/MockSwapRouter.sol";
+import {MockUSDC} from "../../src/mocks/MockUSDC.sol";
+import {MockV3Aggregator} from "../../src/mocks/MockV3Aggregator.sol";
+import {MockWETH9} from "../../src/mocks/MockWETH9.sol";
 import {NeedsRegistry} from "../../src/needs/NeedsRegistry.sol";
 import {ProofOfAidResolver} from "../../src/resolvers/ProofOfAidResolver.sol";
 import {
@@ -93,6 +99,17 @@ abstract contract PoATest is Test, SystemDeployer {
 
     ProofOfAidResolver internal resolver;
 
+    // ─── conversion path (mocks) ───────────────────────────────────────────────
+    ConversionRouter internal router;
+    DonationForwarderFactory internal forwarderFactory;
+    MockUSDC internal usdc;
+    MockWETH9 internal weth;
+    MockSwapRouter internal swapRouter;
+    MockV3Aggregator internal eurUsdFeed;
+    MockV3Aggregator internal usdcUsdFeed;
+    MockV3Aggregator internal ethUsdFeed;
+    uint16 internal constant MAX_SLIPPAGE_BPS = 100;
+
     bytes32 internal needVerifiedSchema;
     bytes32 internal fundingRecordedSchema;
     bytes32 internal deliveryEvidenceSchema;
@@ -107,7 +124,34 @@ abstract contract PoATest is Test, SystemDeployer {
         return address(semaphore);
     }
 
+    /// @dev Hooks for tests that run against a fork with real DeFi instead of the local mocks.
+    function _beforeDeploy() internal virtual {}
+
+    function _tokenAddress() internal view virtual returns (address) {
+        return address(0);
+    }
+
+    function _conversionParams() internal view virtual returns (ConversionParams memory) {
+        return ConversionParams({
+            swapRouter: address(0),
+            weth: address(0),
+            usdc: address(0),
+            eurUsdFeed: address(0),
+            usdcUsdFeed: address(0),
+            ethUsdFeed: address(0),
+            sequencerUptimeFeed: address(0),
+            maxSlippageBps: MAX_SLIPPAGE_BPS,
+            usdcToTokenFee: 0,
+            wethToUsdcFee: 0,
+            ethRoute: true,
+            eurHeartbeat: 0,
+            usdcHeartbeat: 0,
+            ethHeartbeat: 0
+        });
+    }
+
     function setUp() public virtual {
+        _beforeDeploy();
         address semaphoreAddress = _setUpSemaphore();
         (address schemaRegistry_, address eas_) = _deployLocalEAS();
         schemaRegistry = ISchemaRegistry(schemaRegistry_);
@@ -117,14 +161,15 @@ abstract contract PoATest is Test, SystemDeployer {
         sys = _deploySystem(
             Params({
                 admin: admin,
-                token: address(0),
+                token: _tokenAddress(),
                 eas: eas_,
                 semaphore: semaphoreAddress,
                 highValueThreshold: HIGH_VALUE_THRESHOLD,
                 confirmationThresholdBps: CONFIRMATION_THRESHOLD_BPS,
                 challengePeriod: CHALLENGE_PERIOD,
                 minExpectedRecipients: MIN_EXPECTED_RECIPIENTS,
-                dashboardBaseURI: DASHBOARD_BASE_URI
+                dashboardBaseURI: DASHBOARD_BASE_URI,
+                conversion: _conversionParams()
             })
         );
         vm.stopPrank();
@@ -137,6 +182,14 @@ abstract contract PoATest is Test, SystemDeployer {
         deliveryManager = sys.deliveryManager;
         token = MockEURC(sys.token);
         resolver = sys.resolver;
+        router = sys.router;
+        forwarderFactory = sys.forwarderFactory;
+        usdc = MockUSDC(sys.conversion.usdc);
+        weth = MockWETH9(payable(sys.conversion.weth));
+        swapRouter = MockSwapRouter(sys.conversion.swapRouter);
+        eurUsdFeed = MockV3Aggregator(sys.conversion.eurUsdFeed);
+        usdcUsdFeed = MockV3Aggregator(sys.conversion.usdcUsdFeed);
+        ethUsdFeed = MockV3Aggregator(sys.conversion.ethUsdFeed);
 
         _registerSchemas();
         _registerActors();
@@ -272,6 +325,13 @@ abstract contract PoATest is Test, SystemDeployer {
         p.costDisclosureHash = thirdPartyCostBps == 0 ? bytes32(0) : COST_DISCLOSURE_HASH;
         needId = _verifiedNeedWith(p);
         ledger = NonCustodialLedger(registry.vaultOf(needId));
+    }
+
+    /// @dev Mock feeds go stale when a test warps time; this re-publishes the demo prices.
+    function _refreshPrices() internal {
+        eurUsdFeed.updateAnswer(MOCK_EUR_USD);
+        usdcUsdFeed.updateAnswer(MOCK_USDC_USD);
+        ethUsdFeed.updateAnswer(MOCK_ETH_USD);
     }
 
     // ─── attestations ──────────────────────────────────────────────────────────
