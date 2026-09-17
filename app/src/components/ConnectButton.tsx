@@ -1,20 +1,23 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { useAccount, useConnect, useDisconnect, useSwitchChain } from 'wagmi'
+import { useAccount, useConnect, useDisconnect } from 'wagmi'
 import { chain } from '@/lib/config'
 import { shorten } from '@/lib/format'
 import { useMounted, useWrongChain } from '@/lib/hooks'
+import { useNoInstalledWallet, useSwitchToAppChain, useWalletChoices } from '@/lib/wallets'
 
 export function ConnectButton() {
   const t = useTranslations('common')
   const tErrors = useTranslations('errors')
   const mounted = useMounted()
-  const { address, isConnected } = useAccount()
-  const { connectors, connect, isPending } = useConnect()
+  const { address, isConnected, connector } = useAccount()
+  const { connect, isPending } = useConnect()
   const { disconnect } = useDisconnect()
-  const { switchChain } = useSwitchChain()
+  const network = useSwitchToAppChain()
   const wrongChain = useWrongChain()
+  const wallets = useWalletChoices()
+  const noWallet = useNoInstalledWallet()
 
   if (!mounted) {
     return (
@@ -31,12 +34,13 @@ export function ConnectButton() {
           <button
             type="button"
             className="btn-danger text-xs"
-            onClick={() => switchChain({ chainId: chain.id })}
+            disabled={network.isPending}
+            onClick={network.switch}
           >
-            {tErrors('wrongNetwork', { chain: chain.name })}
+            {network.isPending ? t('connecting') : tErrors('switchNetwork', { chain: chain.name })}
           </button>
         ) : null}
-        <span className="font-mono text-xs text-slate-700" title={address}>
+        <span className="font-mono text-xs text-slate-700" title={`${connector?.name ?? ''} ${address}`}>
           {shorten(address, 6, 4)}
         </span>
         <button type="button" className="btn-secondary text-xs" onClick={() => disconnect()}>
@@ -48,17 +52,19 @@ export function ConnectButton() {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {connectors.map((connector) => (
+      {wallets.map(({ connector: option, passkey, icon }) => (
         <button
-          key={connector.uid}
+          key={option.uid}
           type="button"
-          className={connector.id === 'coinbaseWalletSDK' ? 'btn-primary text-xs' : 'btn-secondary text-xs'}
+          className={`${passkey ? 'btn-primary' : 'btn-secondary'} inline-flex items-center gap-1.5 text-xs`}
           disabled={isPending}
-          onClick={() => connect({ connector })}
+          onClick={() => connect({ connector: option })}
         >
-          {isPending ? t('connecting') : `${t('connect')}: ${connector.name}`}
+          {icon ? <img src={icon} alt="" aria-hidden="true" className="h-4 w-4 rounded" /> : null}
+          {isPending ? t('connecting') : `${t('connect')}: ${passkey ? t('passkeyWallet') : option.name}`}
         </button>
       ))}
+      {noWallet ? <span className="text-xs text-slate-600">{t('noWalletHint')}</span> : null}
     </div>
   )
 }

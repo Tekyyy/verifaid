@@ -26,7 +26,9 @@
     "amountUnit": "EURC",
     "noExplorer": "This network has no public explorer",
     "footer": "Public chain: flows and proofs. Never people.",
-    "confirmLink": "Open the confirmation page for this delivery"
+    "confirmLink": "Open the confirmation page for this delivery",
+    "passkeyWallet": "passkey wallet",
+    "noWalletHint": "No wallet extension found — the passkey wallet needs nothing installed."
   },
   "nav": {
     "home": "Home",
@@ -55,7 +57,8 @@
     "invalidAmount": "Enter an amount with at most 6 decimals.",
     "invalidTranches": "The tranche plan must sum to exactly 100%.",
     "required": "This field is required.",
-    "invalidEuro": "Enter an amount in euros with at most 2 decimals."
+    "invalidEuro": "Enter an amount in euros with at most 2 decimals.",
+    "switchNetwork": "Switch to {chain}"
   },
   "tx": {
     "idle": "Not submitted",
@@ -652,7 +655,7 @@
     "coinbaseNote": "You pay on Coinbase (sign in or create an account) and Coinbase’s fees apply. The USDC is delivered to your own wallet, as Coinbase’s terms require.",
     "closed": "This need is not accepting donations right now.",
     "step1": "Connect your wallet",
-    "step1Body": "A Coinbase Smart Wallet is created with a passkey on this device: nothing to install, no seed phrase.",
+    "step1Body": "Any wallet you control works: MetaMask or another extension, or a Coinbase Smart Wallet created with a passkey on this device (nothing to install, no seed phrase).",
     "connect": "Create or connect with a passkey",
     "connectedAs": "Connected: {wallet} {address}",
     "step2": "Amount in EUR",

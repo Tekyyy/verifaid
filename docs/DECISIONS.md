@@ -304,6 +304,12 @@ identity. Every fix is locked in by `test/regression/V2ReviewFindings.t.sol`, wh
 - **Sponsored gas is opt-in through `NEXT_PUBLIC_PAYMASTER_URL`.** Coinbase Smart Wallet already gives NGOs and
   verifiers passkey accounts; with a paymaster their transactions need no ETH. No forwarder contract is involved,
   so `msg.sender` role checks are unchanged.
+- **Any wallet, not just the passkey one.** Installed wallets are discovered through EIP-6963, so MetaMask, Rabby
+  and the rest appear under their own name and icon without this app naming or bundling any of them; the generic
+  injected connector is only offered when nothing announced itself. Coinbase Smart Wallet stays first because it
+  needs no extension and is the only one that can sponsor gas and bundle approve + donate into one signature.
+  Wallets without EIP-5792 simply sign the two transactions in order, and a wallet on the wrong chain gets a
+  "Switch to Base Sepolia" button that adds the network if the wallet does not know it.
 
 ## 14. Contracts v3: full blockchain mode with conversions
 

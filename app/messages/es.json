@@ -26,7 +26,9 @@
     "amountUnit": "EURC",
     "noExplorer": "Esta red no tiene explorador público",
     "footer": "Cadena pública: flujos y pruebas. Nunca personas.",
-    "confirmLink": "Abrir la página de confirmación de esta entrega"
+    "confirmLink": "Abrir la página de confirmación de esta entrega",
+    "passkeyWallet": "cartera con passkey",
+    "noWalletHint": "No hemos encontrado ninguna extensión de cartera; la cartera con passkey no requiere instalar nada."
   },
   "nav": {
     "home": "Inicio",
@@ -55,7 +57,8 @@
     "invalidAmount": "Introduce un importe con 6 decimales como máximo.",
     "invalidTranches": "El plan de tramos debe sumar exactamente 100%.",
     "required": "Este campo es obligatorio.",
-    "invalidEuro": "Introduce un importe en euros con 2 decimales como máximo."
+    "invalidEuro": "Introduce un importe en euros con 2 decimales como máximo.",
+    "switchNetwork": "Cambiar a {chain}"
   },
   "tx": {
     "idle": "Sin enviar",
@@ -652,7 +655,7 @@
     "coinbaseNote": "Pagas en Coinbase (inicia sesión o crea una cuenta) y se aplican sus comisiones. Los USDC llegan a tu propia cartera, como exigen las condiciones de Coinbase.",
     "closed": "Esta necesidad no acepta donaciones en este momento.",
     "step1": "Conecta tu cartera",
-    "step1Body": "Se crea una Coinbase Smart Wallet con una llave de acceso en este dispositivo: nada que instalar y sin frase semilla.",
+    "step1Body": "Sirve cualquier cartera que controles: MetaMask u otra extensión, o una Coinbase Smart Wallet creada con una passkey en este dispositivo (sin instalar nada y sin frase semilla).",
     "connect": "Crear o conectar con llave de acceso",
     "connectedAs": "Conectada: {wallet} {address}",
     "step2": "Importe en EUR",

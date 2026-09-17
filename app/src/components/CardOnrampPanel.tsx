@@ -21,6 +21,7 @@ import { parseEuro } from '@/lib/fees'
 import { amount, bpsPercent } from '@/lib/format'
 import { batchCall, useMounted, useTx, useWrongChain } from '@/lib/hooks'
 import { readStored, writeStored } from '@/lib/storage'
+import { useSwitchToAppChain, useWalletChoices } from '@/lib/wallets'
 
 /** A purchase in progress, kept across reloads (a donor often comes back from the Coinbase tab to a fresh page). */
 interface StoredPurchase {
@@ -86,7 +87,9 @@ export function CardOnrampPanel({
   const mounted = useMounted()
   const amountId = useId()
   const { address, isConnected, connector } = useAccount()
-  const { connectors, connect, isPending: connecting } = useConnect()
+  const { connect, isPending: connecting } = useConnect()
+  const wallets = useWalletChoices()
+  const network = useSwitchToAppChain()
   const wrongChain = useWrongChain()
   const tx = useTx()
   const preflight = useDonationPreflight()
@@ -102,7 +105,6 @@ export function CardOnrampPanel({
 
   const usdc = deployment?.external.USDC
   const factory = deployment?.contracts.DonationForwarderFactory
-  const smartWallet = connectors.find((item) => item.id === 'coinbaseWalletSDK')
 
   useEffect(() => {
     setPurchase(readStored(storageKey(needId), isStoredPurchase))
@@ -280,18 +282,35 @@ export function CardOnrampPanel({
               ) : (
                 <>
                   <p className="text-xs text-slate-600">{t('step1Body')}</p>
-                  <button
-                    type="button"
-                    className="btn-primary mt-2"
-                    disabled={!mounted || connecting || !smartWallet}
-                    onClick={() => smartWallet && connect({ connector: smartWallet })}
-                  >
-                    {connecting ? tCommon('connecting') : t('connect')}
-                  </button>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {wallets.map(({ connector: option, passkey, icon }) => (
+                      <button
+                        key={option.uid}
+                        type="button"
+                        className={`${passkey ? 'btn-primary' : 'btn-secondary'} inline-flex items-center gap-1.5`}
+                        disabled={!mounted || connecting}
+                        onClick={() => connect({ connector: option })}
+                      >
+                        {icon ? (
+                          <img src={icon} alt="" aria-hidden="true" className="h-4 w-4 rounded" />
+                        ) : null}
+                        {connecting ? tCommon('connecting') : passkey ? t('connect') : option.name}
+                      </button>
+                    ))}
+                  </div>
                 </>
               )}
               {wrongChain ? (
-                <p className="mt-1 text-xs text-red-800">{tErrors('wrongNetwork', { chain: chain.name })}</p>
+                <button
+                  type="button"
+                  className="btn-danger mt-2 text-xs"
+                  disabled={network.isPending}
+                  onClick={network.switch}
+                >
+                  {network.isPending
+                    ? tCommon('connecting')
+                    : tErrors('switchNetwork', { chain: chain.name })}
+                </button>
               ) : null}
             </div>
           </li>
