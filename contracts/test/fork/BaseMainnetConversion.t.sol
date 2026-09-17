@@ -50,6 +50,7 @@ contract BaseMainnetConversionTest is PoATest {
             ethUsdFeed: ETH_USD,
             sequencerUptimeFeed: SEQUENCER_UPTIME,
             maxSlippageBps: MAX_SLIPPAGE_BPS,
+            ethMaxSlippageBps: 150,
             usdcToTokenFee: 500, // the EURC/USDC 0.05% pool
             wethToUsdcFee: 500,
             ethRoute: true,

@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {IAidVault} from "../interfaces/IAidVault.sol";
 import {IConversionRouter} from "../interfaces/IConversionRouter.sol";
 import {IDonationForwarder} from "../interfaces/IDonationForwarder.sol";
+import {IDonationForwarderFactory} from "../interfaces/IDonationForwarderFactory.sol";
 import {INeedsRegistry} from "../interfaces/INeedsRegistry.sol";
 import {Errors} from "../libraries/Errors.sol";
 import {DonationConversion} from "./DonationConversion.sol";
@@ -15,8 +16,9 @@ import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 /// @title DonationForwarder
-/// @notice The deposit address of one donation intent. A card on-ramp delivers USDC here; `sweep` converts it into
-///         the need's stablecoin through the ConversionRouter (oracle-bounded) and donates it to the need's vault.
+/// @notice The deposit address of one donation intent. An exchange withdrawal (or any wallet) delivers USDC or ETH
+///         here; `sweep` converts what the need can take into its stablecoin through the ConversionRouter
+///         (oracle-bounded) and donates it to the need's vault.
 /// @dev An EIP-1167 clone with the `Intent` appended to its code, deployed at a CREATE2 address derived from that
 ///      intent, so the address is known and shareable before the forwarder exists. Nothing here needs trusting a
 ///      server: the destination vault, the refund rules and the conversion bound are all fixed by the intent and
@@ -24,16 +26,23 @@ import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/Signa
 contract DonationForwarder is IDonationForwarder, EIP712, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
 
-    bytes32 public constant REFUND_TYPEHASH = keccak256("Refund(address token,address to,uint256 deadline)");
-    bytes32 public constant VAULT_REFUND_TYPEHASH = keccak256("VaultRefund(address to,uint256 deadline)");
+    bytes32 public constant REFUND_TYPEHASH =
+        keccak256("Refund(address token,address to,uint256 nonce,uint256 deadline)");
+    bytes32 public constant VAULT_REFUND_TYPEHASH = keccak256("VaultRefund(address to,uint256 nonce,uint256 deadline)");
     address public constant NATIVE = address(0);
 
     INeedsRegistry public immutable registry;
     IConversionRouter public immutable router;
     /// @notice The stablecoin every vault holds.
     IERC20 public immutable token;
+    /// @inheritdoc IDonationForwarder
+    address public immutable factory;
     address private immutable _self;
 
+    /// @inheritdoc IDonationForwarder
+    uint256 public nonce;
+
+    /// @dev Deployed by the factory itself, which is how every clone knows whose keepers may sweep it.
     constructor(INeedsRegistry registry_, IConversionRouter router_, IERC20 token_)
         EIP712("ProofOfAidDonationForwarder", "1")
     {
@@ -43,6 +52,7 @@ contract DonationForwarder is IDonationForwarder, EIP712, ReentrancyGuardTransie
         registry = registry_;
         router = router_;
         token = token_;
+        factory = msg.sender;
         _self = address(this);
     }
 
@@ -59,17 +69,24 @@ contract DonationForwarder is IDonationForwarder, EIP712, ReentrancyGuardTransie
     /// @inheritdoc IDonationForwarder
     function sweep(address tokenIn) external nonReentrant onlyClone returns (uint256 deposited) {
         Intent memory it = intent();
-        uint256 amountIn = _balanceOf(tokenIn);
-        if (amountIn == 0) revert Errors.NothingToSweep();
+        // The factory has already checked its own caller.
+        if (
+            msg.sender != factory && msg.sender != it.receiptTo && msg.sender != it.refundTo
+                && !IDonationForwarderFactory(factory).isKeeper(msg.sender)
+        ) revert Errors.Unauthorized();
+        uint256 balance = _balanceOf(tokenIn);
+        if (balance == 0) revert Errors.NothingToSweep();
 
         DonationConversion.Result memory r =
-            DonationConversion.convertAndDonate(registry, router, token, it.needId, tokenIn, amountIn, it.receiptTo);
+            DonationConversion.convertAndDonate(registry, router, token, it.needId, tokenIn, balance, it.receiptTo);
         deposited = r.deposited;
-        emit Swept(it.needId, tokenIn, amountIn, r.received, r.fairValue, r.deposited, r.conversionFee);
+        emit Swept(it.needId, tokenIn, r.amountIn, r.received, r.fairValue, r.deposited, r.conversionFee);
 
-        // The need filled up: what could not be donated goes straight back when there is somewhere to send it.
-        if (r.received > r.deposited && it.refundTo != address(0)) {
-            _send(address(token), it.refundTo, r.received - r.deposited);
+        // The need filled up: whatever is left here, converted or not, goes straight back when there is somewhere
+        // to send it. (A need that is still accepting took everything this sweep produced.)
+        if (it.refundTo != address(0) && !accepting()) {
+            _refundIfAny(address(token), it.refundTo);
+            if (tokenIn != address(token)) _refundIfAny(tokenIn, it.refundTo);
         }
     }
 
@@ -90,7 +107,9 @@ contract DonationForwarder is IDonationForwarder, EIP712, ReentrancyGuardTransie
         nonReentrant
         onlyClone
     {
-        _checkSignature(keccak256(abi.encode(REFUND_TYPEHASH, tokenAddress, to, deadline)), to, deadline, signature);
+        _useSignature(
+            keccak256(abi.encode(REFUND_TYPEHASH, tokenAddress, to, nonce, deadline)), to, deadline, signature
+        );
         _refundAll(tokenAddress, to);
     }
 
@@ -108,7 +127,7 @@ contract DonationForwarder is IDonationForwarder, EIP712, ReentrancyGuardTransie
         onlyClone
         returns (uint256 amount)
     {
-        _checkSignature(keccak256(abi.encode(VAULT_REFUND_TYPEHASH, to, deadline)), to, deadline, signature);
+        _useSignature(keccak256(abi.encode(VAULT_REFUND_TYPEHASH, to, nonce, deadline)), to, deadline, signature);
         amount = _claimVaultRefund(intent(), to);
     }
 
@@ -139,19 +158,27 @@ contract DonationForwarder is IDonationForwarder, EIP712, ReentrancyGuardTransie
         emit VaultRefundClaimed(to, amount);
     }
 
-    function _checkSignature(bytes32 structHash, address to, uint256 deadline, bytes calldata signature) internal view {
+    /// @dev The nonce is part of the signed struct and moves on every use, so a signature cannot be replayed on money
+    ///      that arrives later.
+    function _useSignature(bytes32 structHash, address to, uint256 deadline, bytes calldata signature) internal {
         address signer = intent().refundSigner;
         if (signer == address(0) || to == address(0)) revert Errors.Unauthorized();
         if (block.timestamp > deadline) revert Errors.SignatureExpired();
         if (!SignatureChecker.isValidSignatureNow(signer, _hashTypedDataV4(structHash), signature)) {
             revert Errors.InvalidSignature();
         }
+        ++nonce;
     }
 
     function _refundAll(address tokenAddress, address to) internal {
         uint256 amount = _balanceOf(tokenAddress);
         if (amount == 0) revert Errors.NothingToSweep();
         _send(tokenAddress, to, amount);
+    }
+
+    function _refundIfAny(address tokenAddress, address to) internal {
+        uint256 amount = _balanceOf(tokenAddress);
+        if (amount > 0) _send(tokenAddress, to, amount);
     }
 
     function _send(address tokenAddress, address to, uint256 amount) internal {

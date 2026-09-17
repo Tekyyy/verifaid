@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {RoleRegistry} from "../src/access/RoleRegistry.sol";
+import {DonationForwarderFactory} from "../src/funds/DonationForwarderFactory.sol";
 import {BeneficiaryGroups} from "../src/identity/BeneficiaryGroups.sol";
 import {INeedsRegistry} from "../src/interfaces/INeedsRegistry.sol";
 import {MockEURC} from "../src/mocks/MockEURC.sol";
@@ -99,6 +100,7 @@ contract SeedDemo is Script, DeploymentIO {
 
         _mintDemoTokens(token, a);
         _mintDemoUsdc(deployment, a);
+        _registerKeeper(deployment, a);
 
         console2.log("");
         console2.log("Demo data seeded");
@@ -169,6 +171,19 @@ contract SeedDemo is Script, DeploymentIO {
             console2.log("  token is not mintable, fund the donors from a faucet:", token);
         }
         vm.stopBroadcast();
+    }
+
+    /// @dev v3: the relayer sweeps deposit addresses for donors whose refund address cannot send a transaction (an
+    ///      exchange). Sweeping is limited to keepers so nobody can sandwich a sweep inside one transaction.
+    function _registerKeeper(string memory deployment, Actors memory a) internal {
+        if (!vm.keyExistsJson(deployment, ".contracts.DonationForwarderFactory")) return;
+        DonationForwarderFactory factory =
+            DonationForwarderFactory(_readAddress(deployment, ".contracts.DonationForwarderFactory"));
+        if (factory.isKeeper(a.relayer)) return;
+        vm.startBroadcast(a.adminKey);
+        factory.setKeeper(a.relayer, true);
+        vm.stopBroadcast();
+        console2.log("  relayer registered as deposit-address keeper", a.relayer);
     }
 
     /// @dev v3: donors also hold MockUSDC, the token a card on-ramp or an exchange would deliver, to exercise

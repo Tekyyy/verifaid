@@ -304,3 +304,112 @@ identity. Every fix is locked in by `test/regression/V2ReviewFindings.t.sol`, wh
 - **Sponsored gas is opt-in through `NEXT_PUBLIC_PAYMASTER_URL`.** Coinbase Smart Wallet already gives NGOs and
   verifiers passkey accounts; with a paymaster their transactions need no ETH. No forwarder contract is involved,
   so `msg.sender` role checks are unchanged.
+
+## 14. Contracts v3: full blockchain mode with conversions
+
+v2 could only take the vault's own stablecoin from a wallet, or fiat through a payment provider that converts
+off-chain. v3 lets a donor give USDC, ETH, or card money bought through Coinbase Onramp, and converts it into the
+vault token **on-chain, in the donation transaction**, so the conversion itself is as auditable as the donation.
+
+### One token per vault
+
+- **The vault still holds exactly one token (EURC).** Tranches, the minimum-funding threshold, pro-rata refunds and
+  the cost cap are all defined in the need's currency; a vault holding a basket would need a price to answer
+  "was the target reached?" at every moment. Conversion happens on the way in and nothing downstream changed.
+- **Only what fits is converted.** The router says how much input is enough to fill the remaining target at the
+  bound (`maxInputFor`); only that much is swapped. The rest goes back in the token it came in, and any surplus
+  the swap produced above the target goes back in the vault token (to the calling wallet, or to a deposit
+  address's refund route). A need never ends up over-funded, and a nearly full need never exposes a whole balance
+  to a swap it does not need.
+
+### The oracle bound (`ConversionRouter`)
+
+- **Swaps run on Uniswap v3 (`SwapRouter02.exactInput`) over admin-set routes, but the minimum output is not
+  chosen by the caller.** The router reads Chainlink (EUR/USD for the vault token, USDC/USD, ETH/USD) and requires
+  at least `fair × (1 − maxSlippageBps)`, where each route carries its own bound, capped at 5% in code (1% for
+  USDC and 1.5% for the two-hop ETH route as deployed). A manipulated pool can make the transaction revert, or
+  fill it at the bottom of the bound, but never below it.
+- **Output is measured at the recipient**, not trusted from the router's return value.
+- **Stale or unsafe prices revert.** Each feed has its own heartbeat (EUR/USD 3 days, because it pauses over forex
+  weekends; USDC/USD 25 hours; ETH/USD 1 hour). On mainnet the L2 sequencer uptime feed is checked, with a 1-hour
+  grace period after a restart, as Chainlink recommends for L2s. WETH is priced through the ETH/USD feed.
+- **Routes are fixed paths set by the admin** (USDC → EURC in the 0.05% pool on mainnet; ETH → WETH → USDC →
+  EURC). Nobody can pass a path, and a route's middle tokens must be one of the hubs fixed at deployment (USDC,
+  WETH), so not even the admin can route a donation through a token it controls.
+- **Changing what money is waiting on takes two days.** Replacing a price feed or a route, loosening a bound, or
+  changing or removing the sequencer check is scheduled by the first call and executed by an identical call
+  after `CONFIG_DELAY` (2 days, within a 7-day window, cancellable). Donors with money on a deposit address see
+  the `ConfigChangeScheduled` event and can take it back first. First-time configuration of a token nobody could
+  convert yet, and tightening a route's bound, apply at once.
+
+### Conversion cost counts against the cost cap
+
+- **The conversion fee is `fair − received`**, attributed pro rata to the part actually donated, and the vault
+  reports it to the resolver (`recordConversionFee`), which adds it to the need's funding fees under the same
+  cumulative cap as provider and settlement fees (§12). A swap that beats the oracle costs nothing.
+- **Consequence:** a need that disclosed no intermediary costs (`thirdPartyCostBps = 0`) accepts a converted
+  donation only when it costs nothing, and a need near its cap can reject a large one. That is the intended
+  reading of the NGO's disclosure, and the app offers EURC or bank giving in that case.
+
+### Three ways in
+
+- **Wallet, direct (`DonationForwarderFactory.donate`).** Any wallet gives USDC or ETH; the factory converts and
+  calls `AidVault.donateVia`, crediting the caller with the donation and a soulbound receipt exactly like
+  `donate`. With Coinbase Smart Wallet, approve and donate go out as one sponsored batch.
+- **Card, through Coinbase Onramp.** Coinbase's terms require the buyer to own the destination wallet, so the
+  on-ramp cannot deliver into a vault or to an address the platform controls. It delivers USDC to **the donor's own
+  smart wallet** (passkey, created in the flow), and the donor then makes the one-tap donation above. The session
+  token is requested server-side with a CDP key; the JWT is signed with `node:crypto` rather than the CDP SDK or
+  OnchainKit (which requires React 19, §2). Coinbase Onramp does not deliver on test networks, so on Base Sepolia
+  and anvil a mock on-ramp mints test USDC to the donor's wallet and everything after that is the real path.
+- **Exchange withdrawal, through a deposit address (`DonationForwarder`).** An exchange can only send to an
+  address, so the donor gets one that commits to an *intent*: the need, who gets the receipt (optional), where
+  refunds go, a refund key, and a salt. The address is a CREATE2 clone whose immutable args are the intent, so it
+  is known before it exists and cannot be deployed with different terms. Anyone can deploy it, but only the
+  intent's own wallets or a keeper registered by the admin (the app's relayer) can sweep it: a permissionless
+  sweep can be wrapped between two swaps in a single transaction, no mempool needed. What it donates is credited
+  to the deposit address itself unless a receipt wallet was given, so the vault's by-reference refund ledger holds
+  its claim under `bytes32(uint256(uint160(depositAddress)))`, a key the vault refuses to hand over if another
+  depositor already owns it.
+- **Refunds from a deposit address** go to the committed `refundTo`, or wherever the refund key signs for
+  (EIP-712, per-clone domain, with a nonce so each signature works once). The key is generated in the donor's
+  browser and downloaded; it never reaches a server. Money sitting unswept can always be taken back by the donor, and by anyone once the need stops accepting
+  (it can only go to the committed refund address).
+
+### Test networks
+
+- **Base Sepolia has real Uniswap v3 and Chainlink USDC/USD and ETH/USD feeds, but no EUR/USD feed, and its
+  public pools are thin and mispriced.** The deployment uses the real `SwapRouter02`, WETH and feeds; mocks only
+  what is missing: EUR/USD (a fixed mock, hence a one-year heartbeat), MockUSDC (so the mock on-ramp can mint it),
+  and a MockUSDC/MockEURC pool (0.01% tier) that `SeedLiquidity.s.sol` creates on Uniswap at the oracle price
+  with deep full-range liquidity. The deploy refuses to put mocks anywhere but anvil and Base Sepolia. The mocks are freely mintable, so anyone can push that pool's price; donations then revert
+  on the oracle bound until `pnpm deploy:sepolia liquidity` swaps it back. ETH donations are off there (no WETH
+  liquidity against the mocks).
+- **anvil** uses a mock swap router that fills at the mock oracle rates minus 0.05%.
+- **The real thing is tested against Base mainnet** in `test/fork/BaseMainnetConversion.t.sol` (Circle USDC and
+  EURC, Uniswap's pools, Chainlink's feeds and the sequencer feed): 500 USDC had a fair value of 435.75 EURC and
+  donated 435.48 (0.28 conversion cost); 0.05 ETH, fair 106.09, donated 105.97. The whole Base Sepolia deploy and
+  demo scenario were dry-run on a local fork of Base Sepolia before broadcasting: 2,000 USDC, fair 1,851.69 EURC,
+  donated 1,851.50; a 2,467 USDC deposit address filled the rest of the need with 2,344 USDC and sent 122.97 USDC
+  and 21.47 EURC of surplus back.
+
+### Adversarial review of v3
+
+An independent review wrote a passing PoC for each finding (a constant-product pool for the sandwiches, a Base
+mainnet fork for the fee tier); none broke the vault identity or allowed reentrancy. Each fix is replayed by
+`test/regression/V3ReviewFindings.t.sol`.
+
+| Finding | Fix |
+|---|---|
+| **1** (High, admin key) Setting a fake EUR/USD feed and a route through the admin's own token took almost all of a 50,000 USDC deposit, with a recorded fee of 0. | Middle hops limited to hubs fixed at deployment; replacing feeds or routes, loosening bounds and touching the sequencer check wait `CONFIG_DELAY` (2 days). |
+| **2** (Medium) `sweep` was permissionless, so one transaction could front-run, sweep someone else's deposit address and back-run, pushing every conversion to the bottom of the bound (220 USDC on 50,000). | Only `receiptTo`, `refundTo` or a keeper can sweep; per-route bounds let the stable pair run tighter. |
+| **3** (Medium) A nearly full need converted a whole balance, and the fee on the donated sliver rounded to zero, so even a zero-cost need accepted a sandwiched conversion and the donor got EURC back 1% below fair. | Convert only `maxInputFor(remaining)`; return the rest unconverted; round the fee up. |
+| **4** (Low/Medium) The default USDC route used the 0.01% EURC/USDC pool, which is empty on Base: conversions reverted, and a squatter could place liquidity just inside the bound. | Default fee tier 500; the fork test uses the liquid pool; the deploy refuses mocks on mainnet. |
+| **5** (Low) Refund signatures had no nonce, so a retraction signature could be replayed on a later, real deposit. | Nonce in both typed structs, incremented on use. |
+| **6** (Low) `donateVia` overwrote a reference key a payment provider already owned. | Refused with `DonorRefPartnerMismatch`, as `donateOnBehalf` does. |
+| **7** (Info) `forwarderAddress` returned addresses for intents that could never be deployed. | It validates the intent first. |
+
+Accepted, documented in `THREAT_MODEL.md` §3.14: oracle error adds to the bound (EURC is priced at EUR/USD, and
+feeds move only past their deviation threshold); vault refunds are paid in EURC; anyone can create a deposit address
+that credits a receipt to someone else's wallet (a public link between a wallet and a need, with no rights
+attached).

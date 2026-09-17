@@ -111,8 +111,8 @@ contract AidVault is TrancheLedger, IAidVault {
 
     /// @inheritdoc IAidVault
     /// @dev A forwarder-credited donation is keyed by the forwarder's own address in `donatedByRef`, with the
-    ///      forwarder as its `refPartner`: the key cannot collide with or be squatted by any other depositor, and
-    ///      refunds reuse `claimRefundByRef`.
+    ///      forwarder as its `refPartner`, so refunds reuse `claimRefundByRef`. Like `donateOnBehalf`, a key already
+    ///      owned by another depositor is refused rather than taken over.
     function donateVia(uint256 amount, uint256 conversionFee, address receiptTo)
         external
         nonReentrant
@@ -133,6 +133,8 @@ contract AidVault is TrancheLedger, IAidVault {
             donatedBy[receiptTo] += amount;
         } else {
             bytes32 key = bytes32(uint256(uint160(msg.sender)));
+            address owner = refPartner[key];
+            if (owner != address(0) && owner != msg.sender) revert Errors.DonorRefPartnerMismatch();
             donatedByRef[key] += amount;
             refPartner[key] = msg.sender;
         }

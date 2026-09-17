@@ -19,8 +19,9 @@ library DonationConversion {
     address internal constant NATIVE = address(0);
 
     struct Result {
+        uint256 amountIn; // input actually used; the rest of what the caller holds was not touched
         uint256 received; // stablecoin the conversion produced
-        uint256 fairValue; // what the input was worth at oracle prices, in the stablecoin
+        uint256 fairValue; // what the input used was worth at oracle prices, in the stablecoin
         uint256 deposited; // what the need could still take (≤ received)
         uint256 conversionFee; // fair value minus received, attributed to the deposited part
         uint256 receiptId;
@@ -33,8 +34,9 @@ library DonationConversion {
         return ITrancheLedger(registry.vaultOf(needId)).totalDonated() < target;
     }
 
-    /// @dev Converts `amountIn` of `tokenIn` held by `address(this)` (`NATIVE` for ETH) and donates up to what the
-    ///      need still needs. The undonated remainder, in the stablecoin, stays with the caller.
+    /// @dev Uses at most `amountIn` of `tokenIn` held by `address(this)` (`NATIVE` for ETH): only as much as the need
+    ///      can still take, converted, and donated. What is not used stays with the caller in `tokenIn`, and any
+    ///      stablecoin the swap produced beyond the target stays with the caller too.
     function convertAndDonate(
         INeedsRegistry registry,
         IConversionRouter router,
@@ -45,22 +47,33 @@ library DonationConversion {
         address receiptTo
     ) internal returns (Result memory r) {
         if (!accepting(registry, needId)) revert Errors.NotAccepting();
+        IAidVault vault = IAidVault(registry.vaultOf(needId));
+        (, uint256 target,,) = registry.fundingTermsOf(needId);
+        uint256 remaining = target - vault.totalDonated();
 
         if (tokenIn == address(token)) {
-            (r.received, r.fairValue) = (amountIn, amountIn);
-        } else if (tokenIn == NATIVE) {
-            (r.received, r.fairValue) = router.convert{value: amountIn}(NATIVE, amountIn, address(token), address(this));
+            r.amountIn = Math.min(amountIn, remaining);
+            (r.received, r.fairValue) = (r.amountIn, r.amountIn);
         } else {
-            IERC20(tokenIn).forceApprove(address(router), amountIn);
-            (r.received, r.fairValue) = router.convert(tokenIn, amountIn, address(token), address(this));
+            // Converting a whole balance for a nearly full need would expose all of it to the swap and hand most of it
+            // back already converted; the router says how much input is enough to fill the need at the bound.
+            r.amountIn = Math.min(amountIn, router.maxInputFor(tokenIn, address(token), remaining));
+            if (tokenIn == NATIVE) {
+                (r.received, r.fairValue) =
+                    router.convert{value: r.amountIn}(NATIVE, r.amountIn, address(token), address(this));
+            } else {
+                IERC20(tokenIn).forceApprove(address(router), r.amountIn);
+                (r.received, r.fairValue) = router.convert(tokenIn, r.amountIn, address(token), address(this));
+            }
         }
         if (r.received == 0) revert Errors.InsufficientOutput();
 
-        IAidVault vault = IAidVault(registry.vaultOf(needId));
-        (, uint256 target,,) = registry.fundingTermsOf(needId);
-        r.deposited = Math.min(r.received, target - vault.totalDonated());
-        // The conversion cost of what is donated: fair value minus what the swap returned, pro rata.
-        r.conversionFee = r.fairValue > r.received ? Math.mulDiv(r.fairValue - r.received, r.deposited, r.received) : 0;
+        r.deposited = Math.min(r.received, remaining);
+        // The conversion cost of what is donated: fair value minus what the swap returned, pro rata, rounded up so a
+        // cost never disappears into rounding (a need that disclosed no costs refuses any).
+        if (r.fairValue > r.received) {
+            r.conversionFee = Math.mulDiv(r.fairValue - r.received, r.deposited, r.received, Math.Rounding.Ceil);
+        }
 
         token.forceApprove(address(vault), r.deposited);
         r.receiptId = vault.donateVia(r.deposited, r.conversionFee, receiptTo);

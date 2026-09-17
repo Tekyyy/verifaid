@@ -73,7 +73,8 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
             ethUsdFeed: vm.envOr("ETH_USD_FEED", address(0)),
             sequencerUptimeFeed: vm.envOr("SEQUENCER_UPTIME_FEED", address(0)),
             maxSlippageBps: uint16(vm.envOr("MAX_SLIPPAGE_BPS", uint256(100))),
-            usdcToTokenFee: uint24(vm.envOr("USDC_POOL_FEE", uint256(100))),
+            ethMaxSlippageBps: uint16(vm.envOr("ETH_MAX_SLIPPAGE_BPS", uint256(150))),
+            usdcToTokenFee: uint24(vm.envOr("USDC_POOL_FEE", uint256(500))),
             wethToUsdcFee: uint24(vm.envOr("WETH_POOL_FEE", uint256(500))),
             ethRoute: vm.envOr("ETH_ROUTE", false),
             eurHeartbeat: uint32(vm.envOr("EUR_USD_HEARTBEAT", uint256(0))),
@@ -143,6 +144,8 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         protocolParams.serialize("highValueThreshold", params.highValueThreshold);
         protocolParams.serialize("minExpectedRecipients", uint256(params.minExpectedRecipients));
         protocolParams.serialize("maxSlippageBps", uint256(params.conversion.maxSlippageBps));
+        protocolParams.serialize("ethMaxSlippageBps", uint256(params.conversion.ethMaxSlippageBps));
+        protocolParams.serialize("usdcPoolFee", uint256(params.conversion.usdcToTokenFee));
         protocolParams.serialize("mockSwapRouter", s.conversion.mocks);
         protocolParams.serialize("ethDonations", params.conversion.ethRoute || s.conversion.mocks);
         string memory paramsJson = protocolParams.serialize("dashboardBaseURI", params.dashboardBaseURI);

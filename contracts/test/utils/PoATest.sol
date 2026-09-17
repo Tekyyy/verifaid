@@ -109,6 +109,8 @@ abstract contract PoATest is Test, SystemDeployer {
     MockV3Aggregator internal usdcUsdFeed;
     MockV3Aggregator internal ethUsdFeed;
     uint16 internal constant MAX_SLIPPAGE_BPS = 100;
+    /// @dev Registered on the forwarder factory: may sweep any deposit address (the platform relayer's role).
+    address internal keeper = makeAddr("sweepKeeper");
 
     bytes32 internal needVerifiedSchema;
     bytes32 internal fundingRecordedSchema;
@@ -141,6 +143,7 @@ abstract contract PoATest is Test, SystemDeployer {
             ethUsdFeed: address(0),
             sequencerUptimeFeed: address(0),
             maxSlippageBps: MAX_SLIPPAGE_BPS,
+            ethMaxSlippageBps: MAX_SLIPPAGE_BPS,
             usdcToTokenFee: 0,
             wethToUsdcFee: 0,
             ethRoute: true,
@@ -193,6 +196,8 @@ abstract contract PoATest is Test, SystemDeployer {
 
         _registerSchemas();
         _registerActors();
+        vm.prank(admin);
+        forwarderFactory.setKeeper(keeper, true);
     }
 
     // ─── setup helpers ─────────────────────────────────────────────────────────

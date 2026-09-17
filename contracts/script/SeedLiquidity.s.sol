@@ -131,7 +131,7 @@ contract SeedLiquidity is Script, DeploymentIO {
         m.usdc = _readAddress(deployment, ".external.USDC");
         m.swapRouter = _readAddress(deployment, ".external.SwapRouter");
         m.positions = INonfungiblePositionManager(vm.envOr("UNISWAP_POSITION_MANAGER", BASE_SEPOLIA_POSITION_MANAGER));
-        m.fee = uint24(vm.envOr("USDC_POOL_FEE", uint256(100)));
+        m.fee = uint24(vm.parseJsonUint(deployment, ".params.usdcPoolFee"));
         (m.token0, m.token1) = m.usdc < m.token ? (m.usdc, m.token) : (m.token, m.usdc);
         // Full range, rounded inward to the fee tier's tick spacing.
         int24 spacing = IUniswapV3Factory(m.positions.factory()).feeAmountTickSpacing(m.fee);

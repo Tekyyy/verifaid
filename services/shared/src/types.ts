@@ -49,8 +49,12 @@ export interface Deployment {
     highValueThreshold: string | number
     minExpectedRecipients: number
     dashboardBaseURI: string
-    /** v3: the oracle bound on every conversion, in basis points. */
+    /** v3: the oracle bound of the USDC route, in basis points. */
     maxSlippageBps?: number
+    /** v3: the oracle bound of the ETH route (two hops through volatile pools), in basis points. */
+    ethMaxSlippageBps?: number
+    /** v3: Uniswap v3 fee tier of the USDC → vault token pool (100 = 0.01%, 500 = 0.05%). */
+    usdcPoolFee?: number
     /** v3: true when the swap router is a mock that fills at oracle prices (local chains). */
     mockSwapRouter?: boolean
     /** v3: true when an ETH → vault token route is configured (it needs WETH liquidity on the chain). */

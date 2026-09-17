@@ -71,8 +71,9 @@ abstract contract SystemDeployer is CommonBase {
         address usdcUsdFeed;
         address ethUsdFeed;
         address sequencerUptimeFeed; // zero → no sequencer check (test networks)
-        uint16 maxSlippageBps;
-        uint24 usdcToTokenFee; // pool fee tier USDC → vault token (0 → 0.01%)
+        uint16 maxSlippageBps; // oracle bound of the USDC route
+        uint16 ethMaxSlippageBps; // oracle bound of the ETH route, two hops through volatile pools (0 → 1.5%)
+        uint24 usdcToTokenFee; // pool fee tier USDC → vault token (0 → 0.05%, the liquid EURC/USDC pool on Base)
         uint24 wethToUsdcFee; // pool fee tier WETH → USDC (0 → 0.05%)
         bool ethRoute; // configure ETH donations (needs WETH liquidity on the target chain)
         // Maximum answer age per feed. EUR/USD pauses over forex weekends, so its window must span one.
@@ -116,6 +117,7 @@ abstract contract SystemDeployer is CommonBase {
     ///      Order matters: the ledger implementations take the factory, receipt, resolver and forwarder factory as
     ///      immutables, so those exist first and the vault factory learns the implementations through `wire`.
     function _deploySystem(Params memory p) internal returns (System memory s) {
+        _requireRealDependencies(p);
         s.eas = p.eas;
         s.semaphore = p.semaphore;
         s.token = p.token == address(0) ? address(new MockEURC()) : p.token;
@@ -174,31 +176,48 @@ abstract contract SystemDeployer is CommonBase {
         out.sequencerUptimeFeed = c.sequencerUptimeFeed;
         out.swapRouter = out.mocks ? address(_mockSwapRouter(s.token, out)) : c.swapRouter;
 
+        address[] memory hubs = new address[](2);
+        (hubs[0], hubs[1]) = (out.usdc, out.weth);
         s.router = new ConversionRouter(
-            IRoleRegistry(address(s.roles)), IV3SwapRouter(out.swapRouter), IWETH9(out.weth), c.maxSlippageBps
+            IRoleRegistry(address(s.roles)), IV3SwapRouter(out.swapRouter), IWETH9(out.weth), hubs
         );
         s.router.setPriceFeed(s.token, out.eurUsdFeed, c.eurHeartbeat == 0 ? 3 days : c.eurHeartbeat);
         s.router.setPriceFeed(out.usdc, out.usdcUsdFeed, c.usdcHeartbeat == 0 ? 1 days + 1 hours : c.usdcHeartbeat);
         s.router.setPriceFeed(s.router.NATIVE(), out.ethUsdFeed, c.ethHeartbeat == 0 ? 1 hours : c.ethHeartbeat);
         if (out.sequencerUptimeFeed != address(0)) s.router.setSequencerUptimeFeed(out.sequencerUptimeFeed);
 
-        uint24 usdcFee = c.usdcToTokenFee == 0 ? 100 : c.usdcToTokenFee;
+        uint24 usdcFee = c.usdcToTokenFee == 0 ? 500 : c.usdcToTokenFee;
         uint24 wethFee = c.wethToUsdcFee == 0 ? 500 : c.wethToUsdcFee;
-        s.router.setRoute(out.usdc, s.token, abi.encodePacked(out.usdc, usdcFee, s.token));
+        s.router.setRoute(out.usdc, s.token, abi.encodePacked(out.usdc, usdcFee, s.token), c.maxSlippageBps);
         if (c.ethRoute || out.mocks) {
-            s.router.setRoute(out.weth, s.token, abi.encodePacked(out.weth, wethFee, out.usdc, usdcFee, s.token));
+            s.router
+                .setRoute(
+                    out.weth,
+                    s.token,
+                    abi.encodePacked(out.weth, wethFee, out.usdc, usdcFee, s.token),
+                    c.ethMaxSlippageBps == 0 ? 150 : c.ethMaxSlippageBps
+                );
         }
 
-        s.forwarderImplementation = new DonationForwarder(
+        // The factory deploys the forwarder implementation itself, which is how every clone knows its factory.
+        s.forwarderFactory = new DonationForwarderFactory(
             INeedsRegistry(address(s.registry)), IConversionRouter(address(s.router)), IERC20(s.token)
         );
-        s.forwarderFactory = new DonationForwarderFactory(
-            INeedsRegistry(address(s.registry)),
-            IConversionRouter(address(s.router)),
-            IERC20(s.token),
-            address(s.forwarderImplementation)
-        );
+        s.forwarderImplementation = DonationForwarder(payable(s.forwarderFactory.implementation()));
         s.conversion = out;
+    }
+
+    /// @dev Every unset dependency is replaced by a freely mintable or settable mock. That is the point on anvil and
+    ///      on Base Sepolia (which lacks EUR/USD and liquid pools), and a catastrophe anywhere else.
+    function _requireRealDependencies(Params memory p) internal view {
+        if (block.chainid == 31_337 || block.chainid == 84_532) return;
+        ConversionParams memory c = p.conversion;
+        require(
+            p.token != address(0) && c.swapRouter != address(0) && c.weth != address(0) && c.usdc != address(0)
+                && c.eurUsdFeed != address(0) && c.usdcUsdFeed != address(0) && c.ethUsdFeed != address(0)
+                && c.sequencerUptimeFeed != address(0),
+            "SystemDeployer: mocks are only deployed on anvil and Base Sepolia"
+        );
     }
 
     function _mockFeed(int256 answer, string memory description) internal returns (address) {

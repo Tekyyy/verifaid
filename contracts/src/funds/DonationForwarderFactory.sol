@@ -1,25 +1,35 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {RoleAware} from "../access/RoleAware.sol";
 import {IConversionRouter} from "../interfaces/IConversionRouter.sol";
 import {IDonationForwarder} from "../interfaces/IDonationForwarder.sol";
 import {IDonationForwarderFactory} from "../interfaces/IDonationForwarderFactory.sol";
 import {INeedsRegistry} from "../interfaces/INeedsRegistry.sol";
+import {IRoleRegistry} from "../interfaces/IRoleRegistry.sol";
 import {Errors} from "../libraries/Errors.sol";
 import {DonationConversion} from "./DonationConversion.sol";
+import {DonationForwarder} from "./DonationForwarder.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
+
+/// @dev The registry's role registry, read before the factory's own constructor runs (a zero registry has none).
+function rolesOf(INeedsRegistry registry) view returns (IRoleRegistry) {
+    if (address(registry) == address(0)) revert Errors.ZeroAddress();
+    return registry.roles();
+}
 
 /// @title DonationForwarderFactory
 /// @notice Two ways to give in a token the vault does not hold (USDC bought with a card, ETH, …):
 ///         - `donate`: a wallet converts and donates in one transaction and gets the receipt.
 ///         - deposit addresses: DonationForwarders at CREATE2 addresses derived from their intents, for money sent
-///           from somewhere that cannot call a contract (an exchange withdrawal). Anyone can deploy or sweep one,
-///           and doing so only ever executes the intent exactly as its address committed to.
+///           from somewhere that cannot call a contract (an exchange withdrawal). Anyone can deploy one, and doing
+///           so only ever fixes the intent its address committed to; the donor or a keeper sweeps it.
 ///         The vaults trust this factory and the forwarders it deployed, and nothing else, to call `donateVia`.
-contract DonationForwarderFactory is IDonationForwarderFactory, ReentrancyGuardTransient {
+contract DonationForwarderFactory is IDonationForwarderFactory, RoleAware, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
 
     address public constant NATIVE = address(0);
@@ -33,20 +43,27 @@ contract DonationForwarderFactory is IDonationForwarderFactory, ReentrancyGuardT
 
     /// @inheritdoc IDonationForwarderFactory
     mapping(address => bool) public isForwarder;
+    /// @inheritdoc IDonationForwarderFactory
+    mapping(address => bool) public isKeeper;
 
-    constructor(INeedsRegistry registry_, IConversionRouter router_, IERC20 token_, address implementation_) {
-        if (
-            address(registry_) == address(0) || address(router_) == address(0) || address(token_) == address(0)
-                || implementation_ == address(0)
-        ) revert Errors.ZeroAddress();
+    constructor(INeedsRegistry registry_, IConversionRouter router_, IERC20 token_) RoleAware(rolesOf(registry_)) {
+        if (address(router_) == address(0) || address(token_) == address(0)) revert Errors.ZeroAddress();
         registry = registry_;
         router = router_;
         token = token_;
-        implementation = implementation_;
+        implementation = address(new DonationForwarder(registry_, router_, token_));
+    }
+
+    /// @inheritdoc IDonationForwarderFactory
+    function setKeeper(address keeper, bool active) external onlyAdmin {
+        if (keeper == address(0)) revert Errors.ZeroAddress();
+        isKeeper[keeper] = active;
+        emit KeeperSet(keeper, active);
     }
 
     /// @inheritdoc IDonationForwarderFactory
     function forwarderAddress(IDonationForwarder.Intent calldata intent) external view returns (address) {
+        _validate(intent);
         return _predict(intent);
     }
 
@@ -60,6 +77,9 @@ contract DonationForwarderFactory is IDonationForwarderFactory, ReentrancyGuardT
         external
         returns (address forwarder, uint256 deposited)
     {
+        if (msg.sender != intent.receiptTo && msg.sender != intent.refundTo && !isKeeper[msg.sender]) {
+            revert Errors.Unauthorized();
+        }
         forwarder = _deploy(intent);
         deposited = IDonationForwarder(forwarder).sweep(tokenIn);
     }
@@ -83,9 +103,13 @@ contract DonationForwarderFactory is IDonationForwarderFactory, ReentrancyGuardT
         DonationConversion.Result memory r =
             DonationConversion.convertAndDonate(registry, router, token, needId, tokenIn, amountIn, msg.sender);
         (deposited, receiptId) = (r.deposited, r.receiptId);
-        emit DonatedWithConversion(needId, msg.sender, tokenIn, amountIn, r.received, r.fairValue, r.deposited);
+        emit DonatedWithConversion(needId, msg.sender, tokenIn, r.amountIn, r.received, r.fairValue, r.deposited);
 
-        // The need filled up: the rest goes straight back to the donor, already converted.
+        // The need filled up: what was not needed goes straight back, unconverted where it was never converted.
+        if (amountIn > r.amountIn) {
+            if (tokenIn == NATIVE) Address.sendValue(payable(msg.sender), amountIn - r.amountIn);
+            else IERC20(tokenIn).safeTransfer(msg.sender, amountIn - r.amountIn);
+        }
         if (r.received > r.deposited) token.safeTransfer(msg.sender, r.received - r.deposited);
     }
 
@@ -94,16 +118,20 @@ contract DonationForwarderFactory is IDonationForwarderFactory, ReentrancyGuardT
     function _deploy(IDonationForwarder.Intent memory intent) internal returns (address forwarder) {
         forwarder = _predict(intent);
         if (forwarder.code.length > 0) return forwarder;
-
-        if (intent.needId == 0 || intent.needId > registry.needCount()) revert Errors.NeedNotFound();
-        // Something must always be able to take undonated money back out.
-        if (intent.refundTo == address(0) && intent.refundSigner == address(0)) revert Errors.InvalidParameter();
+        _validate(intent);
 
         Clones.cloneDeterministicWithImmutableArgs(implementation, abi.encode(intent), bytes32(0));
         isForwarder[forwarder] = true;
         emit ForwarderDeployed(
             forwarder, intent.needId, intent.receiptTo, intent.refundTo, intent.refundSigner, intent.salt
         );
+    }
+
+    /// @dev An intent that fails these checks could never be deployed, so its address must never be handed out.
+    function _validate(IDonationForwarder.Intent memory intent) internal view {
+        if (intent.needId == 0 || intent.needId > registry.needCount()) revert Errors.NeedNotFound();
+        // Something must always be able to take undonated money back out.
+        if (intent.refundTo == address(0) && intent.refundSigner == address(0)) revert Errors.InvalidParameter();
     }
 
     function _predict(IDonationForwarder.Intent memory intent) internal view returns (address) {

@@ -288,6 +288,8 @@ contract AidVaultInvariantTest is PoATest {
         vault = AidVault(registry.vaultOf(needId));
 
         handler = new VaultHandler(vault, token, registry, admin, ngo, address(deliveryManager), bankPartner);
+        vm.prank(admin);
+        forwarderFactory.setKeeper(address(handler), true); // the handler sweeps like the platform's relayer
         handler.setConversion(
             forwarderFactory, usdc, [eurUsdFeed, usdcUsdFeed, ethUsdFeed], [MOCK_EUR_USD, MOCK_USDC_USD, MOCK_ETH_USD]
         );

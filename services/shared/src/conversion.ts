@@ -88,10 +88,15 @@ export const forwarderIntentAbi = {
 export const forwarderDomain = (chainId: number, depositAddress: Address) =>
   ({ name: 'ProofOfAidDonationForwarder', version: '1', chainId, verifyingContract: depositAddress }) as const
 
+/**
+ * Refund authorizations signed with the donor's refund key. `nonce` is `DonationForwarder.nonce()` at signing time:
+ * each signature works once, so it cannot be replayed on money that arrives later.
+ */
 export const forwarderRefundTypes = {
   Refund: [
     { name: 'token', type: 'address' },
     { name: 'to', type: 'address' },
+    { name: 'nonce', type: 'uint256' },
     { name: 'deadline', type: 'uint256' },
   ],
 } as const
@@ -99,6 +104,7 @@ export const forwarderRefundTypes = {
 export const forwarderVaultRefundTypes = {
   VaultRefund: [
     { name: 'to', type: 'address' },
+    { name: 'nonce', type: 'uint256' },
     { name: 'deadline', type: 'uint256' },
   ],
 } as const

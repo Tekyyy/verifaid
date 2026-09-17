@@ -90,6 +90,7 @@ library Errors {
     error InvalidSignature();
     error SignatureExpired();
     error TransferFailed();
+    error ChangeNotReady();
 
     // ─── resolver ──────────────────────────────────────────────────────────────
     error WrongSchema();

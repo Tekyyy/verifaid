@@ -11,7 +11,7 @@ import {Errors} from "../../src/libraries/Errors.sol";
 import {PoATest} from "../utils/PoATest.sol";
 
 /// @notice Donations that need converting: a wallet giving USDC or ETH in one transaction, and deposit addresses
-///         that receive money from somewhere that cannot call a contract, then get swept by anyone.
+///         that receive money from somewhere that cannot call a contract, then get swept by the donor or a keeper.
 contract DonationForwarderTest is PoATest {
     address internal constant NATIVE = address(0);
     uint256 internal constant TARGET = 5000e6;
@@ -94,12 +94,28 @@ contract DonationForwarderTest is PoATest {
         assertEq(address(forwarderFactory).balance, 0);
     }
 
-    function test_donate_aboveTheTargetReturnsTheRestConverted() public {
+    function test_donate_aboveTheTargetConvertsOnlyWhatFillsTheNeed() public {
+        uint256 needed = router.maxInputFor(address(usdc), address(token), TARGET);
+        assertLt(needed, 5460e6, "5,000 EURC at 1.08 within a 1% bound, plus rounding");
         (uint256 deposited,) = _giveUsdc(donor, 6000e6); // worth ~5,555 EURC against a 5,000 target
         assertEq(deposited, TARGET);
         assertTrue(vault.fundingClosed());
-        assertEq(token.balanceOf(donor), 5_552_777_777 - TARGET, "the remainder comes back in the vault's token");
+        assertEq(usdc.balanceOf(donor), 6000e6 - needed, "the USDC the need did not need was never converted");
+        // the swap beat the bound: that surplus was converted, and comes back in the vault's token
+        assertEq(token.balanceOf(donor), 47_979_801);
+        assertEq(usdc.balanceOf(address(forwarderFactory)), 0);
+        assertEq(token.balanceOf(address(forwarderFactory)), 0);
         assertVaultInvariant(vault);
+    }
+
+    function test_donate_ethAboveTheTargetReturnsTheUnusedEth() public {
+        uint256 needed = router.maxInputFor(NATIVE, address(token), TARGET);
+        vm.deal(donor, 5 ether); // worth ~11,574 EURC
+        vm.prank(donor);
+        (uint256 deposited,) = forwarderFactory.donate{value: 5 ether}(needId, NATIVE, 5 ether);
+        assertEq(deposited, TARGET);
+        assertEq(donor.balance, 5 ether - needed);
+        assertEq(address(forwarderFactory).balance, 0);
     }
 
     function test_donate_conversionCostsCountAgainstTheDisclosedCap() public {
@@ -147,7 +163,7 @@ contract DonationForwarderTest is PoATest {
 
     // ─── deposit addresses ─────────────────────────────────────────────────────
 
-    function test_depositAddress_isKnownBeforeDeploymentAndSweptByAnyone() public {
+    function test_depositAddress_isKnownBeforeDeploymentAndSweptByAKeeper() public {
         IDonationForwarder.Intent memory it = _intent(address(0), address(0), refundSigner, keccak256("card-1"));
         address depositAddress = forwarderFactory.forwarderAddress(it);
         assertEq(depositAddress.code.length, 0);
@@ -159,7 +175,7 @@ contract DonationForwarderTest is PoATest {
         emit IDonationForwarderFactory.ForwarderDeployed(
             depositAddress, needId, address(0), address(0), refundSigner, 0
         );
-        vm.prank(outsider);
+        vm.prank(keeper);
         (address forwarder, uint256 deposited) = forwarderFactory.sweep(it, address(usdc));
 
         assertEq(forwarder, depositAddress);
@@ -172,6 +188,7 @@ contract DonationForwarderTest is PoATest {
 
         // more money later adds up under the same tracking reference
         usdc.mint(forwarder, 108e6);
+        vm.prank(keeper);
         IDonationForwarder(forwarder).sweep(address(usdc));
         assertEq(vault.donatedByRef(key), deposited + 99_949_999);
         assertVaultInvariant(vault);
@@ -187,28 +204,69 @@ contract DonationForwarderTest is PoATest {
         IDonationForwarder.Intent memory noRefund = _intent(address(0), address(0), address(0), keccak256("x"));
         vm.expectRevert(Errors.InvalidParameter.selector);
         forwarderFactory.deploy(noRefund);
+        // an address that could never be deployed is never handed out (review finding 7)
+        vm.expectRevert(Errors.InvalidParameter.selector);
+        forwarderFactory.forwarderAddress(noRefund);
 
         IDonationForwarder.Intent memory unknownNeed = _intent(address(0), donor, address(0), keccak256("x"));
         unknownNeed.needId = 999;
         vm.expectRevert(Errors.NeedNotFound.selector);
         forwarderFactory.deploy(unknownNeed);
+        vm.expectRevert(Errors.NeedNotFound.selector);
+        forwarderFactory.forwarderAddress(unknownNeed);
 
         IDonationForwarder.Intent memory it = _intent(address(0), donor, address(0), keccak256("x"));
         address first = forwarderFactory.deploy(it);
         assertEq(forwarderFactory.deploy(it), first, "deploying again is a no-op");
 
+        vm.prank(donor);
         vm.expectRevert(Errors.NothingToSweep.selector);
         IDonationForwarder(first).sweep(address(usdc));
+    }
+
+    /// @notice Review finding 2: only the intent's own wallets or a keeper can sweep, so nobody can wrap a sweep
+    ///         between two swaps of their own in one transaction.
+    function test_sweep_onlyTheDonorOrAKeeper() public {
+        IDonationForwarder.Intent memory it = _intent(donor, makeAddr("refunds"), address(0), keccak256("auth"));
+        address depositAddress = forwarderFactory.forwarderAddress(it);
+        usdc.mint(depositAddress, 216e6);
+
+        vm.prank(outsider);
+        vm.expectRevert(Errors.Unauthorized.selector);
+        forwarderFactory.sweep(it, address(usdc));
+
+        vm.prank(it.refundTo);
+        forwarderFactory.sweep(it, address(usdc));
+        usdc.mint(depositAddress, 108e6);
+        vm.prank(outsider);
+        vm.expectRevert(Errors.Unauthorized.selector);
+        IDonationForwarder(depositAddress).sweep(address(usdc));
+        vm.prank(donor); // receiptTo
+        IDonationForwarder(depositAddress).sweep(address(usdc));
+
+        vm.prank(outsider);
+        vm.expectRevert(Errors.Unauthorized.selector);
+        forwarderFactory.setKeeper(outsider, true);
+        vm.expectEmit(true, false, false, true, address(forwarderFactory));
+        emit IDonationForwarderFactory.KeeperSet(keeper, false);
+        vm.prank(admin);
+        forwarderFactory.setKeeper(keeper, false);
+        assertFalse(forwarderFactory.isKeeper(keeper));
+        assertEq(IDonationForwarder(depositAddress).factory(), address(forwarderFactory));
     }
 
     function test_depositAddress_leftoverAboveTheTargetGoesToRefundTo() public {
         IDonationForwarder.Intent memory it = _intent(address(0), donor, address(0), keccak256("big"));
         address depositAddress = forwarderFactory.forwarderAddress(it);
         usdc.mint(depositAddress, 6000e6);
+        uint256 needed = router.maxInputFor(address(usdc), address(token), TARGET);
+        vm.prank(keeper);
         forwarderFactory.sweep(it, address(usdc));
         assertEq(vault.totalDonated(), TARGET);
-        assertEq(token.balanceOf(donor), 5_552_777_777 - TARGET);
+        assertEq(usdc.balanceOf(donor), 6000e6 - needed, "unconverted USDC goes home as USDC");
+        assertEq(token.balanceOf(donor), 47_979_801, "the swap's surplus above the target, in the vault token");
         assertEq(token.balanceOf(depositAddress), 0);
+        assertEq(usdc.balanceOf(depositAddress), 0);
     }
 
     // ─── refunds from a deposit address ────────────────────────────────────────
@@ -231,6 +289,7 @@ contract DonationForwarderTest is PoATest {
         vm.prank(ngo);
         registry.cancelNeed(needId);
         assertFalse(IDonationForwarder(forwarder).accepting());
+        vm.prank(donor);
         vm.expectRevert(Errors.NotAccepting.selector);
         IDonationForwarder(forwarder).sweep(address(usdc));
         vm.prank(outsider);
@@ -246,7 +305,7 @@ contract DonationForwarderTest is PoATest {
         uint256 deadline = block.timestamp + 1 hours;
         DonationForwarder f = DonationForwarder(payable(forwarder));
 
-        bytes memory sig = _sign(forwarder, keccak256(abi.encode(f.REFUND_TYPEHASH(), NATIVE, to, deadline)));
+        bytes memory sig = _sign(forwarder, keccak256(abi.encode(f.REFUND_TYPEHASH(), NATIVE, to, 0, deadline)));
 
         // a signature for another recipient does not verify
         vm.expectRevert(Errors.InvalidSignature.selector);
@@ -254,11 +313,17 @@ contract DonationForwarderTest is PoATest {
 
         f.refundWithSignature(NATIVE, to, deadline, sig);
         assertEq(to.balance, 0.5 ether);
+        assertEq(f.nonce(), 1);
 
-        vm.deal(forwarder, 1);
+        // money that arrives later cannot be pulled with the old signature (review finding 5)
+        vm.deal(forwarder, 1 ether);
+        vm.expectRevert(Errors.InvalidSignature.selector);
+        f.refundWithSignature(NATIVE, to, deadline, sig);
+
+        bytes memory next = _sign(forwarder, keccak256(abi.encode(f.REFUND_TYPEHASH(), NATIVE, to, 1, deadline)));
         vm.warp(deadline + 1);
         vm.expectRevert(Errors.SignatureExpired.selector);
-        f.refundWithSignature(NATIVE, to, deadline, sig);
+        f.refundWithSignature(NATIVE, to, deadline, next);
 
         // no refundTo on this intent, so the unsigned path is closed
         vm.expectRevert(Errors.Unauthorized.selector);
@@ -269,6 +334,7 @@ contract DonationForwarderTest is PoATest {
         IDonationForwarder.Intent memory it = _intent(address(0), donor, address(0), keccak256("v"));
         address depositAddress = forwarderFactory.forwarderAddress(it);
         usdc.mint(depositAddress, 1080e6);
+        vm.prank(keeper);
         (, uint256 deposited) = forwarderFactory.sweep(it, address(usdc));
 
         vm.prank(ngo);
@@ -284,11 +350,13 @@ contract DonationForwarderTest is PoATest {
         IDonationForwarder.Intent memory card = _intent(address(0), address(0), refundSigner, keccak256("c"));
         address cardAddress = forwarderFactory.forwarderAddress(card);
         usdc.mint(cardAddress, 1080e6);
+        vm.prank(keeper);
         forwarderFactory.sweep(card, address(usdc));
 
         IDonationForwarder.Intent memory withWallet = _intent(donor, donor, address(0), keccak256("w"));
         address walletAddress = forwarderFactory.forwarderAddress(withWallet);
         usdc.mint(walletAddress, 108e6);
+        vm.prank(donor);
         forwarderFactory.sweep(withWallet, address(usdc));
 
         vm.prank(ngo);
@@ -297,7 +365,7 @@ contract DonationForwarderTest is PoATest {
         address to = makeAddr("recovered");
         uint256 deadline = block.timestamp + 1 hours;
         DonationForwarder f = DonationForwarder(payable(cardAddress));
-        bytes memory sig = _sign(cardAddress, keccak256(abi.encode(f.VAULT_REFUND_TYPEHASH(), to, deadline)));
+        bytes memory sig = _sign(cardAddress, keccak256(abi.encode(f.VAULT_REFUND_TYPEHASH(), to, 0, deadline)));
         assertEq(f.claimVaultRefundWithSignature(to, deadline, sig), 999_499_999);
         assertEq(token.balanceOf(to), 999_499_999);
 

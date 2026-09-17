@@ -190,6 +190,51 @@ Stated plainly, because most of the security rests on them:
   vector; the notifier requires https and refuses private and link-local address literals outside development.
   DNS rebinding to a private address is not covered and belongs in the egress proxy of a production deployment.
 
+### 3.14 Conversions: oracles, DEX pools, the on-ramp and deposit addresses (v3)
+
+- **Threat: extracting value from the swap.** A sandwich, a manipulated or drained pool, or a caller-chosen path
+  could turn a 1,000 USDC donation into far less EURC.
+- **Mitigation.** The caller chooses neither the path nor the minimum output. Routes are fixed by the admin and
+  may only pass through USDC or WETH, and the router requires at least the Chainlink fair value minus the route's
+  bound (1% for USDC and 1.5% for ETH as deployed, 5% hard cap), measuring what actually arrived. Only what the need
+  can take is converted. A deposit address can only be swept by its donor or the platform's keeper, so nobody can
+  wrap a sweep between two swaps of their own in one transaction; Base has no public mempool for the rest. What a
+  swap did cost is recorded per donation and counted against the need's disclosed cost cap.
+- **Residual risk.** Within the bound, a pool manipulated before an honest sweep or wallet donation still fills it
+  at the bottom of the bound; the cost is visible and capped. Oracle error adds to the bound: EURC is priced at the
+  EUR/USD feed, and feeds only update past their deviation threshold or heartbeat.
+- **Threat: a compromised admin key** repricing or rerouting conversions (review finding 1).
+- **Mitigation.** Replacing a feed or a route, loosening a bound or removing the sequencer check is scheduled and
+  only executable two days later, in public (`ConfigChangeScheduled`), so donors can take waiting money back.
+- **Threat: a wrong price.** A stale feed, a feed paused over a forex weekend, or an L2 sequencer outage during
+  which prices cannot update.
+- **Mitigation.** Per-feed heartbeats, rejection of non-positive, zero-time and future-dated answers, and on
+  mainnet the sequencer uptime feed with a one-hour grace period after restart. All of these fail closed: the
+  donation reverts and the donor keeps their tokens.
+- **Threat: the stablecoins themselves.** Circle can blacklist an address or pause USDC or EURC, and a depeg moves
+  the value of what the vault holds.
+- **Residual risk.** A blacklisted vault cannot pay out or refund; a paused token stops every conversion. These are
+  issuer risks of any stablecoin escrow. The oracle bound prices USDC at its own USD feed, so a USDC depeg lowers
+  what a USDC donation converts to rather than being hidden.
+- **Threat: the on-ramp.** Coinbase could refuse, delay or reverse a card purchase.
+- **Mitigation.** The on-ramp delivers to the donor's own wallet, never to the platform, so nothing the platform
+  holds depends on Coinbase settling. Until the donor taps "donate" the USDC is simply theirs. The donation itself
+  is an ordinary on-chain transaction: once it is mined, no chargeback can reach the vault.
+- **Threat: deposit addresses.** Funds sent to the wrong network or in an unsupported token, a sweep front-run
+  into a bad state, a relayer that never sweeps, or a need that stops accepting while money sits unswept.
+- **Mitigation.** The address commits to its need and refund route at creation (CREATE2 over the intent), so
+  nobody can deploy it with other terms. Sweeping is permissionless and only ever donates to the committed need or
+  returns money to the committed refund address. Unswept funds can be taken back by the donor at any time, and
+  sent home by anyone once the need stops accepting. The refund key is generated and kept in the donor's browser.
+- **Residual risk.** Tokens other than the accepted ones, or funds sent on another chain, are not recoverable by
+  the contracts; the app warns before showing the address. If the keeper stops sweeping, deposits wait (the donor
+  can sweep or take them back). Vault refunds are paid in EURC even when the donation arrived as USDC. Anyone can
+  create a deposit address whose receipt goes to someone else's wallet, which publicly links that wallet to a need
+  without giving it any rights.
+- **Test networks.** On Base Sepolia the vault token, USDC and EUR/USD are mocks and the only liquid pool is ours;
+  anyone can mint the mocks and move that pool, which makes donations revert until it is rebalanced. That is a
+  testnet liveness issue, not a mainnet one: on mainnet the pools are Circle's tokens and Uniswap's deep markets.
+
 ### 3.10 GDPR versus immutability
 
 - **Mitigation.** Personal data is only ever in the PII vault, encrypted with a per-record data key. Erasure is
@@ -233,6 +278,8 @@ nullifiers are scoped per delivery, so two confirmations by the same person are 
 | Spam needs | Only registered, active NGOs can create needs; the admin can deactivate an NGO |
 | Confirmation spam | Proofs must verify against the group and be unique per delivery; invalid proofs revert and cost the relayer gas — rate limiting belongs in the relayer |
 | Griefing the relayer | The relayer pays gas for beneficiaries; rate limit per delivery and cap spend. This is an operational cost, not a contract vulnerability |
+| Moving a pool to block conversions | Donations revert on the oracle bound instead of executing at a bad price; direct EURC and bank giving still work. On testnets the pool is rebalanced by re-running `SeedLiquidity` |
+| Spamming deposit addresses | Creating one through the app costs the relayer a clone deployment; the route is rate limited. Anyone can also deploy one at their own cost, which harms no one |
 
 ## 6. Known limitations
 
@@ -245,3 +292,5 @@ nullifiers are scoped per delivery, so two confirmations by the same person are 
 7. Off-chain custody is only as honest as its custodian (§3.11); the checkout, CSV import and settlement endpoints
    of the bank connector are a sandbox, not a payment integration.
 6. Floor rounding leaves at most a few base units of dust in a vault after refunds.
+8. Conversions trust Chainlink's feeds and the admin's choice of routes, and inherit Circle's issuer powers over
+   USDC and EURC (§3.14). Coinbase Onramp is the only card path wired for mainnet; on test networks it is mocked.

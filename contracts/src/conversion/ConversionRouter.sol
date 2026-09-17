@@ -16,50 +16,63 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 /// @title ConversionRouter
 /// @notice Turns a donation in one token (USDC from a card on-ramp, ETH from a wallet) into the need's stablecoin
-///         through Uniswap v3, bounded by Chainlink: a swap that returns less than the oracle fair value minus
-///         `maxSlippageBps` reverts. The fair value is returned alongside the output, so the conversion cost is a
-///         number the contracts compute, not one anybody reports.
-/// @dev Holds no funds between calls. The admin configures feeds, routes and the slippage bound; it can never
-///      direct where converted funds go (the caller chooses the recipient) or take anything from a swap.
+///         through Uniswap v3, bounded by Chainlink: a swap that returns less than the oracle fair value minus the
+///         route's `maxSlippageBps` reverts. The fair value is returned alongside the output, so the conversion cost
+///         is a number the contracts compute, not one anybody reports.
+/// @dev Holds no funds between calls. The admin configures feeds and routes, but cannot direct where converted funds
+///      go (the caller chooses the recipient), and routes may only pass through the hub tokens fixed at deployment.
+///      Anything that could affect money already waiting to be converted (replacing a feed or a route, loosening a
+///      bound, removing the sequencer check) only takes effect `CONFIG_DELAY` after it was requested, which leaves
+///      donors time to take their money back first. Initial configuration applies at once.
 contract ConversionRouter is IConversionRouter, RoleAware, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
 
     uint16 public constant BPS_DENOMINATOR = 10_000;
-    /// @notice Upper bound for `maxSlippageBps`, so a misconfiguration cannot turn the oracle bound off.
+    /// @notice Upper bound for any route's slippage, so a misconfiguration cannot turn the oracle bound off.
     uint16 public constant MAX_SLIPPAGE_CAP_BPS = 500;
     /// @notice After the L2 sequencer comes back up, prices are not trusted for this long.
     uint256 public constant SEQUENCER_GRACE_PERIOD = 1 hours;
+    /// @inheritdoc IConversionRouter
+    uint256 public constant CONFIG_DELAY = 2 days;
+    /// @notice A scheduled change that is not executed within this window after becoming executable lapses.
+    uint256 public constant EXECUTION_WINDOW = 7 days;
     /// @inheritdoc IConversionRouter
     address public constant NATIVE = address(0);
 
     IV3SwapRouter public immutable swapRouter;
     IWETH9 public immutable weth;
 
-    /// @inheritdoc IConversionRouter
-    uint16 public maxSlippageBps;
     /// @notice Chainlink L2 sequencer uptime feed; zero on chains without one (local and test networks).
     IAggregatorV3 public sequencerUptimeFeed;
+    /// @inheritdoc IConversionRouter
+    mapping(address => bool) public isHub;
+    /// @inheritdoc IConversionRouter
+    mapping(bytes32 => uint256) public scheduledAt;
 
     mapping(address => PriceFeed) private _feeds;
-    mapping(address => mapping(address => bytes)) private _routes;
+    mapping(address => mapping(address => Route)) private _routes;
 
-    constructor(IRoleRegistry roles_, IV3SwapRouter swapRouter_, IWETH9 weth_, uint16 maxSlippageBps_)
+    constructor(IRoleRegistry roles_, IV3SwapRouter swapRouter_, IWETH9 weth_, address[] memory hubs)
         RoleAware(roles_)
     {
         if (address(swapRouter_) == address(0) || address(weth_) == address(0)) {
             revert Errors.ZeroAddress();
         }
-        if (maxSlippageBps_ > MAX_SLIPPAGE_CAP_BPS) revert Errors.SlippageTooHigh();
         swapRouter = swapRouter_;
         weth = weth_;
-        maxSlippageBps = maxSlippageBps_;
+        for (uint256 i; i < hubs.length; ++i) {
+            if (hubs[i] == address(0)) revert Errors.ZeroAddress();
+            isHub[hubs[i]] = true;
+        }
     }
 
     // ─── admin configuration ───────────────────────────────────────────────────
 
-    /// @notice Sets `token`'s USD price feed (`NATIVE` and WETH share ETH/USD). Admin only.
+    /// @notice Sets `token`'s USD price feed (`NATIVE` and WETH share ETH/USD). Admin only; replacing a feed is
+    ///         delayed.
     function setPriceFeed(address token, address feed, uint32 heartbeat) external onlyAdmin {
         if (feed == address(0) || heartbeat == 0) revert Errors.InvalidParameter();
+        if (!_mayApply(_feeds[token].feed == address(0))) return;
         uint8 tokenDecimals = token == NATIVE ? 18 : IERC20Metadata(token).decimals();
         _feeds[token] = PriceFeed({
             feed: feed, heartbeat: heartbeat, feedDecimals: IAggregatorV3(feed).decimals(), tokenDecimals: tokenDecimals
@@ -67,28 +80,44 @@ contract ConversionRouter is IConversionRouter, RoleAware, ReentrancyGuardTransi
         emit PriceFeedSet(token, feed, heartbeat);
     }
 
-    /// @notice Sets the Uniswap v3 path from `tokenIn` to `tokenOut` (use WETH for native ETH). Admin only.
-    function setRoute(address tokenIn, address tokenOut, bytes calldata path) external onlyAdmin {
+    /// @notice Sets the Uniswap v3 path from `tokenIn` to `tokenOut` (use WETH for native ETH) and its slippage bound.
+    ///         Admin only. Replacing a route is delayed, except tightening the bound of the same path.
+    function setRoute(address tokenIn, address tokenOut, bytes calldata path, uint16 maxSlippageBps)
+        external
+        onlyAdmin
+    {
         // tokenIn (20) ‖ fee (3) ‖ tokenOut (20), plus 23 bytes per extra hop
         if (path.length < 43 || (path.length - 20) % 23 != 0) revert Errors.InvalidParameter();
         if (address(bytes20(path[:20])) != tokenIn || address(bytes20(path[path.length - 20:])) != tokenOut) {
             revert Errors.InvalidParameter();
         }
-        _routes[tokenIn][tokenOut] = path;
-        emit RouteSet(tokenIn, tokenOut, path);
+        // Middle tokens are limited to the hubs fixed at deployment, so no route can pass through a pool of a token
+        // someone created to capture the swap.
+        for (uint256 offset = 23; offset < path.length - 20; offset += 23) {
+            if (!isHub[address(bytes20(path[offset:offset + 20]))]) revert Errors.InvalidParameter();
+        }
+        if (maxSlippageBps > MAX_SLIPPAGE_CAP_BPS) revert Errors.SlippageTooHigh();
+
+        Route storage current = _routes[tokenIn][tokenOut];
+        bool tightening = keccak256(current.path) == keccak256(path) && maxSlippageBps <= current.maxSlippageBps;
+        if (!_mayApply(current.path.length == 0 || tightening)) return;
+        _routes[tokenIn][tokenOut] = Route({path: path, maxSlippageBps: maxSlippageBps});
+        emit RouteSet(tokenIn, tokenOut, path, maxSlippageBps);
     }
 
-    /// @notice Sets the slippage bound, at most `MAX_SLIPPAGE_CAP_BPS`. Admin only.
-    function setMaxSlippageBps(uint16 maxSlippageBps_) external onlyAdmin {
-        if (maxSlippageBps_ > MAX_SLIPPAGE_CAP_BPS) revert Errors.SlippageTooHigh();
-        maxSlippageBps = maxSlippageBps_;
-        emit MaxSlippageSet(maxSlippageBps_);
-    }
-
-    /// @notice Sets the L2 sequencer uptime feed (zero disables the check). Admin only.
+    /// @notice Sets the L2 sequencer uptime feed (zero disables the check). Admin only; changing or removing an
+    ///         existing feed is delayed.
     function setSequencerUptimeFeed(address feed) external onlyAdmin {
+        if (!_mayApply(address(sequencerUptimeFeed) == address(0) && feed != address(0))) return;
         sequencerUptimeFeed = IAggregatorV3(feed);
         emit SequencerFeedSet(feed);
+    }
+
+    /// @notice Cancels a scheduled change. Admin only.
+    function cancelChange(bytes32 id) external onlyAdmin {
+        if (scheduledAt[id] == 0) revert Errors.InvalidParameter();
+        delete scheduledAt[id];
+        emit ConfigChangeCancelled(id);
     }
 
     // ─── conversion ────────────────────────────────────────────────────────────
@@ -117,22 +146,18 @@ contract ConversionRouter is IConversionRouter, RoleAware, ReentrancyGuardTransi
             return (amountIn, amountIn);
         }
 
+        address swapIn = tokenIn == NATIVE ? address(weth) : tokenIn;
+        Route memory route = _routes[swapIn][tokenOut];
+        if (route.path.length == 0) revert Errors.RouteNotSet();
         fairAmountOut = quote(tokenIn, amountIn, tokenOut);
-        uint256 minOut = (fairAmountOut * (BPS_DENOMINATOR - maxSlippageBps)) / BPS_DENOMINATOR;
+        uint256 minOut = _minOut(fairAmountOut, route.maxSlippageBps);
 
-        address swapIn = tokenIn;
-        if (tokenIn == NATIVE) {
-            weth.deposit{value: amountIn}();
-            swapIn = address(weth);
-        }
-        bytes memory path = _routes[swapIn][tokenOut];
-        if (path.length == 0) revert Errors.RouteNotSet();
-
+        if (tokenIn == NATIVE) weth.deposit{value: amountIn}();
         IERC20(swapIn).forceApprove(address(swapRouter), amountIn);
         uint256 before = IERC20(tokenOut).balanceOf(recipient);
         swapRouter.exactInput(
             IV3SwapRouter.ExactInputParams({
-                path: path, recipient: recipient, amountIn: amountIn, amountOutMinimum: minOut
+                path: route.path, recipient: recipient, amountIn: amountIn, amountOutMinimum: minOut
             })
         );
         IERC20(swapIn).forceApprove(address(swapRouter), 0);
@@ -163,16 +188,56 @@ contract ConversionRouter is IConversionRouter, RoleAware, ReentrancyGuardTransi
     }
 
     /// @inheritdoc IConversionRouter
+    /// @dev Both quotes round down, so the margin adds one unit of `tokenOut` (in either direction) on top of the
+    ///      slippage bound: `_minOut(quote(tokenIn, result, tokenOut), bps) > amountOut` for any price.
+    function maxInputFor(address tokenIn, address tokenOut, uint256 amountOut) external view returns (uint256) {
+        if (tokenIn == tokenOut) return amountOut;
+        uint16 bps = maxSlippageBpsOf(tokenIn, tokenOut);
+        uint256 oneOutInIn = quote(tokenOut, 1, tokenIn) + 1;
+        uint256 oneInInOut = quote(tokenIn, 1, tokenOut) + 1;
+        uint256 fairIn = quote(tokenOut, amountOut + oneInInOut + 1, tokenIn);
+        return Math.mulDiv(fairIn, BPS_DENOMINATOR, BPS_DENOMINATOR - bps, Math.Rounding.Ceil) + oneOutInIn;
+    }
+
+    /// @inheritdoc IConversionRouter
+    function maxSlippageBpsOf(address tokenIn, address tokenOut) public view returns (uint16) {
+        Route storage route = _routes[tokenIn == NATIVE ? address(weth) : tokenIn][tokenOut];
+        if (route.path.length == 0) revert Errors.RouteNotSet();
+        return route.maxSlippageBps;
+    }
+
+    /// @inheritdoc IConversionRouter
     function priceFeedOf(address token) external view returns (PriceFeed memory) {
         return _feeds[token];
     }
 
     /// @inheritdoc IConversionRouter
-    function routeOf(address tokenIn, address tokenOut) external view returns (bytes memory) {
+    function routeOf(address tokenIn, address tokenOut) external view returns (Route memory) {
         return _routes[tokenIn][tokenOut];
     }
 
     // ─── internal ──────────────────────────────────────────────────────────────
+
+    /// @dev True when the calling setter may apply now. Otherwise the first identical call schedules it and returns
+    ///      false, and a later identical call inside the execution window applies it.
+    function _mayApply(bool immediately) internal returns (bool) {
+        if (immediately) return true;
+        bytes32 id = keccak256(msg.data);
+        uint256 executableAt = scheduledAt[id];
+        if (executableAt == 0 || block.timestamp > executableAt + EXECUTION_WINDOW) {
+            executableAt = block.timestamp + CONFIG_DELAY;
+            scheduledAt[id] = executableAt;
+            emit ConfigChangeScheduled(id, msg.data, executableAt);
+            return false;
+        }
+        if (block.timestamp < executableAt) revert Errors.ChangeNotReady();
+        delete scheduledAt[id];
+        return true;
+    }
+
+    function _minOut(uint256 fair, uint16 maxSlippageBps) internal pure returns (uint256) {
+        return (fair * (BPS_DENOMINATOR - maxSlippageBps)) / BPS_DENOMINATOR;
+    }
 
     /// @dev WETH falls back to the native ETH feed, so one ETH/USD configuration covers both.
     function _feedFor(address token) internal view returns (PriceFeed memory config) {

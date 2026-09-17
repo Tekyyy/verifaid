@@ -23,6 +23,7 @@ import {
   saltedRefHash,
   seal,
   semaphoreAbi,
+  tokenSymbolOf,
 } from '@poa/shared'
 import { generateProof } from '@semaphore-protocol/proof'
 import {
@@ -376,7 +377,8 @@ const conversionScenario = async (ctx: DemoContext, programId: bigint): Promise<
   info('withdrawn to it', `${formatAmount(withdrawal)} USDC`)
   tx(ctx.network, 'transfer', sent.hash)
 
-  step('Anyone sweeps it: deploy, convert, donate up to the target, return the rest')
+  step('The platform keeper sweeps it: deploy, convert what fills the need, donate, return the rest')
+  note("only the donor's own addresses or a registered keeper may sweep, so nobody can sandwich the swap")
   const sweep = await send(ctx, 'relayer', {
     address: factory,
     abi: donationForwarderFactoryAbi as Abi,
@@ -384,13 +386,16 @@ const conversionScenario = async (ctx: DemoContext, programId: bigint): Promise<
     args: [intent, usdc],
   })
   logConversion(sweep.receipt, 'Swept')
-  const [leftover] = parseEventLogs({
+  const leftovers = parseEventLogs({
     abi: donationForwarderAbi,
     eventName: 'LeftoverRefunded',
     logs: sweep.receipt.logs,
   })
-  if (leftover)
-    info('sent back to the donor', `${formatAmount(leftover.args.amount)} units of the vault token`)
+  for (const leftover of leftovers) {
+    const symbol = tokenSymbolOf(ctx.deployment, leftover.args.token)
+    info(`returned (${symbol})`, `${formatAmount(leftover.args.amount)} to the donor`)
+  }
+  note('only what the need could take was converted: the rest goes home in the token it came in')
   tx(ctx.network, 'tx', sweep.hash)
   await expectStatus(ctx, needId, 'Funded')
 
