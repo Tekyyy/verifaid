@@ -22,6 +22,11 @@ export interface Deployment {
     BeneficiaryGroups: Address
     DeliveryManager: Address
     ProofOfAidResolver: Address
+    /** v3: oracle-bounded swaps into the vault token. */
+    ConversionRouter?: Address
+    DonationForwarderImplementation?: Address
+    /** v3: wallet donations in other tokens, and deposit addresses. */
+    DonationForwarderFactory?: Address
   }
   external: {
     EAS: Address
@@ -29,6 +34,14 @@ export interface Deployment {
     Semaphore: Address
     SemaphoreVerifier: Address
     Token: Address
+    /** v3 conversion path; on local chains these are mocks. */
+    SwapRouter?: Address
+    WETH?: Address
+    USDC?: Address
+    EurUsdFeed?: Address
+    UsdcUsdFeed?: Address
+    EthUsdFeed?: Address
+    SequencerUptimeFeed?: Address
   }
   params: {
     confirmationThresholdBps: number
@@ -36,6 +49,12 @@ export interface Deployment {
     highValueThreshold: string | number
     minExpectedRecipients: number
     dashboardBaseURI: string
+    /** v3: the oracle bound on every conversion, in basis points. */
+    maxSlippageBps?: number
+    /** v3: true when the swap router is a mock that fills at oracle prices (local chains). */
+    mockSwapRouter?: boolean
+    /** v3: true when an ETH → vault token route is configured (it needs WETH liquidity on the chain). */
+    ethDonations?: boolean
   }
   schemas: Record<SchemaName, Hex>
 }

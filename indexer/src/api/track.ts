@@ -1,4 +1,5 @@
 import {
+  type DepositAddressView,
   type DonationOutcome,
   type DonationTrack,
   type DonorStage,
@@ -46,6 +47,8 @@ export interface TrackInputs {
   reports: ImpactReportRow[]
   refunds: RefundRow[]
   timeline: TimelineRow[]
+  /** The deposit address behind a 'deposit' reference, with its sweeps and refunds. */
+  deposit: DepositAddressView | null
 }
 
 const firstOfType = (timeline: TimelineRow[], type: string): TimelineRow | undefined =>
@@ -210,6 +213,7 @@ export const buildDonationTrack = (inputs: TrackInputs): DonationTrack => {
     deliveries: deliveries.map(toDeliveryView),
     settlements: settlements.map(toSettlementView),
     impactReport: report ? toImpactReportView(report) : null,
+    deposit: inputs.deposit,
     updatedAt,
   }
 }

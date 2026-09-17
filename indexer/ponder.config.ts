@@ -4,6 +4,8 @@ import {
   beneficiaryGroupsAbi,
   chainFor,
   deliveryManagerAbi,
+  donationForwarderAbi,
+  donationForwarderFactoryAbi,
   donationReceiptAbi,
   easAbi,
   getDeployment,
@@ -14,7 +16,7 @@ import {
   semaphoreAbi,
 } from '@poa/shared'
 import { createConfig, factory } from 'ponder'
-import { type Abi, parseAbiItem } from 'viem'
+import { type Abi, parseAbiItem, zeroAddress } from 'viem'
 
 /**
  * Addresses, schema UIDs and the start block all come from `deployments/<network>.json` through @poa/shared,
@@ -28,6 +30,9 @@ const deployment = getDeployment(network)
 const { contracts, external, schemas, startBlock, chainId } = deployment
 
 const rpc = process.env.PONDER_RPC_URL ?? chainFor(network).rpcUrls.default.http[0]
+
+/** v3 conversion contracts; a deployment without them indexes nothing at the zero address. */
+const forwarderFactory = contracts.DonationForwarderFactory ?? zeroAddress
 
 /** The six schema UIDs of this deployment; every other EAS attestation on the chain is ignored. */
 const schemaUIDs = Object.values(schemas)
@@ -71,6 +76,27 @@ export default createConfig({
         address: contracts.AidVaultFactory,
         event: parseAbiItem('event VaultCreated(uint256 indexed needId, address vault, uint8 custodyMode)'),
         parameter: 'vault',
+        startBlock,
+      }),
+      startBlock,
+    },
+    // Wallet donations in USDC or ETH, converted on the way in; also deploys the deposit addresses.
+    DonationForwarderFactory: {
+      abi: donationForwarderFactoryAbi,
+      chain: network,
+      address: forwarderFactory,
+      startBlock,
+    },
+    // One deposit address per donor intent, discovered from the factory like the ledgers.
+    DonationForwarder: {
+      abi: donationForwarderAbi,
+      chain: network,
+      address: factory({
+        address: forwarderFactory,
+        event: parseAbiItem(
+          'event ForwarderDeployed(address indexed forwarder, uint256 indexed needId, address receiptTo, address refundTo, address refundSigner, bytes32 salt)',
+        ),
+        parameter: 'forwarder',
         startBlock,
       }),
       startBlock,

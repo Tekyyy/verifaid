@@ -144,6 +144,7 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         protocolParams.serialize("minExpectedRecipients", uint256(params.minExpectedRecipients));
         protocolParams.serialize("maxSlippageBps", uint256(params.conversion.maxSlippageBps));
         protocolParams.serialize("mockSwapRouter", s.conversion.mocks);
+        protocolParams.serialize("ethDonations", params.conversion.ethRoute || s.conversion.mocks);
         string memory paramsJson = protocolParams.serialize("dashboardBaseURI", params.dashboardBaseURI);
 
         // Placeholders; RegisterSchemas.s.sol fills these in.

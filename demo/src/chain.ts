@@ -21,7 +21,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 export const send = async (
   ctx: DemoContext,
   role: RoleName,
-  params: { address: Address; abi: Abi; functionName: string; args: readonly unknown[] },
+  params: { address: Address; abi: Abi; functionName: string; args: readonly unknown[]; value?: bigint },
 ): Promise<SendResult> => {
   const wallet = ctx.wallets[role]
   const account = ctx.accounts[role]

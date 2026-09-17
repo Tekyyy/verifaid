@@ -1,23 +1,28 @@
 import type schema from 'ponder:schema'
 import {
   categoryLabel,
+  type ConversionView,
   type CustodyMode,
+  type DepositAddressView,
   type DeliveryStatus,
   type DeliveryView,
   type DonationKind,
   type DonationView,
   type DonorTrancheSlice,
+  getDeployment,
   type ImpactReportView,
   type NeedStatus,
   type NeedSummary,
   regionLabel,
+  resolveNetwork,
   type SettlementView,
   type TimelineEvent,
   type TimelineEventType,
   type TrancheStatus,
+  tokenSymbolOf,
   type TrancheView,
 } from '@poa/shared'
-import type { Address, Hex } from 'viem'
+import { type Address, type Hex, zeroAddress } from 'viem'
 
 /**
  * Row → API type mappers. Every response is one of the types exported by @poa/shared, with bigints serialized
@@ -32,6 +37,10 @@ export type SettlementRow = typeof schema.settlement.$inferSelect
 export type RefundRow = typeof schema.refund.$inferSelect
 export type TimelineRow = typeof schema.timelineEvent.$inferSelect
 export type ImpactReportRow = typeof schema.impactReport.$inferSelect
+export type DepositAddressRow = typeof schema.depositAddress.$inferSelect
+export type DepositRefundRow = typeof schema.depositRefund.$inferSelect
+
+const deployment = getDeployment(resolveNetwork(process.env.PONDER_NETWORK ?? 'anvil'))
 
 /** What is still missing to reach the target, while funding is open; zero once it is not. */
 export const fundingGapOf = (row: NeedRow): bigint =>
@@ -107,6 +116,23 @@ export const toDeliveryView = (row: DeliveryRow): DeliveryView => ({
   challengeDeadline: row.challengeDeadline,
 })
 
+/** What the swap did for a CONVERTED donation; null for every other kind. */
+export const toConversionView = (row: DonationRow): ConversionView | null => {
+  if (row.kind !== 'CONVERTED') return null
+  const tokenIn = (row.tokenIn as Address | null) ?? zeroAddress
+  return {
+    tokenIn,
+    // Until the swap event of the same transaction is indexed the input is unknown; it never stays that way.
+    tokenInSymbol: row.tokenIn ? tokenSymbolOf(deployment, tokenIn) : '',
+    amountIn: (row.amountIn ?? 0n).toString(),
+    amountOut: (row.converted ?? 0n).toString(),
+    fairValue: (row.fairValue ?? 0n).toString(),
+    conversionFee: (row.conversionFee ?? 0n).toString(),
+    via: (row.via as Address | null) ?? zeroAddress,
+    viaDepositAddress: row.viaDepositAddress ?? false,
+  }
+}
+
 export const toDonationView = (row: DonationRow): DonationView => ({
   id: row.id,
   needId: row.needId.toString(),
@@ -120,9 +146,63 @@ export const toDonationView = (row: DonationRow): DonationView => ({
   currency: row.currency,
   receiptId: row.receiptId?.toString() ?? null,
   attestationUID: (row.attestationUID as Hex | null) ?? null,
+  conversion: toConversionView(row),
   txHash: row.txHash as Hex,
   timestamp: row.timestamp,
 })
+
+export const toDepositAddressView = (
+  row: DepositAddressRow,
+  sweeps: DonationRow[],
+  refunds: DepositRefundRow[],
+): DepositAddressView => ({
+  address: row.address as Address,
+  needId: row.needId.toString(),
+  receiptTo: (row.receiptTo as Address | null) ?? null,
+  refundTo: (row.refundTo as Address | null) ?? null,
+  refundSigner: (row.refundSigner as Address | null) ?? null,
+  salt: row.salt as Hex,
+  deployedAt: row.deployedAt,
+  sweeps: sweeps.map((sweep) => ({
+    tokenIn: (sweep.tokenIn as Address | null) ?? zeroAddress,
+    amountIn: (sweep.amountIn ?? 0n).toString(),
+    converted: (sweep.converted ?? 0n).toString(),
+    fairValue: (sweep.fairValue ?? 0n).toString(),
+    deposited: sweep.amount.toString(),
+    conversionFee: (sweep.conversionFee ?? 0n).toString(),
+    txHash: sweep.txHash as Hex,
+    timestamp: sweep.timestamp,
+  })),
+  refunds: refunds.map((refund) => ({
+    kind: refund.kind as 'LEFTOVER' | 'VAULT',
+    token: (refund.token as Address | null) ?? null,
+    to: refund.to as Address,
+    amount: refund.amount.toString(),
+    txHash: refund.txHash as Hex,
+    timestamp: refund.timestamp,
+  })),
+})
+
+/**
+ * One tracking view per deposit address: its sweeps add up to a single donation. Input amounts are summed only
+ * when every sweep gave the same token (otherwise the input is left blank); per-sweep detail is in `deposit.sweeps`.
+ */
+export const combineSweeps = (sweeps: DonationRow[]): DonationRow => {
+  const [first] = sweeps
+  if (!first) throw new Error('combineSweeps needs at least one sweep')
+  const sum = (pick: (row: DonationRow) => bigint | null) =>
+    sweeps.reduce((total, row) => total + (pick(row) ?? 0n), 0n)
+  const sameToken = sweeps.every((row) => row.tokenIn === first.tokenIn)
+  return {
+    ...first,
+    amount: sum((row) => row.amount),
+    converted: sum((row) => row.converted),
+    fairValue: sum((row) => row.fairValue),
+    conversionFee: sum((row) => row.conversionFee),
+    tokenIn: sameToken ? first.tokenIn : null,
+    amountIn: sameToken ? sum((row) => row.amountIn) : null,
+  }
+}
 
 export const toSettlementView = (row: SettlementRow): SettlementView => ({
   uid: row.uid as Hex,

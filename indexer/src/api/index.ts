@@ -6,6 +6,7 @@ import {
   CUSTODY_MODE,
   type CustodyMode,
   type DeliveryView,
+  type DepositAddressView,
   type DonationTrack,
   type DonorReceiptTrace,
   type DonorTrace,
@@ -34,11 +35,13 @@ import type { Address, Hex } from 'viem'
 import { renderRss } from './rss.js'
 import { buildDonationTrack } from './track.js'
 import {
+  combineSweeps,
   type DonationRow,
   fundingGapOf,
   liveReport,
   type NeedRow,
   toDeliveryView,
+  toDepositAddressView,
   toDonationView,
   toDonorTrancheSlice,
   toImpactReportView,
@@ -264,9 +267,10 @@ app.get('/timeline', async (c) => {
 // ─── donation tracking ───────────────────────────────────────────────────────
 
 /**
- * The public "track this donation" view. `:ref` is a receipt id (wallet donations) or the salted payment
- * reference hash a payment provider returned (card and bank donations). Neither identifies the donor, so the
- * route needs no login. When two providers reused the same reference value, `?provider=0x…` picks one.
+ * The public "track this donation" view. `:ref` is a receipt id (wallet donations), the salted payment reference
+ * hash a payment provider returned (card and bank donations), or a deposit address (exchange withdrawals, all of
+ * its sweeps together). None of them identifies the donor, so the route needs no login. When two providers reused
+ * the same reference value, `?provider=0x…` picks one.
  */
 app.get('/donations/:ref', async (c) => {
   const track = await loadTrack(c.req.param('ref'), c.req.query('provider'))
@@ -296,6 +300,20 @@ app.get('/donations/:ref/feed.rss', async (c) => {
       rows: await needTimeline(needId),
     }),
   )
+})
+
+// ─── deposit addresses ───────────────────────────────────────────────────────
+
+/**
+ * A deposit address once it exists on-chain (deployed by its first sweep, or explicitly): the need and refund
+ * route it commits to, every sweep and every refund. 404 before deployment — the app then reads the balance.
+ */
+app.get('/deposits/:address', async (c) => {
+  const address = c.req.param('address').toLowerCase()
+  if (!/^0x[0-9a-f]{40}$/.test(address)) return c.json({ error: 'invalid address' }, 400)
+  const deposit = await loadDeposit(address as Address)
+  if (!deposit) return c.json({ error: 'deposit address not deployed' }, 404)
+  return c.json(deposit.view satisfies DepositAddressView)
 })
 
 // ─── providers ───────────────────────────────────────────────────────────────
@@ -591,7 +609,15 @@ const loadTrack = async (ref: string, provider: string | undefined): Promise<Loa
   if (!refKind) return { error: 'invalid tracking reference', status: 400 }
 
   let donation: DonationRow | undefined
-  if (refKind === 'receipt') {
+  let deposit: DepositAddressView | null = null
+  if (refKind === 'deposit') {
+    const loaded = await loadDeposit(ref.toLowerCase() as Address)
+    if (!loaded) return { error: 'deposit address not deployed', status: 404 }
+    if (loaded.sweeps.length === 0)
+      return { error: 'nothing swept from this deposit address yet', status: 404 }
+    donation = combineSweeps(loaded.sweeps)
+    deposit = loaded.view
+  } else if (refKind === 'receipt') {
     ;[donation] = await db
       .select()
       .from(schema.donation)
@@ -663,8 +689,31 @@ const loadTrack = async (ref: string, provider: string | undefined): Promise<Loa
       reports,
       refunds,
       timeline,
+      deposit,
     }),
   }
+}
+
+const loadDeposit = async (address: Address) => {
+  const [row] = await db
+    .select()
+    .from(schema.depositAddress)
+    .where(eq(schema.depositAddress.address, address))
+    .limit(1)
+  if (!row) return null
+  const [sweeps, refunds] = await Promise.all([
+    db
+      .select()
+      .from(schema.donation)
+      .where(and(eq(schema.donation.via, address), eq(schema.donation.viaDepositAddress, true)))
+      .orderBy(asc(schema.donation.timestamp)),
+    db
+      .select()
+      .from(schema.depositRefund)
+      .where(eq(schema.depositRefund.depositAddress, address))
+      .orderBy(asc(schema.depositRefund.timestamp)),
+  ])
+  return { view: toDepositAddressView(row, sweeps, refunds), sweeps }
 }
 
 function parseId(value: string): bigint | null {

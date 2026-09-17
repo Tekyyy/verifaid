@@ -170,13 +170,15 @@ export const tranche = onchainTable(
  * `donor` is set for direct donations, `donorRefHash` (salted, never the raw reference) for provider ones.
  * DIRECT: a wallet donated to the vault. FIAT: a provider deposited a card or bank payment into the vault.
  * OFFCHAIN: a provider holds the money and recorded it by attestation (non-custodial need).
+ * CONVERTED: another token was swapped into the vault token on-chain, from a wallet or a deposit address. A deposit
+ *   address that credits itself has no donor; its refund key is `donorRefHash` = the address padded to 32 bytes.
  */
 export const donation = onchainTable(
   'donation',
   (t) => ({
     id: t.text().primaryKey(), // txHash-logIndex
     needId: t.bigint().notNull(),
-    kind: t.text().notNull(), // DIRECT | FIAT | OFFCHAIN
+    kind: t.text().notNull(), // DIRECT | FIAT | OFFCHAIN | CONVERTED
     donor: t.hex(),
     donorRefHash: t.hex(),
     paymentRefHash: t.hex(),
@@ -190,6 +192,17 @@ export const donation = onchainTable(
     currency: t.text(),
     receiptId: t.bigint(),
     attestationUID: t.hex(),
+    // ── CONVERTED only: the wallet or deposit address the swap ran for, and what it did ──
+    via: t.hex(),
+    viaDepositAddress: t.boolean(),
+    /** Token given (zero address for ETH) and how much, in its own base units; set by the swap event. */
+    tokenIn: t.hex(),
+    amountIn: t.bigint(),
+    /** Vault token the swap produced, and what the input was worth at Chainlink prices. */
+    converted: t.bigint(),
+    fairValue: t.bigint(),
+    /** Fair value minus output, attributed to the donated part; the resolver counts it against the cost cap. */
+    conversionFee: t.bigint(),
     txHash: t.hex().notNull(),
     blockNumber: t.bigint().notNull(),
     timestamp: t.integer().notNull(),
@@ -198,6 +211,8 @@ export const donation = onchainTable(
     needIdx: index().on(table.needId),
     donorIdx: index().on(table.donor),
     refIdx: index().on(table.paymentRefHash),
+    viaIdx: index().on(table.via),
+    txIdx: index().on(table.txHash),
   }),
 )
 
@@ -229,6 +244,43 @@ export const refund = onchainTable(
     timestamp: t.integer().notNull(),
   }),
   (table) => ({ needIdx: index().on(table.needId), accountIdx: index().on(table.account) }),
+)
+
+// ─── deposit addresses ───────────────────────────────────────────────────────
+
+/**
+ * A DonationForwarder: an address a donor can send USDC or ETH to from an exchange. It commits to one need and
+ * to where refunds go; anyone can sweep it into the vault. Rows appear on deployment (usually the first sweep).
+ */
+export const depositAddress = onchainTable(
+  'deposit_address',
+  (t) => ({
+    address: t.hex().primaryKey(),
+    needId: t.bigint().notNull(),
+    receiptTo: t.hex(),
+    refundTo: t.hex(),
+    refundSigner: t.hex(),
+    salt: t.hex().notNull(),
+    deployedAt: t.integer().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (table) => ({ needIdx: index().on(table.needId) }),
+)
+
+/** Money a deposit address sent back: undonated leftovers, or its vault refund after a cancellation or expiry. */
+export const depositRefund = onchainTable(
+  'deposit_refund',
+  (t) => ({
+    id: t.text().primaryKey(), // txHash-logIndex
+    depositAddress: t.hex().notNull(),
+    kind: t.text().notNull(), // LEFTOVER | VAULT
+    token: t.hex(),
+    to: t.hex().notNull(),
+    amount: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+    timestamp: t.integer().notNull(),
+  }),
+  (table) => ({ depositIdx: index().on(table.depositAddress) }),
 )
 
 /** A tranche payout reconciled by a Settlement attestation (NGO for on-chain custody, custodian for off-chain). */
@@ -398,6 +450,18 @@ export const trancheRelations = relations(tranche, ({ one }) => ({
 export const donationRelations = relations(donation, ({ one }) => ({
   need: one(need, { fields: [donation.needId], references: [need.id] }),
   receipt: one(receipt, { fields: [donation.receiptId], references: [receipt.id] }),
+}))
+
+export const depositAddressRelations = relations(depositAddress, ({ many, one }) => ({
+  need: one(need, { fields: [depositAddress.needId], references: [need.id] }),
+  refunds: many(depositRefund),
+}))
+
+export const depositRefundRelations = relations(depositRefund, ({ one }) => ({
+  depositAddress: one(depositAddress, {
+    fields: [depositRefund.depositAddress],
+    references: [depositAddress.address],
+  }),
 }))
 
 export const settlementRelations = relations(settlement, ({ one }) => ({

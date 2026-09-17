@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Deploys the whole system to Base Sepolia and seeds the demo data:
- *   Deploy.s.sol → RegisterSchemas.s.sol → SeedDemo.s.sol
+ *   Deploy.s.sol → RegisterSchemas.s.sol → SeedDemo.s.sol → SeedLiquidity.s.sol
  *
  *   pnpm deploy:sepolia
  *
@@ -32,7 +32,28 @@ const parseEnvFile = (path) => {
 }
 
 const fileEnv = parseEnvFile(join(root, '.env'))
-const env = { ...fileEnv, ...process.env }
+
+/**
+ * The v3 conversion path on Base Sepolia: Uniswap v3's own SwapRouter02, WETH and Chainlink's USDC/USD and ETH/USD
+ * feeds. What Base Sepolia lacks is mocked by Deploy.s.sol: EUR/USD (no feed there, so a fixed mock whose answer
+ * must not go stale — hence the one-year heartbeat), MockUSDC (the mock on-ramp mints it) and the MockUSDC/MockEURC
+ * pool, which SeedLiquidity.s.sol creates on Uniswap at the oracle price. No sequencer uptime feed exists on
+ * testnets, and ETH donations stay off: there is no WETH liquidity against our mocks.
+ * Anything set in .env or the shell wins over these.
+ */
+const BASE_SEPOLIA_CONVERSION = {
+  SWAP_ROUTER_ADDRESS: '0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4',
+  WETH_ADDRESS: '0x4200000000000000000000000000000000000006',
+  USDC_USD_FEED: '0xd30e2101a97dcbAeBCBC04F14C3f624E67A35165',
+  ETH_USD_FEED: '0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1',
+  EUR_USD_HEARTBEAT: String(365 * 24 * 3600),
+  USDC_POOL_FEE: '100',
+  ETH_ROUTE: 'false',
+  MAX_SLIPPAGE_BPS: '100',
+}
+
+const nonEmpty = (record) => Object.fromEntries(Object.entries(record).filter(([, value]) => value?.trim?.()))
+const env = { ...BASE_SEPOLIA_CONVERSION, ...nonEmpty(fileEnv), ...nonEmpty(process.env) }
 
 const key = env.DEPLOYER_PRIVATE_KEY?.trim()
 if (!key) {
@@ -106,6 +127,8 @@ if (wanted('deploy') && existsSync(deployment)) {
 if (wanted('deploy')) run('Deploy.s.sol', verify ? ['--verify'] : [])
 if (wanted('schemas')) run('RegisterSchemas.s.sol')
 if (wanted('seed')) run('SeedDemo.s.sol')
+// Also a keeper: re-run `pnpm deploy:sepolia liquidity` to put the pool back at the oracle price.
+if (wanted('liquidity')) run('SeedLiquidity.s.sol')
 
 if (existsSync(deployment)) {
   const { contracts: addresses, schemas, startBlock } = JSON.parse(readFileSync(deployment, 'utf8'))

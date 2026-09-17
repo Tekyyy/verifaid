@@ -5,6 +5,7 @@ import {RoleRegistry} from "../src/access/RoleRegistry.sol";
 import {BeneficiaryGroups} from "../src/identity/BeneficiaryGroups.sol";
 import {INeedsRegistry} from "../src/interfaces/INeedsRegistry.sol";
 import {MockEURC} from "../src/mocks/MockEURC.sol";
+import {MockUSDC} from "../src/mocks/MockUSDC.sol";
 import {NeedsRegistry} from "../src/needs/NeedsRegistry.sol";
 import {DeploymentIO} from "./lib/DeploymentIO.sol";
 import {Script} from "forge-std/Script.sol";
@@ -97,6 +98,7 @@ contract SeedDemo is Script, DeploymentIO {
         vm.stopBroadcast();
 
         _mintDemoTokens(token, a);
+        _mintDemoUsdc(deployment, a);
 
         console2.log("");
         console2.log("Demo data seeded");
@@ -165,6 +167,21 @@ contract SeedDemo is Script, DeploymentIO {
             console2.log("  minted demo mEURC to donors and the bank partner");
         } catch {
             console2.log("  token is not mintable, fund the donors from a faucet:", token);
+        }
+        vm.stopBroadcast();
+    }
+
+    /// @dev v3: donors also hold MockUSDC, the token a card on-ramp or an exchange would deliver, to exercise
+    ///      the conversion path. Skipped for deployments without it or with real USDC.
+    function _mintDemoUsdc(string memory deployment, Actors memory a) internal {
+        if (!vm.keyExistsJson(deployment, ".external.USDC")) return;
+        address usdc = _readAddress(deployment, ".external.USDC");
+        vm.startBroadcast(a.adminKey);
+        try MockUSDC(usdc).mint(a.donor1, 50_000e6) {
+            MockUSDC(usdc).mint(a.donor2, 50_000e6);
+            console2.log("  minted demo mUSDC to donors");
+        } catch {
+            console2.log("  USDC is not mintable, skipping:", usdc);
         }
         vm.stopBroadcast();
     }

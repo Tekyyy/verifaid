@@ -4,15 +4,20 @@ import {
   beneficiaryGroupsAbi,
   categoryHash,
   CUSTODY_MODE,
+  conversionRouterAbi,
   type CustodyMode,
   deliveryManagerAbi,
+  donationForwarderAbi,
+  donationForwarderFactoryAbi,
   encodeSchemaData,
   formatAmount,
   mockEURCAbi,
   NEED_STATUS_VALUE,
   needStatusName,
+  NATIVE_TOKEN,
   needsRegistryAbi,
   nonCustodialLedgerAbi,
+  proofOfAidResolverAbi,
   regionCode,
   roleRegistryAbi,
   saltedRefHash,
@@ -20,7 +25,19 @@ import {
   semaphoreAbi,
 } from '@poa/shared'
 import { generateProof } from '@semaphore-protocol/proof'
-import { type Abi, type Address, type Hex, keccak256, stringToHex, toHex, zeroAddress, zeroHash } from 'viem'
+import {
+  type Abi,
+  type Address,
+  formatEther,
+  type Hex,
+  keccak256,
+  parseEventLogs,
+  stringToHex,
+  type TransactionReceipt,
+  toHex,
+  zeroAddress,
+  zeroHash,
+} from 'viem'
 import { attest, cidV1Raw, eventArg, send, waitChallengePeriod } from './chain.js'
 import { createContext, type DemoContext } from './config.js'
 import { buildGroup, type DemoIdentity, loadDemoIdentities } from './identities.js'
@@ -31,14 +48,16 @@ import { attestation, fail, heading, info, note, step, tx } from './log.js'
  * can follow a need from "a verifier said this need is real" to "beneficiaries confirmed they received the aid,
  * and here is the money that moved because of it".
  *
- * Three scenarios, one per way a need can go:
+ * Four scenarios, one per way a need can go or be paid for:
  *   1. On-chain custody (the proposal's Model B): stablecoin escrow, a wallet donor and a card donor, settlement
  *      reports after every release.
  *   2. Off-chain custody (Model A): a payment provider holds the money; its attestations count the funding and
  *      release every tranche. No token touches the ledger.
  *   3. A funding deadline passing below the NGO's minimum: the need expires and the donor is refunded.
+ *   4. Conversions (v3): USDC bought by card lands in the donor's own wallet and is swapped into the vault token
+ *      on-chain under the Chainlink bound; ETH from a wallet; USDC withdrawn from an exchange to a deposit address.
  *
- *   pnpm demo:run anvil            all three
+ *   pnpm demo:run anvil            all four
  *   pnpm demo:run base-sepolia onchain offchain
  */
 
@@ -46,8 +65,8 @@ const EXPECTED_RECIPIENTS = 10
 const REGION = regionCode('ES-CM')
 const BPS = 10_000n
 
-type Scenario = 'onchain' | 'offchain' | 'expiry'
-const SCENARIOS: Scenario[] = ['onchain', 'offchain', 'expiry']
+type Scenario = 'onchain' | 'offchain' | 'expiry' | 'conversion'
+const SCENARIOS: Scenario[] = ['onchain', 'offchain', 'expiry', 'conversion']
 
 interface NeedSpec {
   label: string
@@ -74,7 +93,7 @@ const main = async (): Promise<void> => {
   const ctx = createContext(networkArg)
   const { contracts, external } = ctx.deployment
 
-  heading('Proof of Aid v2 — lifecycle demo')
+  heading('Proof of Aid v3 — lifecycle demo')
   info('network', ctx.network)
   info('rpc', ctx.rpcUrl)
   info('NeedsRegistry', contracts.NeedsRegistry)
@@ -91,6 +110,13 @@ const main = async (): Promise<void> => {
   if (selected.includes('onchain')) links.push(...(await onChainScenario(ctx, programId, proofs)))
   if (selected.includes('offchain')) links.push(...(await offChainScenario(ctx, programId, proofs)))
   if (selected.includes('expiry')) links.push(...(await expiryScenario(ctx, programId)))
+  if (selected.includes('conversion')) {
+    if (contracts.DonationForwarderFactory && contracts.ConversionRouter && external.USDC) {
+      links.push(...(await conversionScenario(ctx, programId)))
+    } else {
+      note('skipping the conversion scenario: this deployment predates v3 (no DonationForwarderFactory)')
+    }
+  }
 
   heading('Done')
   for (const link of links) note(link)
@@ -237,6 +263,174 @@ const expiryScenario = async (ctx: DemoContext, programId: bigint): Promise<stri
     `need ${needId} (expired):   ${ctx.dashboardUrl}/en/needs/${needId}`,
     `  donor tracking:           ${ctx.dashboardUrl}/en/track/${receiptId}`,
   ]
+}
+
+// ─── scenario 4: conversions (v3) ─────────────────────────────────────────────
+
+const conversionScenario = async (ctx: DemoContext, programId: bigint): Promise<string[]> => {
+  heading('4 · Full blockchain mode: card-bought USDC, ETH and an exchange withdrawal, converted on-chain')
+  const factory = ctx.deployment.contracts.DonationForwarderFactory as Address
+  const router = ctx.deployment.contracts.ConversionRouter as Address
+  const usdc = ctx.deployment.external.USDC as Address
+  const token = ctx.deployment.external.Token
+  const maxSlippageBps = BigInt(ctx.deployment.params.maxSlippageBps ?? 100)
+  const spec: NeedSpec = {
+    label: 'water purification tablets',
+    category: 'WATER',
+    target: 4_000_000_000n,
+    trancheBps: [5000, 5000],
+    custodyMode: 'OnChain',
+    minFundingBps: 10_000,
+    // Swaps cost something (pool fee, price impact): the NGO discloses it and the contract caps it.
+    thirdPartyCostBps: 150,
+    fundingWindowSeconds: 30 * 86_400,
+    executionWindowSeconds: 90 * 86_400,
+    outcome: 'water purification tablets for 1 000 households; all or nothing',
+  }
+  const needId = await createNeed(ctx, programId, spec, zeroAddress)
+  const vault = await verifyNeed(ctx, needId)
+  const quote = (tokenIn: Address, amountIn: bigint) =>
+    ctx.publicClient.readContract({
+      address: router,
+      abi: conversionRouterAbi,
+      functionName: 'quote',
+      args: [tokenIn, amountIn, token],
+    }) as Promise<bigint>
+
+  step("Card: Coinbase Onramp delivers USDC to the donor's own wallet")
+  const bought = 2_000_000_000n
+  note('Coinbase Onramp does not deliver on test networks; the mock on-ramp mints test USDC instead')
+  await mintIfPossible(ctx, 'donor1', bought, usdc)
+  info('USDC in the wallet', formatAmount(bought))
+  note('the donor owns that wallet, as Coinbase requires: no platform account ever holds the money')
+
+  step('One tap: the factory swaps the USDC on Uniswap v3 and donates, bounded by Chainlink')
+  const fair = await quote(usdc, bought)
+  info('fair value', `${formatAmount(fair)} units (Chainlink EUR/USD and USDC/USD)`)
+  info('minimum accepted', `${formatAmount((fair * (BPS - maxSlippageBps)) / BPS)} units, or it reverts`)
+  await send(ctx, 'donor1', {
+    address: usdc,
+    abi: mockEURCAbi as Abi,
+    functionName: 'approve',
+    args: [factory, bought],
+  })
+  const card = await send(ctx, 'donor1', {
+    address: factory,
+    abi: donationForwarderFactoryAbi as Abi,
+    functionName: 'donate',
+    args: [needId, usdc, bought],
+  })
+  const receiptId = logConversion(card.receipt, 'DonatedWithConversion')
+  tx(ctx.network, 'tx', card.hash)
+
+  if (ctx.deployment.params.ethDonations) {
+    step('A wallet donates ETH: routed ETH → USDC → vault token in the same transaction')
+    const eth = 100_000_000_000_000_000n // 0.1 ETH
+    info('ETH given', formatEther(eth))
+    info('fair value', `${formatAmount(await quote(NATIVE_TOKEN, eth))} units`)
+    const ethDonation = await send(ctx, 'donor1', {
+      address: factory,
+      abi: donationForwarderFactoryAbi as Abi,
+      functionName: 'donate',
+      args: [needId, NATIVE_TOKEN, eth],
+      value: eth,
+    })
+    logConversion(ethDonation.receipt, 'DonatedWithConversion')
+    tx(ctx.network, 'tx', ethDonation.hash)
+  } else {
+    note('ETH donations are off on this deployment (no WETH liquidity against the test tokens)')
+  }
+
+  step('An exchange withdrawal: USDC sent to a deposit address that commits to this need')
+  const intent = {
+    needId,
+    receiptTo: zeroAddress, // an exchange cannot hold a receipt: the deposit address holds the claim
+    refundTo: ctx.accounts.donor1.address,
+    refundSigner: zeroAddress,
+    salt: keccak256(stringToHex(`demo-deposit-${needId}-${Date.now()}`)),
+  }
+  const depositAddress = (await ctx.publicClient.readContract({
+    address: factory,
+    abi: donationForwarderFactoryAbi,
+    functionName: 'forwarderAddress',
+    args: [intent],
+  })) as Address
+  info('deposit address', depositAddress)
+  note('nothing is deployed yet: the address is fixed by the intent (need, refund route, salt)')
+  const raised = (await ctx.publicClient.readContract({
+    address: vault,
+    abi: aidVaultAbi,
+    functionName: 'totalDonated',
+    args: [],
+  })) as bigint
+  // Enough USDC to fill the need, plus 100 more: the part the need cannot take goes straight back.
+  const unitsPerUsdc = await quote(usdc, 1_000_000n)
+  const withdrawal = ((spec.target - raised) * 1_000_000n * 102n) / (unitsPerUsdc * 100n) + 100_000_000n
+  await mintIfPossible(ctx, 'donor1', withdrawal, usdc)
+  const sent = await send(ctx, 'donor1', {
+    address: usdc,
+    abi: mockEURCAbi as Abi,
+    functionName: 'transfer',
+    args: [depositAddress, withdrawal],
+  })
+  info('withdrawn to it', `${formatAmount(withdrawal)} USDC`)
+  tx(ctx.network, 'transfer', sent.hash)
+
+  step('Anyone sweeps it: deploy, convert, donate up to the target, return the rest')
+  const sweep = await send(ctx, 'relayer', {
+    address: factory,
+    abi: donationForwarderFactoryAbi as Abi,
+    functionName: 'sweep',
+    args: [intent, usdc],
+  })
+  logConversion(sweep.receipt, 'Swept')
+  const [leftover] = parseEventLogs({
+    abi: donationForwarderAbi,
+    eventName: 'LeftoverRefunded',
+    logs: sweep.receipt.logs,
+  })
+  if (leftover)
+    info('sent back to the donor', `${formatAmount(leftover.args.amount)} units of the vault token`)
+  tx(ctx.network, 'tx', sweep.hash)
+  await expectStatus(ctx, needId, 'Funded')
+
+  step('Conversion costs count against the cost cap the NGO disclosed')
+  const fees = (await ctx.publicClient.readContract({
+    address: ctx.deployment.contracts.ProofOfAidResolver,
+    abi: proofOfAidResolverAbi,
+    functionName: 'fundingFeesOf',
+    args: [needId],
+  })) as bigint
+  info('conversion costs', `${formatAmount(fees)} units`)
+  info('cap', `${spec.thirdPartyCostBps / 100}% of what donors paid`)
+  note('a swap costing more than the cap allows reverts: the need never silently absorbs it')
+
+  return [
+    `need ${needId} (converted):  ${ctx.dashboardUrl}/en/needs/${needId}`,
+    `  card donor tracking:      ${ctx.dashboardUrl}/en/track/${receiptId}`,
+    `  deposit address tracking: ${ctx.dashboardUrl}/en/track/${depositAddress}`,
+  ]
+}
+
+/** Prints what a converted donation did, from the vault's and the converter's events; returns the receipt id. */
+const logConversion = (receipt: TransactionReceipt, eventName: 'DonatedWithConversion' | 'Swept'): bigint => {
+  const [via] = parseEventLogs({ abi: aidVaultAbi, eventName: 'DonatedVia', logs: receipt.logs })
+  if (!via) return fail('converted donation emitted no DonatedVia event')
+  const [swap] =
+    eventName === 'Swept'
+      ? parseEventLogs({ abi: donationForwarderAbi, eventName: 'Swept', logs: receipt.logs })
+      : parseEventLogs({
+          abi: donationForwarderFactoryAbi,
+          eventName: 'DonatedWithConversion',
+          logs: receipt.logs,
+        })
+  if (!swap) return fail(`converted donation emitted no ${eventName} event`)
+  info('swap output', `${formatAmount(swap.args.converted)} units`)
+  info('fair value', `${formatAmount(swap.args.fairValue)} units`)
+  info('donated', `${formatAmount(via.args.amount)} units`)
+  info('conversion cost', `${formatAmount(via.args.conversionFee)} units`)
+  if (via.args.receiptId > 0n) info('receipt', `#${via.args.receiptId}`)
+  return via.args.receiptId
 }
 
 // ─── steps ───────────────────────────────────────────────────────────────────
@@ -729,8 +923,8 @@ const mintIfPossible = async (
   ctx: DemoContext,
   role: 'donor1' | 'bankPartner',
   amount: bigint,
+  token: Address = ctx.deployment.external.Token,
 ): Promise<void> => {
-  const token = ctx.deployment.external.Token
   const balance = (await ctx.publicClient.readContract({
     address: token,
     abi: mockEURCAbi,

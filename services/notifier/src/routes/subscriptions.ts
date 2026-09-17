@@ -190,8 +190,8 @@ export const registerSubscriptionRoutes = (app: FastifyInstance, deps: NotifierD
   )
 }
 
-/** Payment references are hex: store one spelling so the poller's per-reference batching sees one key. */
-const canonicalRef = (ref: string): string => (trackingRefKind(ref) === 'payment' ? ref.toLowerCase() : ref)
+/** Payment refs and deposit addresses are hex: one spelling, so the poller's per-reference batching sees one key. */
+const canonicalRef = (ref: string): string => (trackingRefKind(ref) === 'receipt' ? ref : ref.toLowerCase())
 
 const resolveTarget = async (
   deps: NotifierDeps,

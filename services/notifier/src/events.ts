@@ -15,6 +15,7 @@ export const TIMELINE_EVENT_TYPES = [
   'VerificationRevoked',
   'Donated',
   'DonatedOnBehalf',
+  'DonatedConverted',
   'FundingRecorded',
   'FundingClosed',
   'TrancheReleasable',

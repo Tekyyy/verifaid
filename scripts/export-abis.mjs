@@ -25,6 +25,9 @@ const FORGE_ARTIFACTS = [
   'BeneficiaryGroups',
   'DeliveryManager',
   'ProofOfAidResolver',
+  'ConversionRouter',
+  'DonationForwarder',
+  'DonationForwarderFactory',
   'MockEURC',
   'Semaphore',
 ]

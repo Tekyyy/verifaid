@@ -3,8 +3,8 @@ import schema from 'ponder:schema'
 import { zeroAddress } from 'viem'
 
 /**
- * Receipts are soulbound (ERC-5192) and are minted only from a vault's `donate`, so the `receipt` row is
- * built from `Ledger:Donated`, which carries the need, the donor and the amount in one event.
+ * Receipts are soulbound (ERC-5192) and are minted only from a vault's `donate` or `donateVia`, so the `receipt`
+ * row is built from `Ledger:Donated` or `Ledger:DonatedVia`, which carry the need, the donor and the amount.
  *
  * This handler exists to keep the ownership column honest: a transfer between two non-zero addresses is
  * supposed to be impossible, so if one ever appeared the dashboard would show it instead of silently lying.
@@ -12,7 +12,7 @@ import { zeroAddress } from 'viem'
  */
 ponder.on('DonationReceipt:Transfer', async ({ event, context }) => {
   const { from, to, tokenId } = event.args
-  if (from === zeroAddress) return // mint; the row is written by Ledger:Donated in the same transaction
+  if (from === zeroAddress) return // mint; the row is written by Ledger:Donated(Via) in the same transaction
 
   const existing = await context.db.find(schema.receipt, { id: tokenId })
   if (!existing) return

@@ -118,9 +118,10 @@ export const redactedText = (urls: Urls, subscriptionId: string | null, text: st
 
 const refLabel = (target: AlertTarget): string => {
   if (!target.trackingRef) return `need #${target.needId}`
-  return trackingRefKind(target.trackingRef) === 'payment'
-    ? `donation ${shortHex(target.trackingRef)}`
-    : `donation #${target.trackingRef}`
+  const kind = trackingRefKind(target.trackingRef)
+  if (kind === 'payment') return `donation ${shortHex(target.trackingRef)}`
+  if (kind === 'deposit') return `deposit address ${shortHex(target.trackingRef, 4)}`
+  return `donation #${target.trackingRef}`
 }
 
 const utc = (seconds: number): string =>

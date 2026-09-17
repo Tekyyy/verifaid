@@ -32,6 +32,12 @@ const env = {
   SCHEMA_REGISTRY_ADDRESS: process.env.SCHEMA_REGISTRY_ADDRESS ?? '',
   SEMAPHORE_ADDRESS: process.env.SEMAPHORE_ADDRESS ?? '',
   STABLECOIN_ADDRESS: process.env.STABLECOIN_ADDRESS ?? '',
+  // Every conversion address unset → mock swap router, tokens and feeds. The mock feeds never update, so their
+  // answers must stay fresh for as long as a local chain lives (the demo also moves time forward).
+  SWAP_ROUTER_ADDRESS: '',
+  EUR_USD_HEARTBEAT: String(365 * 24 * 3600),
+  USDC_USD_HEARTBEAT: String(365 * 24 * 3600),
+  ETH_USD_HEARTBEAT: String(365 * 24 * 3600),
 }
 
 const run = (script) => {

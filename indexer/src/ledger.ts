@@ -1,8 +1,8 @@
-import { ponder } from 'ponder:registry'
+import { type Context, ponder } from 'ponder:registry'
 import schema from 'ponder:schema'
 import { currencyLabel } from '@poa/shared'
 import { and, eq } from 'ponder'
-import type { Hex } from 'viem'
+import type { Address, Hex } from 'viem'
 import { appendTimeline, eventId, seconds } from './lib/timeline.js'
 
 /**
@@ -11,6 +11,17 @@ import { appendTimeline, eventId, seconds } from './lib/timeline.js'
  */
 
 const BPS_DENOMINATOR = 10_000n
+
+/**
+ * Reference refunds go to fiat donors, or to a deposit address that credited itself: its key is the address
+ * left-padded to 32 bytes (v3), and the address is a known deposit address.
+ */
+const refundKind = async (context: Context, donorRefHash: Hex): Promise<'FIAT' | 'DEPOSIT'> => {
+  if (!donorRefHash.toLowerCase().startsWith('0x000000000000000000000000')) return 'FIAT'
+  const address = `0x${donorRefHash.slice(26)}` as Address
+  const known = await context.db.find(schema.depositAddress, { address })
+  return known ? 'DEPOSIT' : 'FIAT'
+}
 
 ponder.on('Ledger:Donated', async ({ event, context }) => {
   const { needId, donor, amount, receiptId } = event.args
@@ -270,6 +281,6 @@ ponder.on('Ledger:RefundedByRef', async ({ event, context }) => {
   await appendTimeline(context, event, {
     needId,
     type: 'Refunded',
-    data: { donorRefHash, to, amount: amount.toString(), kind: 'FIAT' },
+    data: { donorRefHash, to, amount: amount.toString(), kind: await refundKind(context, donorRefHash) },
   })
 })

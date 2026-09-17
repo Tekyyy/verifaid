@@ -57,6 +57,10 @@ jobs:
             src/funds/TrancheLedger.sol \
             src/funds/NonCustodialLedger.sol \
             src/resolvers/ProofOfAidResolver.sol \
+            src/conversion/ConversionRouter.sol \
+            src/funds/DonationForwarder.sol \
+            src/funds/DonationForwarderFactory.sol \
+            src/funds/DonationConversion.sol \
             src/funds/DonationReceipt.sol \
             src/delivery/DeliveryManager.sol \
             src/identity/BeneficiaryGroups.sol

@@ -81,8 +81,28 @@ export interface DeliveryView {
  * DIRECT: a wallet donated stablecoin to the vault (gets a receipt NFT).
  * FIAT: a payment provider converted a bank or card payment and deposited it in the vault.
  * OFFCHAIN: a payment provider holds the money and recorded it by attestation (non-custodial need).
+ * CONVERTED: another token (USDC bought with a card, ETH, an exchange withdrawal) was swapped on-chain into the
+ *   vault token under the oracle bound, from a wallet or a deposit address.
  */
-export type DonationKind = 'DIRECT' | 'FIAT' | 'OFFCHAIN'
+export type DonationKind = 'DIRECT' | 'FIAT' | 'OFFCHAIN' | 'CONVERTED'
+
+/** What happened on-chain when a donation arrived in another token. */
+export interface ConversionView {
+  /** Token given; the zero address for ETH. */
+  tokenIn: Address
+  tokenInSymbol: string
+  /** In `tokenIn` base units. */
+  amountIn: string
+  /** What the swap produced, in the vault token. */
+  amountOut: string
+  /** What the input was worth at Chainlink prices, in the vault token. */
+  fairValue: string
+  /** Fair value minus output, attributed to the donated part; counted against the need's cost cap. */
+  conversionFee: string
+  /** The wallet (direct path) or deposit address (forwarder) the conversion ran for. */
+  via: Address
+  viaDepositAddress: boolean
+}
 
 export interface DonationView {
   id: string
@@ -99,6 +119,8 @@ export interface DonationView {
   currency: string | null
   receiptId: string | null
   attestationUID: Hex | null
+  /** Set for CONVERTED donations. */
+  conversion: ConversionView | null
   txHash: Hex
   timestamp: number
 }
@@ -137,6 +159,7 @@ export type TimelineEventType =
   | 'VerificationRevoked'
   | 'Donated'
   | 'DonatedOnBehalf'
+  | 'DonatedConverted'
   | 'FundingRecorded'
   | 'FundingClosed'
   | 'TrancheReleasable'
@@ -303,10 +326,11 @@ export interface DonorStageView {
 export type DonationOutcome = 'InProgress' | 'Completed' | 'Refundable' | 'Refunded' | 'Expired' | 'Cancelled'
 
 /**
- * Tracking reference: a receipt id for wallet donations ("12"), or the salted payment reference hash the
- * payment provider returned for bank and card donations ("0x…" 32 bytes). Neither identifies the donor.
+ * Tracking reference: a receipt id for wallet donations ("12"), the salted payment reference hash a payment
+ * provider returned for bank and card donations ("0x…" 32 bytes), or a deposit address ("0x…" 20 bytes) for money
+ * sent from an exchange. None of them identifies the donor.
  */
-export type TrackingRefKind = 'receipt' | 'payment'
+export type TrackingRefKind = 'receipt' | 'payment' | 'deposit'
 
 export interface DonationTrack {
   ref: string
@@ -325,6 +349,8 @@ export interface DonationTrack {
   deliveries: DeliveryView[]
   settlements: SettlementView[]
   impactReport: ImpactReportView | null
+  /** Set when the reference is a deposit address: every sweep and refund it made. */
+  deposit: DepositAddressView | null
   updatedAt: number
 }
 
@@ -332,5 +358,45 @@ export interface DonationTrack {
 export const trackingRefKind = (ref: string): TrackingRefKind | null => {
   if (/^[1-9][0-9]{0,18}$/.test(ref)) return 'receipt'
   if (/^0x[0-9a-fA-F]{64}$/.test(ref)) return 'payment'
+  // A deposit address (DonationForwarder): the address itself is the tracking reference.
+  if (/^0x[0-9a-fA-F]{40}$/.test(ref)) return 'deposit'
   return null
+}
+
+// ─── deposit addresses (v3) ───────────────────────────────────────────────────
+
+/** A DonationForwarder: a deposit address for money sent from somewhere that cannot call a contract. */
+export interface DepositAddressView {
+  address: Address
+  needId: string
+  /** Wallet credited with the donations and their receipts; null when the deposit address holds the claim. */
+  receiptTo: Address | null
+  refundTo: Address | null
+  /** Key that can direct refunds by EIP-712 signature (the donor's downloaded refund key). */
+  refundSigner: Address | null
+  salt: Hex
+  deployedAt: number
+  sweeps: DepositSweepView[]
+  refunds: DepositRefundView[]
+}
+
+export interface DepositSweepView {
+  tokenIn: Address
+  amountIn: string
+  converted: string
+  fairValue: string
+  deposited: string
+  conversionFee: string
+  txHash: Hex
+  timestamp: number
+}
+
+export interface DepositRefundView {
+  /** LEFTOVER: undonated funds sent back; VAULT: the vault refund of a cancelled or expired need. */
+  kind: 'LEFTOVER' | 'VAULT'
+  token: Address | null
+  to: Address
+  amount: string
+  txHash: Hex
+  timestamp: number
 }
