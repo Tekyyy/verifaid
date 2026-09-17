@@ -1,6 +1,7 @@
 import type {
   CustodyMode,
   DeliveryView,
+  DepositAddressView,
   DonationTrack,
   DonorTrace,
   ImpactSummary,
@@ -111,9 +112,18 @@ export const getDeliveries = async (status?: string): Promise<Result<DeliveryVie
     ? { ok: true, data: fixtures.filterDeliveries(status) }
     : get<DeliveryView[]>(`/deliveries${status ? `?status=${encodeURIComponent(status)}` : ''}`)
 
-/** `ref` is a receipt id ("12") or a payment reference hash ("0x…"); the caller validates its shape first. */
+/**
+ * `ref` is a receipt id ("12"), a payment reference hash ("0x…" 32 bytes) or a deposit address ("0x…" 20 bytes, 404
+ * until something was swept from it); the caller validates its shape first.
+ */
 export const getDonationTrack = async (ref: string): Promise<Result<DonationTrack>> =>
   useFixtures ? fixtures.donationTrack(ref) : get<DonationTrack>(`/donations/${encodeURIComponent(ref)}`)
+
+/** A deposit address with its intent, sweeps and refunds; 404 until it has been deployed. */
+export const getDepositAddress = async (address: string): Promise<Result<DepositAddressView>> =>
+  useFixtures
+    ? fixtures.depositAddress(address)
+    : get<DepositAddressView>(`/deposits/${encodeURIComponent(address)}`)
 
 export const getProviders = async (): Promise<Result<ProviderView[]>> =>
   useFixtures ? { ok: true, data: fixtures.providers } : get<ProviderView[]>('/providers')

@@ -15,6 +15,7 @@ const ALLOWED = [
   /^needs\/[^/]+\/feed\.rss$/,
   /^donations\/[^/]+$/,
   /^donations\/[^/]+\/feed\.rss$/,
+  /^deposits\/0x[a-fA-F0-9]{40}$/,
   /^donors\/0x[a-fA-F0-9]{40}\/trace$/,
   /^impact\/summary$/,
   /^programs\/[^/]+\/members$/,

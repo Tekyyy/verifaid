@@ -7,7 +7,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "//test": "Node's own test runner with type stripping: server-side units that need no DOM and no test dependency.",
+    "test": "node --test --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@poa/shared": "workspace:*",

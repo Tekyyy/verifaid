@@ -45,7 +45,8 @@ export default async function EmbedTrackPage({ params }: { params: { locale: str
   const ref = params.ref
   const fullPageHref = `/${params.locale}/track/${encodeURIComponent(ref)}`
 
-  if (!trackingRefKind(ref)) {
+  const kind = trackingRefKind(ref)
+  if (!kind) {
     return (
       <WidgetMessage
         title={t('invalidRefTitle')}
@@ -65,8 +66,8 @@ export default async function EmbedTrackPage({ params }: { params: { locale: str
         <TrackWidget track={track.data} fullPageHref={fullPageHref} />
       ) : track.error.kind === 'http' && track.error.status === 404 ? (
         <WidgetMessage
-          title={t('notFoundTitle')}
-          body={t('notFoundBody')}
+          title={kind === 'deposit' ? t('depositWaitingTitle') : t('notFoundTitle')}
+          body={kind === 'deposit' ? t('depositWaitingWidget') : t('notFoundBody')}
           href={fullPageHref}
           link={t('poweredBy')}
         />

@@ -27,15 +27,18 @@ export interface TxState {
   error: string | null
   /** The write went through the paymaster: the user paid no gas. */
   sponsored: boolean
+  /** Set while a batch goes out as separate transactions, because the wallet cannot bundle them. */
+  step: { current: number; total: number } | null
 }
 
 /** What a successful write leaves behind, so callers can read the events it emitted (e.g. a receipt id). */
 export interface TxResult {
   hash: Hex
+  /** Every log of every transaction the write took, in order. */
   logs: Log[]
 }
 
-const INITIAL: TxState = { phase: 'idle', hash: null, error: null, sponsored: false }
+const INITIAL: TxState = { phase: 'idle', hash: null, error: null, sponsored: false, step: null }
 
 type WriteMutability = 'nonpayable' | 'payable'
 
@@ -51,12 +54,35 @@ export interface WriteRequest<
   abi: abi
   functionName: functionName
   args: ContractFunctionArgs<abi, WriteMutability, functionName>
+  /** Wei sent along with a payable call (an ETH donation). */
+  value?: bigint
 }
+
+/** A call inside a batch. Batches mix ABIs (approve on a token, donate on the factory): build each with `batchCall`. */
+export type BatchCall = WriteRequest
+
+/** Checks one call against its own ABI, then widens it so calls to different contracts fit in one batch. */
+export const batchCall = <
+  const abi extends Abi,
+  functionName extends ContractFunctionName<abi, WriteMutability>,
+>(
+  request: WriteRequest<abi, functionName>,
+): BatchCall => request as unknown as BatchCall
 
 const CALLS_TIMEOUT_MS = 180_000
 
 const firstLine = (error: unknown): string =>
   (error instanceof Error ? error.message.split('\n')[0] : String(error)) || 'failed'
+
+/** One `wallet_getCapabilities` query for the connected account on this chain, shared by the hooks below. */
+const useWalletCapabilities = () => {
+  const { isConnected } = useAccount()
+  const { data } = useCapabilities({
+    chainId: chain.id,
+    query: { enabled: isConnected, retry: false },
+  })
+  return data
+}
 
 /**
  * True when writes can be gas-sponsored: a paymaster is configured and the connected wallet (Coinbase Smart
@@ -64,18 +90,28 @@ const firstLine = (error: unknown): string =>
  * wallet that does not implement `wallet_getCapabilities`, falls back to a normal transaction.
  */
 export const useSponsoredGas = (): boolean => {
-  const { isConnected } = useAccount()
-  const { data } = useCapabilities({
-    chainId: chain.id,
-    query: { enabled: Boolean(paymasterUrl) && isConnected, retry: false },
-  })
+  const data = useWalletCapabilities()
   return Boolean(paymasterUrl) && data?.paymasterService?.supported === true
 }
 
 /**
- * Runs one contract write and tracks it through sign → mined, so every on-chain action in the app can show
- * the same three states plus an explorer link. When gas can be sponsored the call goes out as an EIP-5792
- * batch with a paymaster capability instead, and the batch status is awaited the same way.
+ * True when the wallet executes an EIP-5792 batch atomically: all of its calls or none. Wallets report it as
+ * `atomic.status: 'supported'` (EIP-5792 v2) or, before that, `atomicBatch.supported`. `ready` is deliberately not
+ * enough: it means the wallet would first ask to upgrade the account, which is not what a donor came to do.
+ */
+export const useAtomicBatch = (): boolean => {
+  const data = useWalletCapabilities()
+  return data?.atomic?.status === 'supported' || data?.atomicBatch?.supported === true
+}
+
+/**
+ * Runs contract writes and tracks them through sign → mined, so every on-chain action in the app can show the
+ * same three states plus an explorer link.
+ *
+ * `run` sends one call; `runBatch` sends calls that belong together (approve + donate). A batch goes out as one
+ * EIP-5792 `wallet_sendCalls` when the wallet executes batches atomically, with the paymaster capability when gas
+ * can be sponsored. Otherwise its calls are sent one after another, each signed separately, stopping at the first
+ * failure. A single call also goes through `wallet_sendCalls` when it can be sponsored.
  */
 export const useTx = () => {
   const { writeContractAsync } = useWriteContract()
@@ -83,58 +119,85 @@ export const useTx = () => {
   const config = useConfig()
   const publicClient = usePublicClient()
   const sponsored = useSponsoredGas()
+  const atomic = useAtomicBatch()
   const [state, setState] = useState<TxState>(INITIAL)
 
   const reset = useCallback(() => setState(INITIAL), [])
 
-  const runSponsored = useCallback(
-    async (request: WriteRequest): Promise<TxResult | null> => {
+  const runCalls = useCallback(
+    async (calls: readonly BatchCall[]): Promise<TxResult | null> => {
       const { id } = await sendCallsAsync({
-        calls: [
-          { to: request.address, abi: request.abi, functionName: request.functionName, args: request.args },
-        ],
-        capabilities: { paymasterService: { url: paymasterUrl as string } },
+        calls: calls.map((request) => ({
+          to: request.address,
+          abi: request.abi,
+          functionName: request.functionName,
+          args: request.args,
+          value: request.value,
+        })),
+        capabilities: sponsored ? { paymasterService: { url: paymasterUrl as string } } : undefined,
+        // Half a batch is worse than none: an approval without its donation leaves a dangling allowance.
+        forceAtomic: calls.length > 1,
       } as never)
-      setState({ phase: 'pending', hash: null, error: null, sponsored: true })
+      setState({ phase: 'pending', hash: null, error: null, sponsored, step: null })
       const status = await waitForCallsStatus(config, { id, timeout: CALLS_TIMEOUT_MS })
-      const receipt = status.receipts?.[0]
-      const hash = receipt?.transactionHash ?? null
-      if (status.status !== 'success' || !receipt || receipt.status !== 'success' || !hash) {
-        setState({ phase: 'failed', hash, error: 'reverted', sponsored: true })
+      const receipts = status.receipts ?? []
+      const hash = receipts.at(-1)?.transactionHash ?? null
+      if (status.status !== 'success' || !hash || receipts.some((receipt) => receipt.status !== 'success')) {
+        setState({ phase: 'failed', hash, error: 'reverted', sponsored, step: null })
         return null
       }
-      setState({ phase: 'success', hash, error: null, sponsored: true })
-      return { hash, logs: receipt.logs as unknown as Log[] }
+      setState({ phase: 'success', hash, error: null, sponsored, step: null })
+      return { hash, logs: receipts.flatMap((receipt) => receipt.logs as unknown as Log[]) }
     },
-    [config, sendCallsAsync],
+    [config, sendCallsAsync, sponsored],
   )
 
-  const run = useCallback(
-    async <const abi extends Abi, functionName extends ContractFunctionName<abi, WriteMutability>>(
-      request: WriteRequest<abi, functionName>,
-    ): Promise<TxResult | null> => {
-      setState({ phase: 'signing', hash: null, error: null, sponsored })
-      try {
-        if (sponsored) return await runSponsored(request as unknown as WriteRequest)
-
-        const hash = await writeContractAsync(request as never)
-        setState({ phase: 'pending', hash, error: null, sponsored: false })
+  const runSequential = useCallback(
+    async (calls: readonly BatchCall[]): Promise<TxResult | null> => {
+      const logs: Log[] = []
+      let hash: Hex | null = null
+      for (const [index, request] of calls.entries()) {
+        const step = calls.length > 1 ? { current: index + 1, total: calls.length } : null
+        setState({ phase: 'signing', hash, error: null, sponsored: false, step })
+        hash = await writeContractAsync(request as never)
+        setState({ phase: 'pending', hash, error: null, sponsored: false, step })
         const receipt = await publicClient?.waitForTransactionReceipt({ hash })
         if (receipt && receipt.status === 'reverted') {
-          setState({ phase: 'failed', hash, error: 'reverted', sponsored: false })
+          setState({ phase: 'failed', hash, error: 'reverted', sponsored: false, step })
           return null
         }
-        setState({ phase: 'success', hash, error: null, sponsored: false })
-        return { hash, logs: receipt?.logs ?? [] }
+        logs.push(...(receipt?.logs ?? []))
+      }
+      if (!hash) return null
+      setState({ phase: 'success', hash, error: null, sponsored: false, step: null })
+      return { hash, logs }
+    },
+    [publicClient, writeContractAsync],
+  )
+
+  const runBatch = useCallback(
+    async (calls: readonly BatchCall[]): Promise<TxResult | null> => {
+      if (calls.length === 0) return null
+      const bundled = calls.length === 1 ? sponsored : atomic
+      setState({ phase: 'signing', hash: null, error: null, sponsored: bundled && sponsored, step: null })
+      try {
+        return bundled ? await runCalls(calls) : await runSequential(calls)
       } catch (error) {
         setState((previous) => ({ ...previous, phase: 'failed', error: firstLine(error) }))
         return null
       }
     },
-    [publicClient, runSponsored, sponsored, writeContractAsync],
+    [atomic, runCalls, runSequential, sponsored],
   )
 
-  return { ...state, run, reset }
+  const run = useCallback(
+    async <const abi extends Abi, functionName extends ContractFunctionName<abi, WriteMutability>>(
+      request: WriteRequest<abi, functionName>,
+    ): Promise<TxResult | null> => runBatch([batchCall(request)]),
+    [runBatch],
+  )
+
+  return { ...state, run, runBatch, reset }
 }
 
 /** True when a wallet is connected but pointed at a different chain than this build is locked to. */

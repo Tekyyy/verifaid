@@ -6,12 +6,24 @@ export const amount = (value: bigint | string | null | undefined): string =>
   value === null || value === undefined ? '0.00' : formatAmount(value, TOKEN_DECIMALS)
 
 /** Parses a user-typed decimal amount into base units; returns null when it is not a valid amount. */
-export const parseAmount = (input: string): bigint | null => {
+export const parseAmount = (input: string): bigint | null => parseTokenAmount(input, TOKEN_DECIMALS)
+
+/** `parseAmount` for a token with any number of decimals (ETH has 18). */
+export const parseTokenAmount = (input: string, decimals: number): bigint | null => {
   const trimmed = input.trim().replace(',', '.')
-  if (!/^\d+(\.\d{1,6})?$/.test(trimmed)) return null
+  if (!new RegExp(`^\\d{1,30}(\\.\\d{1,${decimals}})?$`).test(trimmed)) return null
   const [whole = '0', fraction = ''] = trimmed.split('.')
-  return BigInt(whole) * 10n ** BigInt(TOKEN_DECIMALS) + BigInt(fraction.padEnd(TOKEN_DECIMALS, '0'))
+  return BigInt(whole) * 10n ** BigInt(decimals) + BigInt(fraction.padEnd(decimals, '0'))
 }
+
+/** Base units of any token → display string; ETH keeps six fraction digits, where two would round small gifts to 0. */
+export const tokenAmount = (value: bigint | string | null | undefined, decimals: number): string =>
+  value === null || value === undefined
+    ? '0.00'
+    : formatAmount(value, decimals, decimals > TOKEN_DECIMALS ? 6 : 2)
+
+/** Decimals of a token by the symbol the indexer reports: ETH has 18, every stablecoin here has 6. */
+export const decimalsOfSymbol = (symbol: string): number => (symbol === 'ETH' ? 18 : TOKEN_DECIMALS)
 
 export const percent = (numerator: bigint | string, denominator: bigint | string): number => {
   const bottom = BigInt(denominator)

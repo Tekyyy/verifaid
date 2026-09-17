@@ -1,48 +1,118 @@
 'use client'
 
-import { aidVaultAbi, mockEURCAbi } from '@poa/shared'
+import {
+  aidVaultAbi,
+  type DonationToken,
+  donationForwarderFactoryAbi,
+  donationTokens,
+  mockEURCAbi,
+} from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
-import { type Address, parseEventLogs } from 'viem'
-import { useAccount } from 'wagmi'
+import { type Address, type Log, parseEventLogs } from 'viem'
+import { useAccount, useBalance, useReadContract } from 'wagmi'
 import { TxStatus } from '@/components/TxStatus'
 import { Link } from '@/i18n/navigation'
-import { deployment } from '@/lib/config'
-import { amount as formatAmountValue, parseAmount } from '@/lib/format'
-import { useTx, useWrongChain } from '@/lib/hooks'
+import { conversionsEnabled, deployment } from '@/lib/config'
+import { useConversionQuote, useDonationPreflight, useRevertMessage } from '@/lib/conversionHooks'
+import { bpsPercent, amount as formatAmountValue, parseTokenAmount, tokenAmount } from '@/lib/format'
+import { batchCall, useMounted, useTx, useWrongChain } from '@/lib/hooks'
+
+/** The receipt id a donation minted, read from the vault's event rather than guessed. */
+const receiptIdOf = (logs: Log[]): string | null => {
+  const [direct] = parseEventLogs({ abi: aidVaultAbi, eventName: 'Donated', logs })
+  if (direct) return direct.args.receiptId.toString()
+  const [converted] = parseEventLogs({ abi: aidVaultAbi, eventName: 'DonatedVia', logs })
+  return converted && converted.args.receiptId > 0n ? converted.args.receiptId.toString() : null
+}
 
 /**
- * ERC-20 approve followed by `AidVault.donate`. Two separate transactions, each with its own status, because
- * that is what the donor's wallet will actually ask them to sign.
+ * Wallet donations. In the vault's own token (EURC) it is approve followed by `AidVault.donate`, two separate
+ * transactions with their own status, because that is what the wallet will actually ask the donor to sign.
+ *
+ * In USDC or ETH (v3 deployments) it goes through `DonationForwarderFactory.donate`, which swaps into EURC bounded
+ * by Chainlink fair value minus the router's slippage limit, donates what the need can still take and returns the rest
+ * to the donor's wallet. USDC's approve and the donation go out as one batch when the wallet can bundle them.
+ * Conversion costs count against the need's disclosed cost cap, so converted tokens are not offered to a need that
+ * allows none, and every converted donation is simulated first so a cap overrun is explained, not just failed.
  */
 export function DonatePanel({
+  needId,
   vault,
   fundingOpen,
   targetAmount,
   totalDonated,
+  thirdPartyCostBps,
 }: {
+  needId: string
   vault: Address | null
   /** Status is Funding and no deadline has passed, as computed by the page. */
   fundingOpen: boolean
   targetAmount: string
   totalDonated: string
+  /** The need's disclosed cap on intermediary costs; conversion fees count against it. */
+  thirdPartyCostBps: number
 }) {
   const t = useTranslations('need')
   const tCommon = useTranslations('common')
   const tErrors = useTranslations('errors')
-  const { isConnected } = useAccount()
+  const tConversion = useTranslations('conversion')
+  const mounted = useMounted()
+  const { address: wallet, isConnected } = useAccount()
   const wrongChain = useWrongChain()
   const approve = useTx()
   const donate = useTx()
+  const convert = useTx()
+  const preflight = useDonationPreflight()
+  const explain = useRevertMessage()
+  const [checking, setChecking] = useState(false)
   const [value, setValue] = useState('')
+  const [symbol, setSymbol] = useState<DonationToken['symbol']>('EURC')
   const [formError, setFormError] = useState<string | null>(null)
   const [receiptId, setReceiptId] = useState<string | null>(null)
 
+  const unit = tCommon('amountUnit')
   const token = deployment?.external.Token
+  const factory = deployment?.contracts.DonationForwarderFactory
+  const router = deployment?.contracts.ConversionRouter
+  // A need that allows no intermediary costs would reject any conversion that costs something: offer EURC only.
+  const conversionsAllowed = conversionsEnabled && thirdPartyCostBps > 0
+  const tokens = deployment
+    ? donationTokens(deployment).filter((item) => conversionsAllowed || !item.converted)
+    : []
+  const selected = tokens.find((item) => item.symbol === symbol) ?? tokens[0]
+  const converted = Boolean(selected?.converted && factory && router)
+
   const open = fundingOpen && vault !== null
   const remaining = BigInt(targetAmount) - BigInt(totalDonated)
+  const parsed = selected ? parseTokenAmount(value, selected.decimals) : null
 
-  const parsed = parseAmount(value)
+  const quoting = converted && parsed !== null && parsed > 0n
+  const { used, returned, fairValue, minimum, slippageBps, unavailable } = useConversionQuote(
+    converted ? selected?.address : undefined,
+    quoting ? parsed : null,
+    remaining,
+  )
+
+  const tokenBalance = useReadContract({
+    address: selected && !selected.native ? selected.address : undefined,
+    abi: mockEURCAbi,
+    functionName: 'balanceOf',
+    args: wallet ? [wallet] : undefined,
+    query: { enabled: Boolean(wallet && selected && !selected.native) },
+  })
+  const ethBalance = useBalance({ address: wallet, query: { enabled: Boolean(wallet && selected?.native) } })
+  const balance = selected?.native ? ethBalance.data?.value : tokenBalance.data
+
+  const choose = (next: DonationToken['symbol']) => {
+    setSymbol(next)
+    setValue('')
+    setFormError(null)
+    setReceiptId(null)
+    approve.reset()
+    donate.reset()
+    convert.reset()
+  }
 
   const runApprove = async () => {
     if (!parsed || !token || !vault) return setFormError(tErrors('invalidAmount'))
@@ -65,18 +135,57 @@ export function DonatePanel({
       functionName: 'donate',
       args: [parsed],
     })
-    if (!result) return
-    // The receipt id is the donor's tracking reference; read it from the event rather than guessing it.
-    const [donated] = parseEventLogs({ abi: aidVaultAbi, eventName: 'Donated', logs: result.logs })
-    if (donated) setReceiptId(donated.args.receiptId.toString())
+    if (result) setReceiptId(receiptIdOf(result.logs))
   }
+
+  const runConverted = async () => {
+    if (!parsed || parsed === 0n || !selected || !factory) {
+      return setFormError(
+        t('donateInvalidToken', { symbol: selected?.symbol ?? '', decimals: selected?.decimals ?? 6 }),
+      )
+    }
+    setFormError(null)
+    setReceiptId(null)
+    setChecking(true)
+    const check = await preflight({ needId, token: selected.address, amount: parsed })
+    setChecking(false)
+    if (!check.ok) return setFormError(explain(check.reason))
+    const donation = batchCall({
+      address: factory,
+      abi: donationForwarderFactoryAbi,
+      functionName: 'donate',
+      args: [BigInt(needId), selected.address, parsed],
+      ...(selected.native ? { value: parsed } : {}),
+    })
+    const result = await convert.runBatch(
+      selected.native
+        ? [donation]
+        : [
+            batchCall({
+              address: selected.address,
+              abi: mockEURCAbi,
+              functionName: 'approve',
+              args: [factory, parsed],
+            }),
+            donation,
+          ],
+    )
+    if (result) setReceiptId(receiptIdOf(result.logs))
+  }
+
+  const busy = (state: { phase: string }) => state.phase === 'signing' || state.phase === 'pending'
+  const succeeded = converted ? convert.phase === 'success' : donate.phase === 'success'
 
   return (
     <section className="card" aria-labelledby="donate">
       <h2 id="donate" className="section-title">
         {t('donateTitle')}
       </h2>
-      <p className="mt-1 text-sm text-slate-700">{t('donateBody', { unit: tCommon('amountUnit') })}</p>
+      <p className="mt-1 text-sm text-slate-700">
+        {converted && selected
+          ? t('donateConvertedBody', { symbol: selected.symbol, unit })
+          : t('donateBody', { unit })}
+      </p>
 
       {!open ? (
         <p className="mt-3 text-sm font-medium text-slate-700">{t('donateClosed')}</p>
@@ -85,23 +194,101 @@ export function DonatePanel({
           <p className="mt-3 text-xs text-slate-600">
             {t('donateRemaining', {
               amount: formatAmountValue(remaining > 0n ? remaining : 0n),
-              unit: tCommon('amountUnit'),
+              unit,
             })}
           </p>
 
+          {conversionsEnabled && !conversionsAllowed ? (
+            <p className="mt-3 text-xs text-slate-600">{tConversion('noCosts')}</p>
+          ) : null}
+
+          {tokens.length > 1 ? (
+            <fieldset className="mt-3">
+              <legend className="label">{t('donateToken')}</legend>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {tokens.map((option) => (
+                  <label
+                    key={option.symbol}
+                    className={`flex min-h-[44px] cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${
+                      selected?.symbol === option.symbol
+                        ? 'border-indigo-700 bg-indigo-50'
+                        : 'border-slate-300 bg-white'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="donate-token"
+                      value={option.symbol}
+                      checked={selected?.symbol === option.symbol}
+                      onChange={() => choose(option.symbol)}
+                    />
+                    {option.symbol}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
+
           <div className="mt-3">
             <label className="label" htmlFor="donate-amount">
-              {t('donateAmount', { unit: tCommon('amountUnit') })}
+              {t('donateAmount', { unit: selected?.symbol ?? unit })}
             </label>
             <input
               id="donate-amount"
               className="input"
               inputMode="decimal"
+              autoComplete="off"
               value={value}
               onChange={(event) => setValue(event.target.value)}
-              placeholder="100.00"
+              placeholder={selected?.native ? '0.05' : '100.00'}
             />
+            {mounted && balance !== undefined && selected ? (
+              <p className="hint">
+                {t('donateBalance', {
+                  amount: tokenAmount(balance, selected.decimals),
+                  symbol: selected.symbol,
+                })}
+              </p>
+            ) : null}
           </div>
+
+          {quoting ? (
+            <div
+              className="mt-3 space-y-1 rounded-md bg-slate-50 p-3 text-xs text-slate-700"
+              aria-live="polite"
+            >
+              <p>{tConversion('costCapNote', { percent: bpsPercent(thirdPartyCostBps) })}</p>
+              {fairValue !== undefined ? (
+                <>
+                  <p className="font-semibold tabular-nums">
+                    {t('donateQuote', { fair: formatAmountValue(fairValue), unit })}
+                  </p>
+                  {minimum !== undefined && slippageBps !== null ? (
+                    <p className="tabular-nums">
+                      {t('donateMinimum', {
+                        minimum: formatAmountValue(minimum),
+                        unit,
+                        percent: bpsPercent(slippageBps),
+                      })}
+                    </p>
+                  ) : null}
+                  {returned > 0n && used !== undefined && selected ? (
+                    <p className="font-medium text-amber-900 tabular-nums">
+                      {t('donateReturned', {
+                        used: tokenAmount(used, selected.decimals),
+                        returned: tokenAmount(returned, selected.decimals),
+                        symbol: selected.symbol,
+                      })}
+                    </p>
+                  ) : null}
+                </>
+              ) : unavailable ? (
+                <p className="font-medium text-amber-900">{t('donateQuoteUnavailable')}</p>
+              ) : (
+                <p>{tCommon('loading')}</p>
+              )}
+            </div>
+          ) : null}
 
           {formError ? (
             <p className="mt-2 text-xs text-red-800" role="alert">
@@ -111,6 +298,18 @@ export function DonatePanel({
 
           {!isConnected ? (
             <p className="mt-3 text-sm text-slate-700">{tErrors('connectFirst')}</p>
+          ) : converted && selected ? (
+            <div className="mt-4">
+              <button
+                type="button"
+                className="btn-primary w-full sm:w-auto"
+                onClick={runConverted}
+                disabled={wrongChain || checking || busy(convert)}
+              >
+                {checking ? tConversion('checking') : t('donateConvert', { symbol: selected.symbol })}
+              </button>
+              <TxStatus state={convert} />
+            </div>
           ) : (
             <div className="mt-4 space-y-3">
               <div>
@@ -118,7 +317,7 @@ export function DonatePanel({
                   type="button"
                   className="btn-secondary w-full sm:w-auto"
                   onClick={runApprove}
-                  disabled={wrongChain || approve.phase === 'signing' || approve.phase === 'pending'}
+                  disabled={wrongChain || busy(approve)}
                 >
                   {t('donateApprove')}
                 </button>
@@ -129,24 +328,25 @@ export function DonatePanel({
                   type="button"
                   className="btn-primary w-full sm:w-auto"
                   onClick={runDonate}
-                  disabled={wrongChain || donate.phase === 'signing' || donate.phase === 'pending'}
+                  disabled={wrongChain || busy(donate)}
                 >
                   {t('donateSend')}
                 </button>
                 <TxStatus state={donate} />
               </div>
-              {donate.phase === 'success' ? (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-emerald-800">{t('donateSuccess')}</p>
-                  {receiptId ? (
-                    <Link className="btn-secondary" href={`/track/${receiptId}`}>
-                      {t('trackThisDonation', { id: receiptId })}
-                    </Link>
-                  ) : null}
-                </div>
-              ) : null}
             </div>
           )}
+
+          {isConnected && succeeded ? (
+            <div className="mt-3 space-y-2">
+              <p className="text-sm font-medium text-emerald-800">{t('donateSuccess')}</p>
+              {receiptId ? (
+                <Link className="btn-secondary" href={`/track/${receiptId}`}>
+                  {t('trackThisDonation', { id: receiptId })}
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
         </>
       )}
     </section>

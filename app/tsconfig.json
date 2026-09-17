@@ -13,6 +13,8 @@
     "declarationMap": false,
     "incremental": true,
     "allowJs": true,
+    // Node's test runner strips types but does not resolve extensionless imports, so tests import `./x.ts`.
+    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "plugins": [{ "name": "next" }],
     "paths": { "@/*": ["./src/*"] }

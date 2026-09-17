@@ -1,9 +1,14 @@
-import type { DonationKind, DonationTrack } from '@poa/shared'
+import type { DonationTrack } from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import { AlertsForm } from '@/components/AlertsForm'
+import { ConversionNote } from '@/components/ConversionNote'
 import { CopyLinkButton } from '@/components/CopyLinkButton'
 import { CustodyBadge } from '@/components/CustodyBadge'
 import { DeliveryCard } from '@/components/DeliveryCard'
+import { DepositActivity } from '@/components/DepositActivity'
+import { DepositSweeps } from '@/components/DepositSweeps'
+import { DepositIntent } from '@/components/DepositWaitingView'
+import { KIND_KEY } from '@/components/DonationList'
 import { EmbedSnippet } from '@/components/EmbedSnippet'
 import { ExplorerLink } from '@/components/ExplorerLink'
 import { OutcomeBanner } from '@/components/OutcomeBanner'
@@ -14,12 +19,6 @@ import { TrancheBar } from '@/components/TrancheBar'
 import { Link } from '@/i18n/navigation'
 import { amount, bpsPercent, shorten, timestamp } from '@/lib/format'
 import { donationFeedPath } from '@/lib/indexer'
-
-const KIND_KEY: Record<DonationKind, 'donationDirect' | 'donationFiat' | 'donationOffchain'> = {
-  DIRECT: 'donationDirect',
-  FIAT: 'donationFiat',
-  OFFCHAIN: 'donationOffchain',
-}
 
 /** The public page for one donation: where it is in the five stages, and exactly what it paid for so far. */
 export function DonationTrackView({ track }: { track: DonationTrack }) {
@@ -36,7 +35,9 @@ export function DonationTrackView({ track }: { track: DonationTrack }) {
           <h1 className="text-2xl font-bold tracking-tight">
             {track.refKind === 'receipt'
               ? t('titleReceipt', { id: track.ref })
-              : t('titlePayment', { ref: shorten(track.ref, 10, 6) })}
+              : track.refKind === 'deposit'
+                ? t('titleDeposit', { address: shorten(track.ref, 10, 6) })
+                : t('titlePayment', { ref: shorten(track.ref, 10, 6) })}
           </h1>
           <p className="mt-1 text-sm text-slate-700">
             <Link className="link" href={`/needs/${need.id}`}>
@@ -56,7 +57,7 @@ export function DonationTrackView({ track }: { track: DonationTrack }) {
       <OutcomeBanner outcome={track.outcome} refKind={track.refKind} />
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+        <div className="min-w-0 space-y-6 lg:col-span-2">
           <section className="card" aria-labelledby="summary">
             <h2 id="summary" className="section-title">
               {t('summaryTitle')}
@@ -86,6 +87,12 @@ export function DonationTrackView({ track }: { track: DonationTrack }) {
                 </dd>
               </div>
             </dl>
+            {donation.conversion ? (
+              <ConversionNote
+                conversion={donation.conversion}
+                className="mt-3 text-xs text-slate-700 tabular-nums"
+              />
+            ) : null}
             {donation.gross !== null ? (
               <p className="mt-3 text-xs text-slate-700 tabular-nums">
                 {tNeed('donationPaid', {
@@ -109,6 +116,27 @@ export function DonationTrackView({ track }: { track: DonationTrack }) {
               <span className="text-slate-500">{timestamp(donation.timestamp)}</span>
             </div>
           </section>
+
+          {track.deposit ? (
+            <section className="card space-y-4" aria-labelledby="deposit">
+              <div>
+                <h2 id="deposit" className="section-title">
+                  {t('depositTitle')}
+                </h2>
+                <p className="mt-1 text-sm text-slate-700">{t('depositBody')}</p>
+              </div>
+              <DepositIntent deposit={track.deposit} />
+              <DepositSweeps deposit={track.deposit} />
+              <DepositActivity
+                address={track.deposit.address}
+                needStatus={need.status}
+                receiptTo={track.deposit.receiptTo}
+                refundTo={track.deposit.refundTo}
+                refundSigner={track.deposit.refundSigner}
+                swept={track.deposit.sweeps.length > 0}
+              />
+            </section>
+          ) : null}
 
           <section className="card" aria-labelledby="stages">
             <h2 id="stages" className="section-title">
@@ -181,7 +209,7 @@ export function DonationTrackView({ track }: { track: DonationTrack }) {
           ) : null}
         </div>
 
-        <aside className="space-y-6">
+        <aside className="min-w-0 space-y-6">
           <section className="card space-y-3" aria-labelledby="follow">
             <h2 id="follow" className="section-title">
               {t('followTitle')}

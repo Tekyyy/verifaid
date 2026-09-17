@@ -32,7 +32,9 @@ export async function POST(request: NextRequest) {
 
   const { trackingRef, needId, channel, email, webhookUrl } = body
   if (trackingRef !== undefined && (typeof trackingRef !== 'string' || !trackingRefKind(trackingRef))) {
-    return badRequest('trackingRef must be a receipt id or a 0x-prefixed 32-byte payment reference.')
+    return badRequest(
+      'trackingRef must be a receipt id, a 0x-prefixed 32-byte payment reference or a deposit address.',
+    )
   }
   if (needId !== undefined && !isNeedId(needId))
     return badRequest('needId must be a positive integer string.')

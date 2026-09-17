@@ -1,9 +1,7 @@
 import { AID_RECEIVED_MESSAGE, deliveryManagerAbi } from '@poa/shared'
 import { type NextRequest, NextResponse } from 'next/server'
-import { createWalletClient, http, isHex } from 'viem'
-import { privateKeyToAccount } from 'viem/accounts'
-import { chain, deployment, rpcUrl } from '@/lib/config'
-import { publicClient } from '@/lib/server/chain'
+import { deployment } from '@/lib/config'
+import { getRelayer, relayWrite } from '@/lib/server/relayer'
 
 /**
  * Relays a beneficiary's receipt confirmation.
@@ -87,22 +85,15 @@ const revertReason = (error: unknown): string => {
   return head.replace(/\s+/g, ' ').trim().slice(0, 200) || 'rejected'
 }
 
-/** One transaction at a time, so concurrent confirmations cannot collide on the relayer's nonce. */
-let queue: Promise<unknown> = Promise.resolve()
-const serialize = <T>(task: () => Promise<T>): Promise<T> => {
-  const result = queue.then(task, task)
-  queue = result.catch(() => undefined)
-  return result
-}
-
 export async function POST(request: NextRequest) {
   const addresses = deployment
   if (!addresses) {
     return NextResponse.json({ error: 'no deployment for this network' }, { status: 503 })
   }
 
-  const key = process.env.RELAYER_PRIVATE_KEY
-  if (!key || !isHex(key) || key.length !== 66) {
+  // Shared with the deposit-address and sandbox on-ramp routes: one queue, so no two writes race for a nonce.
+  const relayer = getRelayer()
+  if (!relayer) {
     return NextResponse.json({ error: 'relayer not configured' }, { status: 503 })
   }
 
@@ -135,9 +126,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'too many confirmations for this delivery' }, { status: 429 })
   }
 
-  const account = privateKeyToAccount(key)
-  const walletClient = createWalletClient({ account, chain, transport: http(rpcUrl) })
-
   const args = [
     BigInt(deliveryId),
     {
@@ -160,15 +148,11 @@ export async function POST(request: NextRequest) {
   ] as const
 
   try {
-    const hash = await serialize(async () => {
-      const { request: simulated } = await publicClient.simulateContract({
-        account,
-        address: addresses.contracts.DeliveryManager,
-        abi: deliveryManagerAbi,
-        functionName: 'confirmReceipt',
-        args,
-      })
-      return walletClient.writeContract(simulated)
+    const hash = await relayWrite(relayer, {
+      address: addresses.contracts.DeliveryManager,
+      abi: deliveryManagerAbi,
+      functionName: 'confirmReceipt',
+      args,
     })
     return NextResponse.json({ txHash: hash })
   } catch (error) {

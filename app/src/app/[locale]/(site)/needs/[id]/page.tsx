@@ -1,8 +1,10 @@
 import type { NeedStatus } from '@poa/shared'
 import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
+import { CardOnrampPanel } from '@/components/CardOnrampPanel'
 import { CustodyBadge } from '@/components/CustodyBadge'
 import { DeliveryCard } from '@/components/DeliveryCard'
+import { DepositAddressPanel } from '@/components/DepositAddressPanel'
 import { DonatePanel } from '@/components/DonatePanel'
 import { DonationList } from '@/components/DonationList'
 import { ExpireButton } from '@/components/ExpireButton'
@@ -16,6 +18,7 @@ import { NeedStatusBadge } from '@/components/StatusBadge'
 import { TermsPanel } from '@/components/TermsPanel'
 import { Timeline } from '@/components/Timeline'
 import { TrancheBar } from '@/components/TrancheBar'
+import { conversionsEnabled } from '@/lib/config'
 import { amount, percent, timestamp } from '@/lib/format'
 import { getNeed, getTimeline, needFeedPath } from '@/lib/indexer'
 
@@ -96,7 +99,7 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
       </header>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+        <div className="min-w-0 space-y-6 lg:col-span-2">
           <section className="card" aria-labelledby="funding">
             <h2 id="funding" className="section-title">
               {t('fundingTitle')}
@@ -218,17 +221,36 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
           </section>
         </div>
 
-        <aside className="space-y-6">
+        <aside className="min-w-0 space-y-6">
           {deadlineReached ? <ExpireButton needId={data.id} /> : null}
           {refundable ? <RefundPanel vault={data.vault} /> : null}
 
           {data.custodyMode === 'OnChain' ? (
             <DonatePanel
+              needId={data.id}
               vault={data.vault}
               fundingOpen={fundingOpen}
               targetAmount={data.targetAmount}
               totalDonated={data.totalDonated}
+              thirdPartyCostBps={data.thirdPartyCostBps}
             />
+          ) : null}
+
+          {/* v3 deployments: card via an on-ramp into the donor's own wallet, and deposit addresses for exchanges. */}
+          {data.custodyMode === 'OnChain' && conversionsEnabled ? (
+            <>
+              <CardOnrampPanel
+                needId={data.id}
+                open={fundingOpen}
+                remaining={data.fundingGap}
+                thirdPartyCostBps={data.thirdPartyCostBps}
+              />
+              <DepositAddressPanel
+                needId={data.id}
+                open={fundingOpen}
+                thirdPartyCostBps={data.thirdPartyCostBps}
+              />
+            </>
           ) : null}
 
           <GiveFiatPanel

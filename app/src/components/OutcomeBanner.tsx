@@ -16,7 +16,13 @@ export function OutcomeBanner({ outcome, refKind }: { outcome: DonationOutcome; 
   const t = useTranslations('track')
   const refundHint =
     outcome === 'Refundable' || outcome === 'Expired' || outcome === 'Cancelled'
-      ? t(refKind === 'receipt' ? 'refundHintWallet' : 'refundHintPayment')
+      ? t(
+          refKind === 'receipt'
+            ? 'refundHintWallet'
+            : refKind === 'deposit'
+              ? 'refundHintDeposit'
+              : 'refundHintPayment',
+        )
       : null
 
   return (

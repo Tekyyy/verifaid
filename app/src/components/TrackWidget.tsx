@@ -1,5 +1,6 @@
 import { DONOR_STAGES, type DonationTrack } from '@poa/shared'
 import { useTranslations } from 'next-intl'
+import { ConversionNote } from '@/components/ConversionNote'
 import { stepState } from '@/components/StageStepper'
 import { amount, bpsPercent, timestamp } from '@/lib/format'
 
@@ -38,6 +39,12 @@ export function TrackWidget({ track, fullPageHref }: { track: DonationTrack; ful
           <p className="text-xs text-slate-600 dark:text-slate-400">
             {t('widgetDonation', { amount: amount(track.donation.amount), unit })}
           </p>
+          {track.donation.conversion ? (
+            <ConversionNote
+              conversion={track.donation.conversion}
+              className="text-[11px] text-slate-600 tabular-nums dark:text-slate-400"
+            />
+          ) : null}
         </div>
         <span className={`badge shrink-0 ${OUTCOME_TONE[track.outcome]}`}>
           {t(`outcome_${track.outcome}`)}

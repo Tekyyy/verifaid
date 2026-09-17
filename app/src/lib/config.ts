@@ -76,3 +76,22 @@ export const useFixtures: boolean = process.env.NEXT_PUBLIC_USE_FIXTURES === '1'
 
 /** Token decimals are fixed at 6 across the system (EURC/USDC base units). */
 export const TOKEN_DECIMALS = 6
+
+/** v3 conversions: the deployment has the forwarder factory and the router that quotes it. v2 builds hide them. */
+export const conversionsEnabled: boolean = Boolean(
+  deployment?.contracts.DonationForwarderFactory && deployment.contracts.ConversionRouter,
+)
+
+export const BASE_MAINNET_CHAIN_ID = 8453
+
+/**
+ * How "pay by card" gets USDC into the donor's own wallet. `coinbase`: the Coinbase Onramp, which only delivers on
+ * mainnet networks. `mock`: a sandbox that mints test USDC through the relayer (Base Sepolia, anvil). Base mainnet is
+ * always `coinbase` whatever the variable says, because minting there is impossible and must never be attempted.
+ */
+export type OnrampMode = 'coinbase' | 'mock'
+
+export const onrampMode: OnrampMode =
+  process.env.NEXT_PUBLIC_ONRAMP_MODE === 'coinbase' || chainId === BASE_MAINNET_CHAIN_ID
+    ? 'coinbase'
+    : 'mock'
