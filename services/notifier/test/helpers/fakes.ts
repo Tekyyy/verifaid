@@ -193,6 +193,7 @@ export const trackFixture = (
     currency: null,
     receiptId: ref.startsWith('0x') ? null : ref,
     attestationUID: null,
+    conversion: null,
     txHash: TX,
     timestamp: 1_700_000_100,
   },
@@ -214,6 +215,7 @@ export const trackFixture = (
   deliveries: [],
   settlements: [],
   impactReport: null,
+  deposit: null,
   updatedAt: 1_700_000_300,
 })
 
