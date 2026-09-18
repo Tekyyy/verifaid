@@ -23,7 +23,7 @@
     "attestation": "Atestación",
     "evidence": "Evidencia",
     "transaction": "Transacción",
-    "amountUnit": "EURC",
+    "amountUnit": "USDC",
     "noExplorer": "Esta red no tiene explorador público",
     "footer": "Cadena pública: flujos y pruebas. Nunca personas.",
     "confirmLink": "Abrir la página de confirmación de esta entrega",
@@ -636,10 +636,10 @@
     "webhookSecretHint": "Cada envío va firmado. Comprueba la cabecera {signature} contra el cuerpo bruto de la petición con este secreto antes de fiarte de él. Los envíos también llevan {headers}."
   },
   "conversion": {
-    "noCosts": "Esta necesidad no admite costes de intermediarios, así que no puede recibir dinero que haya que convertir. Dona EURC directamente o por transferencia.",
+    "noCosts": "Esta necesidad no admite costes de intermediarios, así que no puede recibir dinero que haya que convertir. Dona USDC directamente o por transferencia.",
     "costCapNote": "Los costes de conversión cuentan contra el límite declarado del {percent}% en costes de intermediarios de esta necesidad; una donación que lo supere se detiene antes de que firmes.",
     "checking": "Comprobando…",
-    "revertFeeCap": "Esta conversión llevaría los costes de intermediarios de la necesidad por encima de su límite declarado, así que el contrato la rechazaría. Prueba con un importe menor o dona EURC directamente.",
+    "revertFeeCap": "Esta conversión llevaría los costes de intermediarios de la necesidad por encima de su límite declarado, así que el contrato la rechazaría. Prueba con un importe menor o dona USDC directamente.",
     "revertNotAccepting": "Esta necesidad ya no acepta donaciones.",
     "revertSlippage": "Ahora mismo el intercambio devolvería menos de lo que permite el límite de deslizamiento. Vuelve a intentarlo en un momento o con un importe menor.",
     "revertPrice": "El precio de Chainlink está desactualizado o no está disponible, así que no se puede valorar la conversión. Inténtalo más tarde.",
@@ -650,7 +650,7 @@
   },
   "onramp": {
     "title": "Paga con tarjeta",
-    "body": "Compra USDC con tu tarjeta en tu propia cartera y dónalos con un toque. Se convierten a EURC en cadena a precios de Chainlink.",
+    "body": "Compra USDC con tu tarjeta en tu propia cartera y dónalos con un toque.",
     "sandbox": "Entorno de pruebas: no se cobra ninguna tarjeta. Se acuñan USDC de prueba sin valor en tu cartera, valorados con la fuente EUR/USD y descontando una comisión de tarjeta simulada del 1,5%.",
     "coinbaseNote": "Pagas en Coinbase (inicia sesión o crea una cuenta) y se aplican sus comisiones. Los USDC llegan a tu propia cartera, como exigen las condiciones de Coinbase.",
     "closed": "Esta necesidad no acepta donaciones en este momento.",
@@ -686,7 +686,7 @@
   },
   "deposit": {
     "title": "Envía desde un exchange",
-    "body": "Obtén una dirección de depósito para esta necesidad y retira USDC a ella desde un exchange o cualquier cartera. Se convierte a EURC en cadena y se dona aquí; solo puede donarse a esta necesidad o reembolsarse.",
+    "body": "Obtén una dirección de depósito para esta necesidad y retira USDC a ella desde un exchange o cualquier cartera. Se dona directamente a esta necesidad; solo puede donarse a esta necesidad o reembolsarse.",
     "closed": "Esta necesidad no acepta donaciones en este momento.",
     "creditWallet": "Enviar el recibo de la donación a mi cartera conectada ({address})",
     "noWallet": "Conecta primero una cartera si quieres recibir en ella el recibo intransferible. Si no, se acredita a la propia dirección de depósito y tu clave de reembolso controla sus reembolsos.",

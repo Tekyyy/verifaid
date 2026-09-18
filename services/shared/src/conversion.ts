@@ -9,7 +9,7 @@ import type { Deployment } from './types.js'
 /** `ConversionRouter.NATIVE()`: ETH is passed as the zero address. */
 export const NATIVE_TOKEN: Address = zeroAddress
 
-export type DonationTokenSymbol = 'EURC' | 'USDC' | 'ETH'
+export type DonationTokenSymbol = 'USDC' | 'EURC' | 'ETH'
 
 export interface DonationToken {
   symbol: DonationTokenSymbol
@@ -21,17 +21,19 @@ export interface DonationToken {
 }
 
 /**
- * Tokens this deployment accepts, the vault token first. USDC and ETH appear only when the deployment has the
- * conversion contracts and (for ETH) a configured route.
+ * Tokens this deployment accepts, the vault token first.
  */
 export const donationTokens = (deployment: Deployment): DonationToken[] => {
   const tokens: DonationToken[] = [
-    { symbol: 'EURC', address: deployment.external.Token, decimals: 6, native: false, converted: false },
+    { symbol: 'USDC', address: deployment.external.Token, decimals: 6, native: false, converted: false },
   ]
   if (!deployment.contracts.DonationForwarderFactory) return tokens
-  if (deployment.external.USDC) {
+  if (
+    deployment.external.USDC &&
+    deployment.external.Token.toLowerCase() !== deployment.external.USDC.toLowerCase()
+  ) {
     tokens.push({
-      symbol: 'USDC',
+      symbol: 'EURC',
       address: deployment.external.USDC,
       decimals: 6,
       native: false,
@@ -48,7 +50,7 @@ export const donationTokens = (deployment: Deployment): DonationToken[] => {
 export const tokenSymbolOf = (deployment: Deployment, token: string): string => {
   const address = token.toLowerCase()
   if (address === NATIVE_TOKEN) return 'ETH'
-  if (address === deployment.external.Token.toLowerCase()) return 'EURC'
+  if (address === deployment.external.Token.toLowerCase()) return 'USDC'
   if (address === deployment.external.USDC?.toLowerCase()) return 'USDC'
   if (address === deployment.external.WETH?.toLowerCase()) return 'ETH'
   return getAddress(token)

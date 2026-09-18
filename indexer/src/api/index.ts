@@ -20,6 +20,8 @@ import {
   type NeedSummary,
   type ProgramMembersResponse,
   type ProviderView,
+  type SupplierDetail,
+  type SupplierView,
   regionCode as regionCodeOf,
   regionLabel,
   resolveNetwork,
@@ -46,7 +48,11 @@ import {
   toDonorTrancheSlice,
   toImpactReportView,
   toNeedSummary,
+  toPayeeChangeView,
+  toPayeePaymentView,
+  toPayeeView,
   toSettlementView,
+  toSupplierView,
   toTimelineEvent,
   toTrancheView,
 } from './views.js'
@@ -169,7 +175,7 @@ app.get('/needs/:id', async (c) => {
   const [row] = await db.select().from(schema.need).where(eq(schema.need.id, id)).limit(1)
   if (!row) return c.json({ error: 'need not found' }, 404)
 
-  const [tranches, deliveries, donations, settlements, reports] = await Promise.all([
+  const [tranches, deliveries, donations, settlements, reports, payees, payments, changes] = await Promise.all([
     db.select().from(schema.tranche).where(eq(schema.tranche.needId, id)).orderBy(asc(schema.tranche.index)),
     db.select().from(schema.delivery).where(eq(schema.delivery.needId, id)).orderBy(asc(schema.delivery.id)),
     db
@@ -183,6 +189,17 @@ app.get('/needs/:id', async (c) => {
       .where(eq(schema.settlement.needId, id))
       .orderBy(asc(schema.settlement.trancheIndex)),
     db.select().from(schema.impactReport).where(eq(schema.impactReport.needId, id)),
+    db.select().from(schema.payee).where(eq(schema.payee.needId, id)).orderBy(asc(schema.payee.index)),
+    db
+      .select()
+      .from(schema.payeePayment)
+      .where(eq(schema.payeePayment.needId, id))
+      .orderBy(asc(schema.payeePayment.timestamp)),
+    db
+      .select()
+      .from(schema.payeeChange)
+      .where(eq(schema.payeeChange.needId, id))
+      .orderBy(desc(schema.payeeChange.changeId)),
   ])
 
   const live = liveReport(reports)
@@ -194,6 +211,9 @@ app.get('/needs/:id', async (c) => {
     donations: donations.map(toDonationView),
     settlements: settlements.map(toSettlementView),
     impactReport: live ? toImpactReportView(live) : null,
+    payees: payees.map(toPayeeView),
+    payments: payments.map(toPayeePaymentView),
+    payeeChanges: changes.map((change) => toPayeeChangeView(change, row.verificationsRequired)),
   } satisfies NeedDetail)
 })
 
@@ -314,6 +334,50 @@ app.get('/deposits/:address', async (c) => {
   const deposit = await loadDeposit(address as Address)
   if (!deposit) return c.json({ error: 'deposit address not deployed' }, 404)
   return c.json(deposit.view satisfies DepositAddressView)
+})
+
+// ─── suppliers ───────────────────────────────────────────────────────────────
+
+/** Needs a supplier is in the plan of, or has been paid by (it may have been replaced since). */
+const supplierNeedIds = async (address: Address): Promise<string[]> => {
+  const [planned, paid] = await Promise.all([
+    db.select({ needId: schema.payee.needId }).from(schema.payee).where(eq(schema.payee.account, address)),
+    db
+      .select({ needId: schema.payeePayment.needId })
+      .from(schema.payeePayment)
+      .where(eq(schema.payeePayment.payee, address)),
+  ])
+  const ids = new Set([...planned, ...paid].map((row) => row.needId))
+  return [...ids].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).map(String)
+}
+
+/** Registered suppliers: the only accounts, besides an NGO's disclosed share, a vault ever pays. */
+app.get('/suppliers', async (c) => {
+  const rows = await db.select().from(schema.supplier).orderBy(asc(schema.supplier.registeredAt))
+  const views = await Promise.all(
+    rows.map(async (row) => toSupplierView(row, await supplierNeedIds(row.address as Address))),
+  )
+  return c.json(views satisfies SupplierView[])
+})
+
+app.get('/suppliers/:address', async (c) => {
+  const address = c.req.param('address').toLowerCase()
+  if (!/^0x[0-9a-f]{40}$/.test(address)) return c.json({ error: 'invalid address' }, 400)
+  const [row] = await db
+    .select()
+    .from(schema.supplier)
+    .where(eq(schema.supplier.address, address as Address))
+    .limit(1)
+  if (!row) return c.json({ error: 'supplier not found' }, 404)
+  const payments = await db
+    .select()
+    .from(schema.payeePayment)
+    .where(eq(schema.payeePayment.payee, address as Address))
+    .orderBy(asc(schema.payeePayment.timestamp))
+  return c.json({
+    ...toSupplierView(row, await supplierNeedIds(address as Address)),
+    payments: payments.map(toPayeePaymentView),
+  } satisfies SupplierDetail)
 })
 
 // ─── providers ───────────────────────────────────────────────────────────────
@@ -657,7 +721,7 @@ const loadTrack = async (ref: string, provider: string | undefined): Promise<Loa
       )
     : and(eq(schema.refund.needId, needId), eq(schema.refund.donorRefHash, donation.donorRefHash as Hex))
 
-  const [sameDonorDonations, tranches, deliveries, settlements, reports, refunds, timeline] =
+  const [sameDonorDonations, tranches, deliveries, settlements, reports, refunds, timeline, payees, payments] =
     await Promise.all([
       db.select().from(schema.donation).where(sameDonor),
       db
@@ -674,6 +738,12 @@ const loadTrack = async (ref: string, provider: string | undefined): Promise<Loa
       db.select().from(schema.impactReport).where(eq(schema.impactReport.needId, needId)),
       db.select().from(schema.refund).where(refundsOfDonor),
       needTimeline(needId),
+      db.select().from(schema.payee).where(eq(schema.payee.needId, needId)).orderBy(asc(schema.payee.index)),
+      db
+        .select()
+        .from(schema.payeePayment)
+        .where(eq(schema.payeePayment.needId, needId))
+        .orderBy(asc(schema.payeePayment.timestamp)),
     ])
 
   return {
@@ -690,6 +760,8 @@ const loadTrack = async (ref: string, provider: string | undefined): Promise<Loa
       refunds,
       timeline,
       deposit,
+      payees,
+      payments,
     }),
   }
 }

@@ -14,6 +14,8 @@ import {
   type ImpactReportRow,
   liveReport,
   type NeedRow,
+  type PayeePaymentRow,
+  type PayeeRow,
   type RefundRow,
   type SettlementRow,
   type TimelineRow,
@@ -23,6 +25,7 @@ import {
   toDonorTrancheSlice,
   toImpactReportView,
   toNeedSummary,
+  toPayeeView,
   toSettlementView,
 } from './views.js'
 
@@ -49,6 +52,9 @@ export interface TrackInputs {
   timeline: TimelineRow[]
   /** The deposit address behind a 'deposit' reference, with its sweeps and refunds. */
   deposit: DepositAddressView | null
+  /** v4 payment plan and the vault's payments to it (empty for off-chain custody). */
+  payees: PayeeRow[]
+  payments: PayeePaymentRow[]
 }
 
 const firstOfType = (timeline: TimelineRow[], type: string): TimelineRow | undefined =>
@@ -97,7 +103,14 @@ export const buildDonationTrack = (inputs: TrackInputs): DonationTrack => {
   )
 
   // ── Settled ──
-  const firstSettlement = [...settlements].sort((a, b) => a.timestamp - b.timestamp)[0]
+  // A vault paying the payment plan's suppliers directly is a settlement in itself: the transfer is the proof.
+  // Off-chain custody (and older vaults) settle through the Settlement attestation instead.
+  const firstReport = [...settlements].sort((a, b) => a.timestamp - b.timestamp)[0]
+  const firstPayment = inputs.payments.filter((payment) => !payment.held)[0]
+  const firstSettlement =
+    firstPayment && (!firstReport || firstPayment.timestamp < firstReport.timestamp)
+      ? { timestamp: firstPayment.timestamp, txHash: firstPayment.txHash, uid: null }
+      : firstReport
   const released = tranches.filter((tranche) => tranche.status === 'Released')
   const releasable = tranches.filter((tranche) => tranche.status === 'Releasable')
   let settledPending: string | null = null
@@ -214,6 +227,7 @@ export const buildDonationTrack = (inputs: TrackInputs): DonationTrack => {
     settlements: settlements.map(toSettlementView),
     impactReport: report ? toImpactReportView(report) : null,
     deposit: inputs.deposit,
+    payees: inputs.payees.map(toPayeeView),
     updatedAt,
   }
 }

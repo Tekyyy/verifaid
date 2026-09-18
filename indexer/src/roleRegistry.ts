@@ -74,6 +74,23 @@ ponder.on('RoleRegistry:FieldAgentRemoved', async ({ event, context }) => {
   await context.db.update(schema.roleAccount, { address: event.args.agent }).set({ active: false })
 })
 
+ponder.on('RoleRegistry:SupplierRegistered', async ({ event, context }) => {
+  const { supplier, credentialHash, metadataURI } = event.args
+  await context.db
+    .insert(schema.supplier)
+    .values({ address: supplier, credentialHash, metadataURI, active: true, registeredAt: seconds(event), totalPaid: 0n })
+    .onConflictDoUpdate({ credentialHash, metadataURI, active: true })
+  await context.db
+    .insert(schema.roleAccount)
+    .values({ address: supplier, role: 'SUPPLIER', ngo: null, active: true, registeredAt: seconds(event) })
+    .onConflictDoUpdate({ active: true })
+})
+
+ponder.on('RoleRegistry:SupplierRemoved', async ({ event, context }) => {
+  await context.db.update(schema.supplier, { address: event.args.supplier }).set({ active: false })
+  await context.db.update(schema.roleAccount, { address: event.args.supplier }).set({ active: false })
+})
+
 ponder.on('RoleRegistry:Paused', async ({ event, context }) => {
   await context.db
     .insert(schema.systemState)

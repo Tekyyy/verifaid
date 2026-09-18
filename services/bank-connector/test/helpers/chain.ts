@@ -45,6 +45,7 @@ const ROLE_INDEX = {
   bankPartner: 6,
   donor1: 7,
   relayer: 9,
+  foodSupplier: 10,
 } as const
 export type RoleName = keyof typeof ROLE_INDEX
 
@@ -124,6 +125,7 @@ export const createNeedInFunding = async (
   const custodyMode = options.custodyMode ?? 'OnChain'
   const thirdPartyCostBps = options.thirdPartyCostBps ?? 0
   const dossierHash = keccak256(stringToHex(`bank-dossier-${Date.now()}-${Math.random()}`))
+  const trancheBps = options.trancheBps ?? [5000, 5000]
 
   const receipt = await send(harness, 'ngo', {
     address: deployment.contracts.NeedsRegistry,
@@ -138,7 +140,7 @@ export const createNeedInFunding = async (
         dossierHash,
         metadataURI: 'ipfs://bank-connector-test-need',
         verificationsRequired: 1,
-        trancheBps: options.trancheBps ?? [5000, 5000],
+        trancheBps,
         custodyMode: CUSTODY_MODE.indexOf(custodyMode),
         // An off-chain need names its custodian up front: the payment provider this service signs as.
         custodian: custodyMode === 'OffChain' ? roleAccount('bankPartner').address : zeroAddress,
@@ -148,6 +150,18 @@ export const createNeedInFunding = async (
         thirdPartyCostBps,
         expectedOutcomeHash: keccak256(stringToHex('outcome')),
         costDisclosureHash: thirdPartyCostBps > 0 ? keccak256(stringToHex('cost-disclosure')) : zeroHash,
+        // An on-chain vault pays a registered supplier directly; off-chain money is paid by its custodian.
+        payees:
+          custodyMode === 'OnChain'
+            ? [
+                {
+                  account: roleAccount('foodSupplier').address,
+                  shareBps: trancheBps.map(() => 10_000),
+                  refHash: keccak256(stringToHex('supplier-quote')),
+                  label: 'Test supplier',
+                },
+              ]
+            : [],
       },
     ],
   } as never)

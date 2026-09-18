@@ -2,7 +2,7 @@ import { type Context, ponder } from 'ponder:registry'
 import schema from 'ponder:schema'
 import { currencyLabel } from '@poa/shared'
 import { and, eq } from 'ponder'
-import type { Address, Hex } from 'viem'
+import { type Address, type Hex, zeroAddress } from 'viem'
 import { appendTimeline, eventId, seconds } from './lib/timeline.js'
 
 /**
@@ -222,7 +222,8 @@ ponder.on('Ledger:TrancheReleased', async ({ event, context }) => {
     status: 'Released',
     amount,
     releasedAt: seconds(event),
-    releasedTo: to,
+    // A vault pays the payment plan's payees (see payments.ts); only off-chain custody names one recipient.
+    releasedTo: to === zeroAddress ? null : to,
     releaseTxHash: event.transaction.hash,
   })
 

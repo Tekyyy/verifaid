@@ -246,6 +246,83 @@ export const refund = onchainTable(
   (table) => ({ needIdx: index().on(table.needId), accountIdx: index().on(table.account) }),
 )
 
+// ─── payment plans (v4) ──────────────────────────────────────────────────────
+
+/** A registered supplier (SUPPLIER_ROLE): a vetted service provider that vaults may pay directly. */
+export const supplier = onchainTable('supplier', (t) => ({
+  address: t.hex().primaryKey(),
+  credentialHash: t.hex().notNull(),
+  metadataURI: t.text().notNull(),
+  active: t.boolean().notNull(),
+  registeredAt: t.integer().notNull(),
+  /** Everything vaults delivered to it (held payments count once they are claimed). */
+  totalPaid: t.bigint().notNull(),
+}))
+
+/**
+ * One payee of an on-chain need's payment plan, as committed in `NeedCreated` and updated by approved supplier
+ * replacements. `account` is null for the NGO's own share, which the vault pays to its payout Safe.
+ */
+export const payee = onchainTable(
+  'payee',
+  (t) => ({
+    needId: t.bigint().notNull(),
+    index: t.integer().notNull(),
+    account: t.hex(),
+    label: t.text().notNull(),
+    refHash: t.hex().notNull(),
+    /** number[]: share of each tranche in basis points. */
+    shareBps: t.json().notNull(),
+    /** Share of the whole need in basis points. */
+    needShareBps: t.integer().notNull(),
+    paid: t.bigint().notNull(),
+    held: t.bigint().notNull(),
+  }),
+  (table) => ({
+    pk: primaryKey({ columns: [table.needId, table.index] }),
+    accountIdx: index().on(table.account),
+  }),
+)
+
+/** A payment out of a vault to a payee of its plan, or one held because the token refused the transfer. */
+export const payeePayment = onchainTable(
+  'payee_payment',
+  (t) => ({
+    id: t.text().primaryKey(), // txHash-logIndex
+    needId: t.bigint().notNull(),
+    trancheIndex: t.integer().notNull(),
+    payee: t.hex().notNull(),
+    payeeIndex: t.integer(),
+    toNgo: t.boolean().notNull(),
+    amount: t.bigint().notNull(),
+    held: t.boolean().notNull(),
+    txHash: t.hex().notNull(),
+    timestamp: t.integer().notNull(),
+  }),
+  (table) => ({ needIdx: index().on(table.needId), payeeIdx: index().on(table.payee) }),
+)
+
+/** A supplier replacement: proposed by the NGO, applied once enough independent verifiers approve it. */
+export const payeeChange = onchainTable(
+  'payee_change',
+  (t) => ({
+    changeId: t.bigint().primaryKey(),
+    needId: t.bigint().notNull(),
+    index: t.integer().notNull(),
+    from: t.hex().notNull(),
+    to: t.hex().notNull(),
+    label: t.text().notNull(),
+    refHash: t.hex().notNull(),
+    approvals: t.integer().notNull(),
+    /** Address[] of the verifiers who approved it. */
+    approvedBy: t.json().notNull(),
+    status: t.text().notNull(), // PENDING | APPLIED | CANCELLED
+    proposedAt: t.integer().notNull(),
+    resolvedAt: t.integer(),
+  }),
+  (table) => ({ needIdx: index().on(table.needId) }),
+)
+
 // ─── deposit addresses ───────────────────────────────────────────────────────
 
 /**
@@ -439,8 +516,23 @@ export const needRelations = relations(need, ({ many, one }) => ({
   deliveries: many(delivery),
   attestations: many(attestation),
   timeline: many(timelineEvent),
+  payees: many(payee),
+  payments: many(payeePayment),
+  payeeChanges: many(payeeChange),
   program: one(program, { fields: [need.programId], references: [program.id] }),
   organization: one(ngo, { fields: [need.ngo], references: [ngo.address] }),
+}))
+
+export const payeeRelations = relations(payee, ({ one }) => ({
+  need: one(need, { fields: [payee.needId], references: [need.id] }),
+}))
+
+export const payeePaymentRelations = relations(payeePayment, ({ one }) => ({
+  need: one(need, { fields: [payeePayment.needId], references: [need.id] }),
+}))
+
+export const payeeChangeRelations = relations(payeeChange, ({ one }) => ({
+  need: one(need, { fields: [payeeChange.needId], references: [need.id] }),
 }))
 
 export const trancheRelations = relations(tranche, ({ one }) => ({

@@ -146,6 +146,84 @@ export interface NeedDetail extends NeedSummary {
   donations: DonationView[]
   settlements: SettlementView[]
   impactReport: ImpactReportView | null
+  /** v4 payment plan (on-chain custody): who the vault pays directly. Empty for off-chain custody. */
+  payees: PayeeView[]
+  /** Every payment the vault made (or held) to a payee, oldest first. */
+  payments: PayeePaymentView[]
+  /** Supplier replacements proposed by the NGO, newest first. */
+  payeeChanges: PayeeChangeView[]
+}
+
+// ─── payment plans (v4) ───────────────────────────────────────────────────────
+
+/** A registered supplier (SUPPLIER_ROLE): a vetted service provider that vaults may pay directly. */
+export interface SupplierView {
+  address: Address
+  credentialHash: Hex
+  /** Public profile JSON (legal name, country, what it supplies). */
+  metadataURI: string
+  active: boolean
+  registeredAt: number
+  /** Everything vaults have paid it so far, across needs (vault token base units). */
+  totalPaid: string
+  /** Needs whose payment plan names it (currently or before a replacement). */
+  needIds: string[]
+}
+
+/** One payee of a need's payment plan and what the vault has paid it so far. */
+export interface PayeeView {
+  index: number
+  /** Null for the NGO's own share, which goes to its payout Safe. */
+  account: Address | null
+  /** Public name of the payee and what it provides, as the NGO committed it. */
+  label: string
+  /** Hash of the contract or quote agreed with this payee. */
+  refHash: Hex
+  /** Share of each tranche in basis points, aligned with the need's tranches. */
+  shareBps: number[]
+  /** Share of the whole need in basis points: Σ tranche bps × share / 10 000. */
+  needShareBps: number
+  paid: string
+  /** Released to it but refused by the token (a frozen address); claimable once it can receive. */
+  held: string
+}
+
+/** One payment out of a vault to a payee, or a payment held because the token refused it. */
+export interface PayeePaymentView {
+  needId: string
+  trancheIndex: number
+  payee: Address
+  /** Position in the payment plan; null when the payee is not in the plan any more. */
+  payeeIndex: number | null
+  /** True for the NGO's own share. */
+  toNgo: boolean
+  amount: string
+  held: boolean
+  txHash: Hex
+  timestamp: number
+}
+
+/** A supplier and every payment vaults made to it. */
+export interface SupplierDetail extends SupplierView {
+  payments: PayeePaymentView[]
+}
+
+export type PayeeChangeStatus = 'PENDING' | 'APPLIED' | 'CANCELLED'
+
+/** A supplier replacement: proposed by the NGO, applied after enough independent verifiers approve it. */
+export interface PayeeChangeView {
+  changeId: string
+  index: number
+  from: Address
+  to: Address
+  label: string
+  refHash: Hex
+  approvals: number
+  approvalsRequired: number
+  approvedBy: Address[]
+  status: PayeeChangeStatus
+  proposedAt: number
+  resolvedAt: number | null
 }
 
 export type TimelineEventType =
@@ -176,6 +254,13 @@ export type TimelineEventType =
   | 'DeliveryFinalized'
   | 'DeliveryRejected'
   | 'ImpactReportPublished'
+  | 'PayeePaid'
+  | 'PaymentHeld'
+  | 'HeldPaymentClaimed'
+  | 'PayeeChangeProposed'
+  | 'PayeeChangeApproved'
+  | 'PayeeChanged'
+  | 'PayeeChangeCancelled'
 
 export interface TimelineEvent {
   id: string
@@ -351,6 +436,8 @@ export interface DonationTrack {
   impactReport: ImpactReportView | null
   /** Set when the reference is a deposit address: every sweep and refund it made. */
   deposit: DepositAddressView | null
+  /** Who the vault pays and what each has received; this donation's part of each is `paid × shareBps / 10 000`. */
+  payees: PayeeView[]
   updatedAt: number
 }
 

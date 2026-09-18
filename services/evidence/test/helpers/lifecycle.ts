@@ -102,6 +102,15 @@ export const createNeedInDelivery = async (
         thirdPartyCostBps: 0,
         expectedOutcomeHash: keccak256(stringToHex('outcome')),
         costDisclosureHash: zeroHash,
+        // The vault pays the registered supplier the local seed created, directly.
+        payees: [
+          {
+            account: roleAccount('foodSupplier').address,
+            shareBps: [10_000, 10_000],
+            refHash: keccak256(stringToHex('supplier-quote')),
+            label: 'Test supplier',
+          },
+        ],
       },
     ],
   } as never)

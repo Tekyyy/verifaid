@@ -50,8 +50,8 @@ import { attestation, fail, heading, info, note, step, tx } from './log.js'
  * and here is the money that moved because of it".
  *
  * Four scenarios, one per way a need can go or be paid for:
- *   1. On-chain custody (the proposal's Model B): stablecoin escrow, a wallet donor and a card donor, settlement
- *      reports after every release.
+ *   1. On-chain custody (the proposal's Model B): stablecoin escrow, a wallet donor and a card donor, and every
+ *      tranche paid straight from the vault to the suppliers of the need's payment plan.
  *   2. Off-chain custody (Model A): a payment provider holds the money; its attestations count the funding and
  *      release every tranche. No token touches the ledger.
  *   3. A funding deadline passing below the NGO's minimum: the need expires and the donor is refunded.
@@ -94,7 +94,7 @@ const main = async (): Promise<void> => {
   const ctx = createContext(networkArg)
   const { contracts, external } = ctx.deployment
 
-  heading('Proof of Aid v3 — lifecycle demo')
+  heading('Proof of Aid v4 — lifecycle demo')
   info('network', ctx.network)
   info('rpc', ctx.rpcUrl)
   info('NeedsRegistry', contracts.NeedsRegistry)
@@ -150,13 +150,11 @@ const onChainScenario = async (ctx: DemoContext, programId: bigint, proofs: Proo
   await expectStatus(ctx, needId, 'Funded')
 
   await releaseOnChain(ctx, vault, 0)
-  await settle(ctx, 'ngo', needId, vault, 0, 30n)
 
   let lastSignOff: Hex | undefined
   for (let index = 1; index < spec.trancheBps.length; index += 1) {
     lastSignOff = await runDelivery(ctx, needId, index, proofs)
     await releaseOnChain(ctx, vault, index)
-    await settle(ctx, 'ngo', needId, vault, index, 30n)
   }
 
   await expectStatus(ctx, needId, 'Completed')
@@ -539,6 +537,7 @@ const createNeed = async (
     thirdPartyCostBps: spec.thirdPartyCostBps,
     expectedOutcomeHash: keccak256(stringToHex(spec.outcome)),
     costDisclosureHash: spec.thirdPartyCostBps === 0 ? zeroHash : keccak256(stringToHex(costDisclosure)),
+    payees: spec.custodyMode === 'OnChain' ? paymentPlan(ctx, spec.trancheBps.length) : [],
   }
   const { hash, receipt } = await send(ctx, 'ngo', {
     address: ctx.deployment.contracts.NeedsRegistry,
@@ -713,8 +712,31 @@ const providerRecord = async (
   return refs.paymentRefHash
 }
 
+/**
+ * The demo payment plan: the vault pays the food supplier 90% of every tranche directly, and the NGO keeps 10% for
+ * its own transport and distribution costs (the contract caps the NGO's share at 25% of the need).
+ */
+const paymentPlan = (ctx: DemoContext, tranches: number) => [
+  {
+    account: ctx.accounts.foodSupplier.address,
+    shareBps: Array.from({ length: tranches }, () => 9000),
+    refHash: keccak256(stringToHex('demo-contract-food-kits-2026')),
+    label: 'Mercados del Centro SL: food kits',
+  },
+  {
+    account: zeroAddress,
+    shareBps: Array.from({ length: tranches }, () => 1000),
+    refHash: keccak256(stringToHex('demo-ngo-operations-budget')),
+    label: 'NGO operations: transport and distribution staff',
+  },
+]
+
 const releaseOnChain = async (ctx: DemoContext, vault: Address, index: number): Promise<void> => {
-  step(index === 0 ? 'Tranche 0 is released as pre-financing' : `Tranche ${index} is released`)
+  step(
+    index === 0
+      ? 'Tranche 0 is released as pre-financing, straight to the payment plan'
+      : `Tranche ${index} is released, straight to the payment plan`,
+  )
   const { hash, receipt } = await send(ctx, 'relayer', {
     address: vault,
     abi: aidVaultAbi as Abi,
@@ -722,7 +744,15 @@ const releaseOnChain = async (ctx: DemoContext, vault: Address, index: number): 
     args: [BigInt(index)],
   })
   const amount = eventArg<bigint>(receipt, aidVaultAbi as Abi, 'TrancheReleased', 'amount')
-  info('paid to the NGO payout Safe', `${formatAmount(amount)} units`)
+  info('tranche', `${formatAmount(amount)} units`)
+  for (const paid of parseEventLogs({ abi: aidVaultAbi, eventName: 'PayeePaid', logs: receipt.logs })) {
+    const who =
+      paid.args.payee.toLowerCase() === ctx.accounts.foodSupplier.address.toLowerCase()
+        ? 'supplier (food kits)'
+        : 'NGO operations share'
+    info(`paid to ${who}`, `${formatAmount(paid.args.amount)} units`)
+  }
+  note('the NGO never holds the suppliers\' money: the vault pays them directly')
   tx(ctx.network, 'tx', hash)
 }
 

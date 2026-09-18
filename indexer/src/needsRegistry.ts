@@ -53,6 +53,25 @@ ponder.on('NeedsRegistry:NeedCreated', async ({ event, context }) => {
     expiredAt: null,
   })
 
+  // v4: who the vault pays. The NGO's own share (account zero) goes to its payout Safe at release time.
+  if (params.payees.length > 0) {
+    await context.db.insert(schema.payee).values(
+      params.payees.map((planned, index) => ({
+        needId,
+        index,
+        account: planned.account === zeroAddress ? null : planned.account,
+        label: planned.label,
+        refHash: planned.refHash,
+        shareBps: planned.shareBps.map(Number),
+        needShareBps: Math.floor(
+          planned.shareBps.reduce((sum, share, t) => sum + Number(share) * Number(trancheBps[t] ?? 0), 0) / 10_000,
+        ),
+        paid: 0n,
+        held: 0n,
+      })),
+    )
+  }
+
   // The plan is fixed at creation; the amounts are only known when funding closes.
   await context.db.insert(schema.tranche).values(
     trancheBps.map((bps, index) => ({

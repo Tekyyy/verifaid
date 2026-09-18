@@ -13,9 +13,14 @@ import {
   type ImpactReportView,
   type NeedStatus,
   type NeedSummary,
+  type PayeeChangeStatus,
+  type PayeeChangeView,
+  type PayeePaymentView,
+  type PayeeView,
   regionLabel,
   resolveNetwork,
   type SettlementView,
+  type SupplierView,
   type TimelineEvent,
   type TimelineEventType,
   type TrancheStatus,
@@ -38,6 +43,10 @@ export type RefundRow = typeof schema.refund.$inferSelect
 export type TimelineRow = typeof schema.timelineEvent.$inferSelect
 export type ImpactReportRow = typeof schema.impactReport.$inferSelect
 export type DepositAddressRow = typeof schema.depositAddress.$inferSelect
+export type PayeeRow = typeof schema.payee.$inferSelect
+export type PayeePaymentRow = typeof schema.payeePayment.$inferSelect
+export type PayeeChangeRow = typeof schema.payeeChange.$inferSelect
+export type SupplierRow = typeof schema.supplier.$inferSelect
 export type DepositRefundRow = typeof schema.depositRefund.$inferSelect
 
 const deployment = getDeployment(resolveNetwork(process.env.PONDER_NETWORK ?? 'anvil'))
@@ -203,6 +212,55 @@ export const combineSweeps = (sweeps: DonationRow[]): DonationRow => {
     amountIn: sameToken ? sum((row) => row.amountIn) : null,
   }
 }
+
+export const toPayeeView = (row: PayeeRow): PayeeView => ({
+  index: row.index,
+  account: (row.account as Address | null) ?? null,
+  label: row.label,
+  refHash: row.refHash as Hex,
+  shareBps: row.shareBps as number[],
+  needShareBps: row.needShareBps,
+  paid: row.paid.toString(),
+  held: row.held.toString(),
+})
+
+export const toPayeePaymentView = (row: PayeePaymentRow): PayeePaymentView => ({
+  needId: row.needId.toString(),
+  trancheIndex: row.trancheIndex,
+  payee: row.payee as Address,
+  payeeIndex: row.payeeIndex,
+  toNgo: row.toNgo,
+  amount: row.amount.toString(),
+  held: row.held,
+  txHash: row.txHash as Hex,
+  timestamp: row.timestamp,
+})
+
+/** `approvalsRequired` is the need's own verification threshold: a replacement takes as much as the need took. */
+export const toPayeeChangeView = (row: PayeeChangeRow, approvalsRequired: number): PayeeChangeView => ({
+  changeId: row.changeId.toString(),
+  index: row.index,
+  from: row.from as Address,
+  to: row.to as Address,
+  label: row.label,
+  refHash: row.refHash as Hex,
+  approvals: row.approvals,
+  approvalsRequired,
+  approvedBy: row.approvedBy as Address[],
+  status: row.status as PayeeChangeStatus,
+  proposedAt: row.proposedAt,
+  resolvedAt: row.resolvedAt,
+})
+
+export const toSupplierView = (row: SupplierRow, needIds: string[]): SupplierView => ({
+  address: row.address as Address,
+  credentialHash: row.credentialHash as Hex,
+  metadataURI: row.metadataURI,
+  active: row.active,
+  registeredAt: row.registeredAt,
+  totalPaid: row.totalPaid.toString(),
+  needIds,
+})
 
 export const toSettlementView = (row: SettlementRow): SettlementView => ({
   uid: row.uid as Hex,

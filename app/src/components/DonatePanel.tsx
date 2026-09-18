@@ -67,7 +67,7 @@ export function DonatePanel({
   const explain = useRevertMessage()
   const [checking, setChecking] = useState(false)
   const [value, setValue] = useState('')
-  const [symbol, setSymbol] = useState<DonationToken['symbol']>('EURC')
+  const [symbol, setSymbol] = useState<DonationToken['symbol']>('USDC')
   const [formError, setFormError] = useState<string | null>(null)
   const [receiptId, setReceiptId] = useState<string | null>(null)
 
@@ -75,7 +75,7 @@ export function DonatePanel({
   const token = deployment?.external.Token
   const factory = deployment?.contracts.DonationForwarderFactory
   const router = deployment?.contracts.ConversionRouter
-  // A need that allows no intermediary costs would reject any conversion that costs something: offer EURC only.
+  // A need that allows no intermediary costs would reject any conversion that costs something: offer USDC only.
   const conversionsAllowed = conversionsEnabled && thirdPartyCostBps > 0
   const tokens = deployment
     ? donationTokens(deployment).filter((item) => conversionsAllowed || !item.converted)

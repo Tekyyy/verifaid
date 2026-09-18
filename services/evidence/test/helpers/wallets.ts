@@ -21,6 +21,7 @@ export const ROLE_INDEX = {
   bankPartner: 6,
   donor1: 7,
   donor2: 8,
+  foodSupplier: 10,
 } as const
 
 export type RoleName = keyof typeof ROLE_INDEX
