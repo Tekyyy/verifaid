@@ -315,10 +315,10 @@ contract AidVaultTest is PoATest {
         uint256 expected = vault.getTranches()[0].amount;
 
         vm.expectEmit(true, true, false, true, address(vault));
-        emit ITrancheLedger.TrancheReleased(needId, 0, expected, ngoPayout);
+        emit ITrancheLedger.TrancheReleased(needId, 0, expected, address(0));
         vault.releaseTranche(0);
 
-        assertEq(token.balanceOf(ngoPayout), expected);
+        assertEq(token.balanceOf(supplierA), expected);
         assertEq(vault.totalReleased(), expected);
         assertEq(vault.trancheStatus(0), ITrancheLedger.TrancheStatus.Released);
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.InDelivery);
@@ -371,7 +371,7 @@ contract AidVaultTest is PoATest {
         singleVault.releaseTranche(0);
 
         assertEq(registry.statusOf(single), INeedsRegistry.NeedStatus.Completed);
-        assertEq(token.balanceOf(ngoPayout), 1000e6);
+        assertEq(token.balanceOf(supplierA), 1000e6);
         assertVaultInvariant(singleVault);
     }
 
@@ -425,7 +425,7 @@ contract AidVaultTest is PoATest {
         vault.releaseTranche(2);
 
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Completed);
-        assertEq(token.balanceOf(ngoPayout), 1000e6);
+        assertEq(token.balanceOf(supplierA), 1000e6);
         assertEq(token.balanceOf(address(vault)), 0);
         assertVaultInvariant(vault);
     }

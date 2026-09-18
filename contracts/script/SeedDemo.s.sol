@@ -44,6 +44,8 @@ contract SeedDemo is Script, DeploymentIO {
         address donor1;
         address donor2;
         address relayer;
+        address foodSupplier;
+        address shelterSupplier;
     }
 
     function run() external {
@@ -65,6 +67,16 @@ contract SeedDemo is Script, DeploymentIO {
         if (!roles.hasRole(roles.VERIFIER_ROLE(), a.verifier1)) roles.registerVerifier(a.verifier1);
         if (!roles.hasRole(roles.VERIFIER_ROLE(), a.verifier2)) roles.registerVerifier(a.verifier2);
         if (!roles.hasRole(roles.BANK_PARTNER_ROLE(), a.bankPartner)) roles.registerBankPartner(a.bankPartner);
+        if (!roles.isActiveSupplier(a.foodSupplier)) {
+            roles.registerSupplier(
+                a.foodSupplier, keccak256("demo-supplier-food-wholesaler-ES-B12345678"), "ipfs://demo-supplier-food"
+            );
+        }
+        if (!roles.isActiveSupplier(a.shelterSupplier)) {
+            roles.registerSupplier(
+                a.shelterSupplier, keccak256("demo-supplier-shelter-kits-ES-B87654321"), "ipfs://demo-supplier-shelter"
+            );
+        }
         vm.stopBroadcast();
 
         // ── 2. the NGO onboards its field agent, program and beneficiaries ──
@@ -77,21 +89,22 @@ contract SeedDemo is Script, DeploymentIO {
         groups.addMembers(programId, _demoCommitments());
 
         // ── 3. three needs covering both custody models and every funding rule ──
-        uint256 foodNeed = registry.createNeed(
-            _need(programId, "FOOD", 5000e6, 1, _bps(3000, 4000, 3000), INeedsRegistry.CustodyMode.OnChain, 6000, 150)
+        INeedsRegistry.CreateNeedParams memory food =
+            _need(programId, "FOOD", 5000e6, 1, _bps(3000, 4000, 3000), INeedsRegistry.CustodyMode.OnChain, 6000, 150);
+        food.payees = _plan(a.foodSupplier, "Mercados del Centro SL: food kits", 3, 1000);
+        uint256 foodNeed = registry.createNeed(food);
+        INeedsRegistry.CreateNeedParams memory shelter = _need(
+            programId,
+            "SHELTER",
+            highValueThreshold + 2000e6, // above the threshold → two verifiers required
+            2,
+            _bps(5000, 5000, 0),
+            INeedsRegistry.CustodyMode.OnChain,
+            10_000,
+            0
         );
-        uint256 shelterNeed = registry.createNeed(
-            _need(
-                programId,
-                "SHELTER",
-                highValueThreshold + 2000e6, // above the threshold → two verifiers required
-                2,
-                _bps(5000, 5000, 0),
-                INeedsRegistry.CustodyMode.OnChain,
-                10_000,
-                0
-            )
-        );
+        shelter.payees = _plan(a.shelterSupplier, "Refugio Kits SA: shelter kits", 2, 0);
+        uint256 shelterNeed = registry.createNeed(shelter);
         INeedsRegistry.CreateNeedParams memory cash =
             _need(programId, "CASH", 3000e6, 1, _bps(4000, 6000, 0), INeedsRegistry.CustodyMode.OffChain, 5000, 250);
         cash.custodian = a.bankPartner; // the payment provider that will hold the money
@@ -109,6 +122,7 @@ contract SeedDemo is Script, DeploymentIO {
         console2.log("  field agent    ", a.fieldAgent);
         console2.log("  verifiers      ", a.verifier1, a.verifier2);
         console2.log("  bank partner   ", a.bankPartner);
+        console2.log("  suppliers      ", a.foodSupplier, a.shelterSupplier);
         console2.log("  donors         ", a.donor1, a.donor2);
         console2.log("  program        ", programId);
         console2.log("  need FOOD      ", foodNeed, "target 5000 (1 verification)");
@@ -137,6 +151,9 @@ contract SeedDemo is Script, DeploymentIO {
         a.donor1 = vm.addr(vm.deriveKey(mnemonic, 7));
         a.donor2 = vm.addr(vm.deriveKey(mnemonic, 8));
         a.relayer = vm.addr(vm.deriveKey(mnemonic, 9));
+        // Suppliers never send a transaction in the demo (the vaults pay them), so they need no gas.
+        a.foodSupplier = vm.addr(vm.deriveKey(mnemonic, 10));
+        a.shelterSupplier = vm.addr(vm.deriveKey(mnemonic, 11));
     }
 
     /// @dev Tops up the role wallets that will have to send their own transactions during the demo — including
@@ -231,8 +248,38 @@ contract SeedDemo is Script, DeploymentIO {
             expectedOutcomeHash: keccak256(bytes(string.concat("demo-outcome-", slug))),
             costDisclosureHash: thirdPartyCostBps == 0
                 ? bytes32(0)
-                : keccak256(bytes(string.concat("demo-cost-disclosure-", slug)))
+                : keccak256(bytes(string.concat("demo-cost-disclosure-", slug))),
+            payees: new INeedsRegistry.Payee[](0)
         });
+    }
+
+    /// @dev The vault pays `supplier` directly; the NGO keeps `ngoBps` of each tranche for its own costs.
+    function _plan(address supplier, string memory label, uint256 tranches, uint16 ngoBps)
+        internal
+        pure
+        returns (INeedsRegistry.Payee[] memory plan)
+    {
+        plan = new INeedsRegistry.Payee[](ngoBps == 0 ? 1 : 2);
+        uint16[] memory supplierShares = new uint16[](tranches);
+        uint16[] memory ngoShares = new uint16[](tranches);
+        for (uint256 i; i < tranches; ++i) {
+            supplierShares[i] = 10_000 - ngoBps;
+            ngoShares[i] = ngoBps;
+        }
+        plan[0] = INeedsRegistry.Payee({
+            account: supplier,
+            shareBps: supplierShares,
+            refHash: keccak256(bytes(string.concat("demo-contract-", label))),
+            label: label
+        });
+        if (ngoBps != 0) {
+            plan[1] = INeedsRegistry.Payee({
+                account: address(0),
+                shareBps: ngoShares,
+                refHash: keccak256("demo-ngo-operations-budget"),
+                label: "NGO operations: transport and distribution staff"
+            });
+        }
     }
 
     function _demoCommitments() internal view returns (uint256[] memory) {

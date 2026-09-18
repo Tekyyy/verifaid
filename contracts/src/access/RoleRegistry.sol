@@ -18,6 +18,7 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     bytes32 public constant VERIFIER_ROLE = Roles.VERIFIER_ROLE;
     bytes32 public constant FIELD_AGENT_ROLE = Roles.FIELD_AGENT_ROLE;
     bytes32 public constant BANK_PARTNER_ROLE = Roles.BANK_PARTNER_ROLE;
+    bytes32 public constant SUPPLIER_ROLE = Roles.SUPPLIER_ROLE;
 
     /// @notice NGO profiles (organization data only).
     mapping(address => NgoProfile) public ngos;
@@ -92,6 +93,27 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     function removeBankPartner(address partner) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (!_revokeRole(BANK_PARTNER_ROLE, partner)) revert Errors.InvalidParameter();
         emit BankPartnerRemoved(partner);
+    }
+
+    /// @inheritdoc IRoleRegistry
+    /// @dev A supplier is a separate party by construction: it cannot also be an NGO, a payout Safe, a verifier,
+    ///      a payment provider or a field agent, so an NGO cannot list its own treasury as a "supplier".
+    function registerSupplier(address supplier, bytes32 credentialHash, string calldata uri)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
+        if (supplier == address(0)) revert Errors.ZeroAddress();
+        if (credentialHash == bytes32(0)) revert Errors.InvalidParameter();
+        if (hasRole(SUPPLIER_ROLE, supplier)) revert Errors.AlreadyRegistered();
+        _requireNoOperationalRole(supplier);
+        _grantRole(SUPPLIER_ROLE, supplier);
+        emit SupplierRegistered(supplier, credentialHash, uri);
+    }
+
+    /// @inheritdoc IRoleRegistry
+    function removeSupplier(address supplier) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (!_revokeRole(SUPPLIER_ROLE, supplier)) revert Errors.InvalidParameter();
+        emit SupplierRemoved(supplier);
     }
 
     /// @inheritdoc IRoleRegistry
@@ -174,6 +196,11 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     }
 
     /// @inheritdoc IRoleRegistry
+    function isActiveSupplier(address supplier) external view returns (bool) {
+        return hasRole(SUPPLIER_ROLE, supplier);
+    }
+
+    /// @inheritdoc IRoleRegistry
     function payoutOf(address ngo) external view returns (address) {
         return ngos[ngo].payoutAddress;
     }
@@ -189,8 +216,8 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     function _requireNoOperationalRole(address account) internal view {
         if (
             hasRole(NGO_ROLE, account) || hasRole(VERIFIER_ROLE, account) || hasRole(BANK_PARTNER_ROLE, account)
-                || fieldAgentNgo[account] != address(0) || ngos[account].payoutAddress != address(0)
-                || isPayoutAddress[account]
+                || hasRole(SUPPLIER_ROLE, account) || fieldAgentNgo[account] != address(0)
+                || ngos[account].payoutAddress != address(0) || isPayoutAddress[account]
         ) revert Errors.RoleConflict();
     }
 }

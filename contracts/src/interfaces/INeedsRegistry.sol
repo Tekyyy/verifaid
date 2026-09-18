@@ -26,6 +26,28 @@ interface INeedsRegistry is IRoleAware {
         OffChain
     }
 
+    /// @notice One recipient of a need's money, fixed when the need is created. The vault pays payees directly.
+    struct Payee {
+        address account; // a registered supplier, or address(0) for the NGO's own payout Safe (its disclosed share)
+        uint16[] shareBps; // share of each tranche, aligned with `trancheBps`; each tranche's shares sum to 10_000
+        bytes32 refHash; // event only: hash of the contract or quote agreed with this payee
+        string label; // event only: public name of the payee and what it provides
+    }
+
+    /// @notice A payee as stored: who, and its share of each tranche.
+    struct PayeeShare {
+        address account; // zero = the NGO's payout Safe
+        uint16[] shareBps;
+    }
+
+    /// @notice A proposed replacement of one supplier, waiting for independent verifiers.
+    struct PayeeChange {
+        uint64 id;
+        uint8 index; // position in the payment plan
+        uint8 approvals;
+        address account; // the replacement supplier
+    }
+
     /// @notice Everything an NGO commits to when it registers a need. Emitted in full in `NeedCreated`.
     /// @dev Fields marked "event only" are commitments nothing on-chain reads, so they are logged rather than
     ///      stored: an event log is as immutable as storage and far cheaper.
@@ -46,6 +68,7 @@ interface INeedsRegistry is IRoleAware {
         uint16 thirdPartyCostBps; // disclosed cap on intermediary costs (payment, FX, banking) per amount
         bytes32 expectedOutcomeHash; // event only: expected outcome and partial-execution terms
         bytes32 costDisclosureHash; // event only: the third-party cost disclosure document
+        Payee[] payees; // OnChain only (required): who the vault pays, and how much of each tranche
     }
 
     /// @notice Stored view of a need.
@@ -83,6 +106,20 @@ interface INeedsRegistry is IRoleAware {
     );
     event VerificationRevokedAfterFunding(uint256 indexed needId, address indexed verifier, bytes32 attestationUID);
     event Wired(address vaultFactory, address beneficiaryGroups, address deliveryManager, address resolver);
+    event PayeeChangeProposed(
+        uint256 indexed needId,
+        uint256 indexed changeId,
+        uint8 index,
+        address from,
+        address to,
+        bytes32 refHash,
+        string label
+    );
+    event PayeeChangeApproved(
+        uint256 indexed needId, uint256 indexed changeId, address indexed verifier, uint8 approvals
+    );
+    event PayeeChanged(uint256 indexed needId, uint256 indexed changeId, uint8 index, address from, address to);
+    event PayeeChangeCancelled(uint256 indexed needId, uint256 indexed changeId);
 
     /// @notice Creates a need in `Pending` status. Caller must be an active NGO that owns `p.programId`.
     function createNeed(CreateNeedParams calldata p) external returns (uint256 needId);
@@ -108,6 +145,35 @@ interface INeedsRegistry is IRoleAware {
     ///           Work already done wins during a grace period: while a tranche is releasable or a verified
     ///           delivery is in its challenge window or disputed, expiry waits until `EXPIRY_GRACE_PERIOD` ends.
     function expire(uint256 needId) external;
+
+    /// @notice Proposes replacing the supplier at `index` of an on-chain need's payment plan with another
+    ///         registered supplier. Only the need's NGO; the NGO's own share cannot be moved. It takes effect once
+    ///         as many independent verifiers as the need required approve it, and only for tranches not yet paid.
+    /// @param refHash Hash of the new contract or quote (event only).
+    /// @param label Public name of the replacement and what it provides (event only).
+    function proposePayeeChange(uint256 needId, uint8 index, address account, bytes32 refHash, string calldata label)
+        external
+        returns (uint256 changeId);
+
+    /// @notice Approves the pending payee change. Callable by a verifier independent of the need's NGO.
+    function approvePayeeChange(uint256 needId, uint256 changeId) external;
+
+    /// @notice Withdraws the pending payee change. Only the need's NGO.
+    function cancelPayeeChange(uint256 needId, uint256 changeId) external;
+
+    /// @notice The need's payment plan: every payee and its share of each tranche.
+    function payeesOf(uint256 needId) external view returns (PayeeShare[] memory);
+
+    /// @notice Who a tranche pays and how it is split, with the NGO's share resolved to its payout Safe and zero
+    ///         shares left out. Reverts `SupplierInactive` while a supplier with a share has lost its role, so money
+    ///         never reaches a de-registered supplier: the NGO must replace it first.
+    function trancheSplitOf(uint256 needId, uint256 index)
+        external
+        view
+        returns (address[] memory accounts, uint16[] memory shareBps);
+
+    /// @notice The pending payee change, if any (`id` is zero when none).
+    function pendingPayeeChangeOf(uint256 needId) external view returns (PayeeChange memory);
 
     /// @notice Full need record.
     function getNeed(uint256 needId) external view returns (Need memory);

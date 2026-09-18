@@ -21,6 +21,8 @@ interface ITrancheLedger {
 
     event FundingClosed(uint256 indexed needId, uint256 totalDonated);
     event TrancheReleasable(uint256 indexed needId, uint256 indexed index, uint256 deliveryId);
+    /// @param to The NGO's payout Safe for off-chain custody; zero for a vault, which pays the payment plan's payees
+    ///        (see `IAidVault.PayeePaid`).
     event TrancheReleased(uint256 indexed needId, uint256 indexed index, uint256 amount, address to);
 
     /// @notice Closes funding early once the minimum threshold is met (NGO only, before the funding deadline).

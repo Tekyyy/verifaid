@@ -109,6 +109,11 @@ abstract contract PoATest is Test, SystemDeployer {
     MockV3Aggregator internal usdcUsdFeed;
     MockV3Aggregator internal ethUsdFeed;
     uint16 internal constant MAX_SLIPPAGE_BPS = 100;
+    /// @dev Registered suppliers: the default payment plan pays every tranche to `supplierA`.
+    address internal supplierA = makeAddr("supplierA");
+    address internal supplierB = makeAddr("supplierB");
+    bytes32 internal constant SUPPLIER_QUOTE = keccak256("supplier-quote");
+
     /// @dev Registered on the forwarder factory: may sweep any deposit address (the platform relayer's role).
     address internal keeper = makeAddr("sweepKeeper");
 
@@ -222,6 +227,8 @@ abstract contract PoATest is Test, SystemDeployer {
         roles.registerVerifier(verifier2);
         roles.registerVerifier(verifier3);
         roles.registerBankPartner(bankPartner);
+        roles.registerSupplier(supplierA, keccak256("supplierA-registration"), "ipfs://supplierA");
+        roles.registerSupplier(supplierB, keccak256("supplierB-registration"), "ipfs://supplierB");
         vm.stopPrank();
 
         vm.prank(ngo);
@@ -261,7 +268,7 @@ abstract contract PoATest is Test, SystemDeployer {
     /// @dev v1-equivalent terms: on-chain custody, no deadlines, any amount may execute, no intermediary costs.
     function _needParams(uint256 programId, uint256 target, uint8 verificationsRequired, uint16[] memory bps)
         internal
-        pure
+        view
         returns (INeedsRegistry.CreateNeedParams memory p)
     {
         p = INeedsRegistry.CreateNeedParams({
@@ -280,8 +287,37 @@ abstract contract PoATest is Test, SystemDeployer {
             minFundingBps: 1,
             thirdPartyCostBps: 0,
             expectedOutcomeHash: OUTCOME_HASH,
-            costDisclosureHash: bytes32(0)
+            costDisclosureHash: bytes32(0),
+            payees: _singlePayee(supplierA, bps.length)
         });
+    }
+
+    /// @dev A payment plan that pays every tranche in full to `account`.
+    function _singlePayee(address account, uint256 tranches)
+        internal
+        pure
+        returns (INeedsRegistry.Payee[] memory plan)
+    {
+        plan = new INeedsRegistry.Payee[](1);
+        plan[0] = _payee(account, _uniformShares(tranches, 10_000));
+    }
+
+    function _payee(address account, uint16[] memory shares) internal pure returns (INeedsRegistry.Payee memory) {
+        return INeedsRegistry.Payee({account: account, shareBps: shares, refHash: SUPPLIER_QUOTE, label: "supplier"});
+    }
+
+    function _uniformShares(uint256 tranches, uint16 share) internal pure returns (uint16[] memory shares) {
+        shares = new uint16[](tranches);
+        for (uint256 i; i < tranches; ++i) {
+            shares[i] = share;
+        }
+    }
+
+    /// @dev Off-chain custody: the named provider holds (and pays out) the money, so the need has no payment plan.
+    function _asOffChain(INeedsRegistry.CreateNeedParams memory p, address custodian) internal pure {
+        p.custodyMode = INeedsRegistry.CustodyMode.OffChain;
+        p.custodian = custodian;
+        p.payees = new INeedsRegistry.Payee[](0);
     }
 
     function _createNeed(address owner, uint256 programId, uint256 target, uint8 verificationsRequired)
@@ -324,8 +360,7 @@ abstract contract PoATest is Test, SystemDeployer {
     {
         programId = _createProgram(ngo, 10);
         INeedsRegistry.CreateNeedParams memory p = _needParams(programId, target, 1, _threeTrancheBps());
-        p.custodyMode = INeedsRegistry.CustodyMode.OffChain;
-        p.custodian = bankPartner;
+        _asOffChain(p, bankPartner);
         p.thirdPartyCostBps = thirdPartyCostBps;
         p.costDisclosureHash = thirdPartyCostBps == 0 ? bytes32(0) : COST_DISCLOSURE_HASH;
         needId = _verifiedNeedWith(p);
@@ -584,7 +619,7 @@ abstract contract PoATest is Test, SystemDeployer {
     function assertVaultInvariant(AidVault vault) internal view {
         assertEq(
             token.balanceOf(address(vault)) + vault.totalReleased() + vault.totalRefunded(),
-            vault.totalDonated(),
+            vault.totalDonated() + vault.totalHeld(),
             "vault invariant"
         );
     }

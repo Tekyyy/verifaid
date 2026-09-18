@@ -23,6 +23,11 @@ interface IAidVault is ITrancheLedger {
     );
     event Refunded(uint256 indexed needId, address indexed account, uint256 amount);
     event RefundedByRef(uint256 indexed needId, bytes32 indexed donorRefHash, address indexed to, uint256 amount);
+    /// @notice Part of a released tranche paid straight to a payee of the need's payment plan.
+    event PayeePaid(uint256 indexed needId, uint256 indexed index, address indexed payee, uint256 amount);
+    /// @notice Part of a released tranche the token would not deliver (a frozen address); kept for the payee.
+    event PaymentHeld(uint256 indexed needId, uint256 indexed index, address indexed payee, uint256 amount);
+    event HeldPaymentClaimed(uint256 indexed needId, address indexed payee, uint256 amount);
 
     /// @notice Donates `amount` stablecoin (requires prior approval) and mints a soulbound receipt to the caller.
     function donate(uint256 amount) external returns (uint256 receiptId);
@@ -35,8 +40,19 @@ interface IAidVault is ITrancheLedger {
     ///         the forwarder, which alone can claim its refund. `conversionFee` counts against the cost cap.
     function donateVia(uint256 amount, uint256 conversionFee, address receiptTo) external returns (uint256 receiptId);
 
-    /// @notice Pays a releasable tranche to the NGO's registered payout address. Callable by anyone.
+    /// @notice Pays a releasable tranche straight to the payees of the need's payment plan, split as the plan says
+    ///         (the NGO receives only its disclosed share). Callable by anyone. `TrancheReleased.to` is zero: the
+    ///         recipients are in the `PayeePaid` events that follow.
     function releaseTranche(uint256 index) external;
+
+    /// @notice Sends a payee the payments that were held for it. Callable by anyone; it only ever pays the payee.
+    function claimHeldPayment(address payee) external returns (uint256 amount);
+
+    /// @notice Released money not yet delivered to `payee` (the token refused the transfer).
+    function heldPaymentOf(address payee) external view returns (uint256);
+
+    /// @notice All held payments. Released, so never refundable: they belong to their payees.
+    function totalHeld() external view returns (uint256);
 
     /// @notice Pro-rata refund of the unreleased balance to a direct donor of a cancelled or expired need.
     function claimRefund() external returns (uint256 amount);

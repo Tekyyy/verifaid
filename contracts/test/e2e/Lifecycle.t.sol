@@ -60,19 +60,19 @@ contract LifecycleTest is PoATest {
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Funded);
 
         vault.releaseTranche(0);
-        assertEq(token.balanceOf(ngoPayout), 9000e6, "30% pre-financing");
+        assertEq(token.balanceOf(supplierA), 9000e6, "30% pre-financing");
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.InDelivery);
         assertVaultInvariant(vault);
 
         // ── 7-10. One delivery per remaining tranche ──
         uint256 delivery1 = _deliverTranche(needId, 1);
         vault.releaseTranche(1);
-        assertEq(token.balanceOf(ngoPayout), 21_000e6, "30% + 40%");
+        assertEq(token.balanceOf(supplierA), 21_000e6, "30% + 40%");
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.InDelivery);
 
         uint256 delivery2 = _deliverTranche(needId, 2);
         vault.releaseTranche(2);
-        assertEq(token.balanceOf(ngoPayout), TARGET, "all tranches paid");
+        assertEq(token.balanceOf(supplierA), TARGET, "all tranches paid");
 
         // ── 11. Last release completes the need ──
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Completed);
@@ -210,13 +210,13 @@ contract LifecycleTest is PoATest {
         deliveryManager.resolveDispute(deliveryId, true);
         assertEq(deliveryManager.getDelivery(deliveryId).status, IDeliveryManager.DeliveryStatus.Rejected);
         assertEq(vault.trancheStatus(1), ITrancheLedger.TrancheStatus.Locked);
-        assertEq(token.balanceOf(ngoPayout), 3000e6, "only the pre-financing was paid");
+        assertEq(token.balanceOf(supplierA), 3000e6, "only the pre-financing was paid");
 
         // the field agent redoes the delivery properly and it goes through
         uint256 redone = _deliverTranche(needId, 1);
         vault.releaseTranche(1);
         assertEq(deliveryManager.getDelivery(redone).status, IDeliveryManager.DeliveryStatus.Finalized);
-        assertEq(token.balanceOf(ngoPayout), 7000e6);
+        assertEq(token.balanceOf(supplierA), 7000e6);
         assertVaultInvariant(vault);
     }
 
@@ -236,7 +236,7 @@ contract LifecycleTest is PoATest {
         vm.warp(block.timestamp + CHALLENGE_PERIOD);
         deliveryManager.finalize(deliveryId);
         vault.releaseTranche(1);
-        assertEq(token.balanceOf(ngoPayout), 7000e6);
+        assertEq(token.balanceOf(supplierA), 7000e6);
     }
 
     function test_cancellationRefundsEveryDonorProRata() public {

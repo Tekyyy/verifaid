@@ -22,6 +22,8 @@ interface IRoleRegistry is IAccessControl {
     event BankPartnerRemoved(address indexed partner);
     event FieldAgentAdded(address indexed ngo, address indexed agent);
     event FieldAgentRemoved(address indexed ngo, address indexed agent);
+    event SupplierRegistered(address indexed supplier, bytes32 credentialHash, string metadataURI);
+    event SupplierRemoved(address indexed supplier);
 
     /// @notice Registers an NGO and grants it NGO_ROLE. Admin only.
     function registerNgo(address ngo, address payout, bytes32 credentialHash, string calldata uri) external;
@@ -40,6 +42,17 @@ interface IRoleRegistry is IAccessControl {
 
     /// @notice Revokes BANK_PARTNER_ROLE. Admin only.
     function removeBankPartner(address partner) external;
+
+    /// @notice Grants SUPPLIER_ROLE to a vetted service provider a vault may pay directly. Admin only.
+    /// @param credentialHash Hash of the supplier's company registration / due-diligence file.
+    /// @param uri Public profile JSON (legal name, country, what it supplies).
+    function registerSupplier(address supplier, bytes32 credentialHash, string calldata uri) external;
+
+    /// @notice Revokes SUPPLIER_ROLE: vaults stop paying it until the NGO replaces it. Admin only.
+    function removeSupplier(address supplier) external;
+
+    /// @notice True if `supplier` currently holds SUPPLIER_ROLE.
+    function isActiveSupplier(address supplier) external view returns (bool);
 
     /// @notice Binds a field agent to the calling (active) NGO.
     function addFieldAgent(address agent) external;

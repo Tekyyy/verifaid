@@ -37,6 +37,13 @@ library Errors {
     error DeadlinePassed();
     error BelowMinimumFunding();
     error ReleasePending();
+    error InvalidPaymentPlan();
+    error SupplierNotRegistered();
+    error SupplierInactive();
+    error NgoShareTooHigh();
+    error ChangePending();
+    error NoPendingChange();
+    error AlreadyApproved();
 
     // ─── ledgers and vaults ────────────────────────────────────────────────────
     error NotLedger();
@@ -50,6 +57,7 @@ library Errors {
     error PreviousTrancheNotReleased();
     error NotRefundable();
     error NothingToRefund();
+    error NothingToClaim();
 
     // ─── receipts ──────────────────────────────────────────────────────────────
     error Soulbound();

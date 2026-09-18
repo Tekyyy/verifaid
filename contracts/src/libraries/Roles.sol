@@ -10,4 +10,6 @@ library Roles {
     bytes32 internal constant VERIFIER_ROLE = keccak256("VERIFIER_ROLE");
     bytes32 internal constant FIELD_AGENT_ROLE = keccak256("FIELD_AGENT_ROLE");
     bytes32 internal constant BANK_PARTNER_ROLE = keccak256("BANK_PARTNER_ROLE");
+    /// @dev A vetted service provider (food, shelter, medical, cash-transfer operator) a vault may pay directly.
+    bytes32 internal constant SUPPLIER_ROLE = keccak256("SUPPLIER_ROLE");
 }

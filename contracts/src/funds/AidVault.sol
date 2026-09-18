@@ -16,10 +16,10 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 /// @title AidVault
 /// @notice Escrow for a single need (`CustodyMode.OnChain`). Holds stablecoin until tranches are unlocked by
-///         verified deliveries.
-/// @dev There is intentionally no admin withdrawal path: funds leave only as tranche releases to the NGO's
-///      registered payout address or as pro-rata refunds.
-///      Invariant: token.balanceOf(vault) + totalReleased + totalRefunded == totalDonated.
+///         verified deliveries, then pays each tranche straight to the suppliers of the need's payment plan.
+/// @dev There is intentionally no admin withdrawal path: funds leave only as tranche payments to the payees the
+///      plan names (the NGO only for its disclosed share) or as pro-rata refunds.
+///      Invariant: token.balanceOf(vault) + totalReleased + totalRefunded == totalDonated + totalHeld.
 contract AidVault is TrancheLedger, IAidVault {
     using SafeERC20 for IERC20;
 
@@ -31,6 +31,10 @@ contract AidVault is TrancheLedger, IAidVault {
     IFeeRecorder public immutable feeRecorder;
 
     uint128 private _totalRefunded;
+    /// @inheritdoc IAidVault
+    uint256 public totalHeld;
+    /// @inheritdoc IAidVault
+    mapping(address => uint256) public heldPaymentOf;
 
     /// @notice Unrefunded direct donations per donor address (cleared when the refund is paid).
     mapping(address => uint256) public donatedBy;
@@ -154,9 +158,22 @@ contract AidVault is TrancheLedger, IAidVault {
     function releaseTranche(uint256 index) external nonReentrant onlyClone {
         _requireNotPaused();
         uint256 id = needId();
-        (uint256 amount, address payout) = _release(id, index);
-        token.safeTransfer(payout, amount);
-        emit TrancheReleased(id, index, amount, payout);
+        (uint256 amount,) = _release(id, index);
+        // The payment plan decides who is paid; it reverts while a supplier in this tranche has lost its role.
+        (address[] memory payees, uint16[] memory shares) = registry.trancheSplitOf(id, index);
+        emit TrancheReleased(id, index, amount, address(0));
+        _payPlan(id, index, amount, payees, shares);
+    }
+
+    /// @inheritdoc IAidVault
+    function claimHeldPayment(address payee) external nonReentrant onlyClone returns (uint256 amount) {
+        _requireNotPaused();
+        amount = heldPaymentOf[payee];
+        if (amount == 0) revert Errors.NothingToClaim();
+        delete heldPaymentOf[payee];
+        totalHeld -= amount;
+        token.safeTransfer(payee, amount);
+        emit HeldPaymentClaimed(needId(), payee, amount);
     }
 
     // ─── refunds ───────────────────────────────────────────────────────────────
@@ -230,6 +247,29 @@ contract AidVault is TrancheLedger, IAidVault {
     }
 
     // ─── internal ──────────────────────────────────────────────────────────────
+
+    /// @dev Splits a released tranche by the plan's basis points, rounding dust to the last payee so the tranche is
+    ///      paid out exactly. A transfer the token refuses is held for that payee instead of blocking the others.
+    function _payPlan(uint256 id, uint256 index, uint256 amount, address[] memory payees, uint16[] memory shares)
+        internal
+    {
+        uint256 count = payees.length;
+        if (count == 0) revert Errors.InvalidPaymentPlan();
+        uint256 allocated;
+        for (uint256 i; i < count; ++i) {
+            uint256 share = i == count - 1 ? amount - allocated : (amount * shares[i]) / BPS_DENOMINATOR;
+            allocated += share;
+            if (share == 0) continue;
+            address payee = payees[i];
+            if (token.trySafeTransfer(payee, share)) {
+                emit PayeePaid(id, index, payee, share);
+            } else {
+                heldPaymentOf[payee] += share;
+                totalHeld += share;
+                emit PaymentHeld(id, index, payee, share);
+            }
+        }
+    }
 
     function _refundAmount(uint256 donated) internal view returns (uint256) {
         // totalDonated and totalReleased are frozen once a need is cancelled or expired, so the pro-rata shares sum

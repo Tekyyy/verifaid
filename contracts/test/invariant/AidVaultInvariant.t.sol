@@ -281,6 +281,11 @@ contract AidVaultInvariantTest is PoATest {
         p.minFundingBps = 6000;
         p.thirdPartyCostBps = 200; // converted donations have a swap cost, which the cap must allow
         p.costDisclosureHash = COST_DISCLOSURE_HASH;
+        // Two suppliers and a 10% NGO share of every tranche: the vault pays all three directly.
+        p.payees = new INeedsRegistry.Payee[](3);
+        p.payees[0] = _payee(supplierA, _uniformShares(3, 6000));
+        p.payees[1] = _payee(supplierB, _uniformShares(3, 3000));
+        p.payees[2] = _payee(address(0), _uniformShares(3, 1000));
         vm.prank(ngo);
         needId = registry.createNeed(p);
         _attestNeedVerified(verifier1, needId, true);
@@ -311,13 +316,24 @@ contract AidVaultInvariantTest is PoATest {
         targetContract(address(handler));
     }
 
-    /// @notice The spec's core accounting identity (§5.4).
+    /// @notice The spec's core accounting identity (§5.4), with payments the token refused still in the vault.
     function invariant_vaultAccounting() public view {
         assertEq(
             token.balanceOf(address(vault)) + vault.totalReleased() + vault.totalRefunded(),
-            vault.totalDonated(),
-            "balance + released + refunded == donated"
+            vault.totalDonated() + vault.totalHeld(),
+            "balance + released + refunded == donated + held"
         );
+    }
+
+    /// @notice Every released unit went to a payee of the plan, and in the plan's proportions.
+    function invariant_releasedMoneyReachedOnlyThePlan() public view {
+        uint256 a = token.balanceOf(supplierA);
+        uint256 b = token.balanceOf(supplierB);
+        uint256 ngoShare = token.balanceOf(ngoPayout);
+        assertEq(a + b + ngoShare + vault.totalHeld(), vault.totalReleased(), "released == paid to the plan");
+        // 60 / 30 / 10, each tranche rounded down but for the last payee's dust
+        assertApproxEqAbs(ngoShare * 6, a, 6 * 3, "NGO share stays 10%");
+        assertApproxEqAbs(b * 2, a, 2 * 3, "supplier B stays at half of A");
     }
 
     function invariant_neverPaysOutMoreThanDonated() public view {

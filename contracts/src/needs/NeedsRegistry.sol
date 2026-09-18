@@ -15,6 +15,10 @@ import {Roles} from "../libraries/Roles.sol";
 /// @notice Registers previously verified needs and drives their lifecycle:
 ///         Pending → Verified → Funding → Funded → InDelivery → Completed (or Cancelled / Expired).
 /// @dev Verification happens through EAS `NeedVerified` attestations; the resolver forwards them here.
+///      An on-chain need also carries its payment plan: the registered suppliers its vault pays directly, and the
+///      share of each tranche each one receives (the NGO itself at most `MAX_NGO_SHARE_BPS` of the need). The
+///      plan is fixed at creation, verified with the rest of the need, and a supplier can only be replaced with
+///      the approval of as many independent verifiers as verified the need.
 contract NeedsRegistry is INeedsRegistry, RoleAware {
     uint16 public constant BPS_DENOMINATOR = 10_000;
     uint256 public constant MAX_TRANCHES = 5;
@@ -25,6 +29,11 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     ///         Bounded, so a tranche nobody can release (a suspended NGO, an absent custodian) cannot block
     ///         refunds forever.
     uint256 public constant EXPIRY_GRACE_PERIOD = 14 days;
+    /// @notice Most payees one need can have.
+    uint256 public constant MAX_PAYEES = 5;
+    /// @notice The most of an on-chain need the NGO may pay to itself (operations, staff, logistics); the rest goes
+    ///         straight from the vault to the suppliers named in the plan.
+    uint16 public constant MAX_NGO_SHARE_BPS = 2500;
 
     /// @notice Needs with `targetAmount` above this value require at least two independent verifications.
     uint256 public immutable HIGH_VALUE_THRESHOLD;
@@ -71,6 +80,21 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
 
     /// @notice needId => verifier => UID of the recorded NeedVerified attestation.
     mapping(uint256 => mapping(address => bytes32)) public verificationUID;
+
+    /// @dev One slot per payee: the account (zero = the NGO's payout Safe) and its tranche shares, packed like
+    ///      `trancheBps` except that a share may be zero (a supplier paid only in later tranches).
+    struct PayeeRecord {
+        address account;
+        uint80 shares;
+    }
+
+    mapping(uint256 => PayeeRecord[]) private _payees;
+    mapping(uint256 => PayeeChange) private _pendingChange;
+    /// @dev changeId => verifier => approved. Change ids are global, so approvals never carry over.
+    mapping(uint256 => mapping(address => bool)) private _changeApprovedBy;
+
+    /// @notice Number of payee changes ever proposed (their ids are 1..payeeChangeCount).
+    uint256 public payeeChangeCount;
 
     /// @param roles_ System role registry.
     /// @param highValueThreshold Target amount (base units) above which M-of-N (M ≥ 2) verification is enforced.
@@ -124,6 +148,7 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         n.dossierHash = p.dossierHash;
         if (p.custodyMode == CustodyMode.OffChain) n.custodian = p.custodian;
         // status is Pending (the zero value)
+        _storePayees(needId, p.payees);
 
         emit NeedCreated(needId, msg.sender, p.programId, p);
     }
@@ -139,6 +164,66 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
             if (uint8(s) >= uint8(NeedStatus.Funded)) revert Errors.InvalidNeedStatus();
         }
         _cancel(needId, n, msg.sender);
+    }
+
+    // ─── payment plan ──────────────────────────────────────────────────────────
+
+    /// @inheritdoc INeedsRegistry
+    function proposePayeeChange(uint256 needId, uint8 index, address account, bytes32 refHash, string calldata label)
+        external
+        whenNotPaused
+        returns (uint256 changeId)
+    {
+        NeedRecord storage n = _need(needId);
+        if (msg.sender != n.ngo || !roles.isActiveNgo(msg.sender)) revert Errors.Unauthorized();
+        if (_isTerminal(n.status)) revert Errors.InvalidNeedStatus();
+        if (_pendingChange[needId].id != 0) revert Errors.ChangePending();
+        PayeeRecord[] storage list = _payees[needId];
+        if (index >= list.length) revert Errors.InvalidParameter();
+        address from = list[index].account;
+        // The NGO's own share stays exactly as disclosed: it cannot be moved to, or disguised as, a supplier.
+        if (from == address(0)) revert Errors.InvalidParameter();
+        if (!roles.isActiveSupplier(account)) revert Errors.SupplierNotRegistered();
+        for (uint256 i; i < list.length; ++i) {
+            if (list[i].account == account) revert Errors.InvalidPaymentPlan();
+        }
+
+        changeId = ++payeeChangeCount;
+        _pendingChange[needId] = PayeeChange({id: uint64(changeId), index: index, approvals: 0, account: account});
+        emit PayeeChangeProposed(needId, changeId, index, from, account, refHash, label);
+    }
+
+    /// @inheritdoc INeedsRegistry
+    function approvePayeeChange(uint256 needId, uint256 changeId) external whenNotPaused {
+        NeedRecord storage n = _need(needId);
+        PayeeChange storage change = _pendingChange[needId];
+        if (change.id == 0 || change.id != changeId) revert Errors.NoPendingChange();
+        if (_isTerminal(n.status)) revert Errors.InvalidNeedStatus();
+        if (!roles.isIndependent(msg.sender, n.ngo)) revert Errors.NotIndependent();
+        if (_changeApprovedBy[changeId][msg.sender]) revert Errors.AlreadyApproved();
+
+        _changeApprovedBy[changeId][msg.sender] = true;
+        uint8 approvals = ++change.approvals;
+        emit PayeeChangeApproved(needId, changeId, msg.sender, approvals);
+        if (approvals < n.verificationsRequired) return;
+
+        // The replacement must still be a supplier when it takes effect, not only when it was proposed.
+        address to = change.account;
+        if (!roles.isActiveSupplier(to)) revert Errors.SupplierNotRegistered();
+        uint8 index = change.index;
+        address from = _payees[needId][index].account;
+        _payees[needId][index].account = to;
+        delete _pendingChange[needId];
+        emit PayeeChanged(needId, changeId, index, from, to);
+    }
+
+    /// @inheritdoc INeedsRegistry
+    function cancelPayeeChange(uint256 needId, uint256 changeId) external {
+        NeedRecord storage n = _need(needId);
+        if (msg.sender != n.ngo) revert Errors.Unauthorized();
+        if (_pendingChange[needId].id == 0 || _pendingChange[needId].id != changeId) revert Errors.NoPendingChange();
+        delete _pendingChange[needId];
+        emit PayeeChangeCancelled(needId, changeId);
     }
 
     // ─── anyone ────────────────────────────────────────────────────────────────
@@ -351,6 +436,55 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         return _need(needId).custodian;
     }
 
+    /// @inheritdoc INeedsRegistry
+    function payeesOf(uint256 needId) external view returns (PayeeShare[] memory payees) {
+        uint256 tranches = _unpackTranches(_need(needId).trancheBps).length;
+        PayeeRecord[] storage list = _payees[needId];
+        payees = new PayeeShare[](list.length);
+        for (uint256 i; i < list.length; ++i) {
+            uint16[] memory shares = new uint16[](tranches);
+            for (uint256 t; t < tranches; ++t) {
+                shares[t] = _shareAt(list[i].shares, t);
+            }
+            payees[i] = PayeeShare({account: list[i].account, shareBps: shares});
+        }
+    }
+
+    /// @inheritdoc INeedsRegistry
+    function trancheSplitOf(uint256 needId, uint256 index)
+        external
+        view
+        returns (address[] memory accounts, uint16[] memory shareBps)
+    {
+        NeedRecord storage n = _need(needId);
+        PayeeRecord[] storage list = _payees[needId];
+        uint256 count;
+        for (uint256 i; i < list.length; ++i) {
+            if (_shareAt(list[i].shares, index) != 0) ++count;
+        }
+        accounts = new address[](count);
+        shareBps = new uint16[](count);
+        uint256 j;
+        for (uint256 i; i < list.length; ++i) {
+            uint16 share = _shareAt(list[i].shares, index);
+            if (share == 0) continue;
+            address account = list[i].account;
+            if (account == address(0)) {
+                account = roles.payoutOf(n.ngo);
+            } else if (!roles.isActiveSupplier(account)) {
+                revert Errors.SupplierInactive();
+            }
+            (accounts[j], shareBps[j]) = (account, share);
+            ++j;
+        }
+    }
+
+    /// @inheritdoc INeedsRegistry
+    function pendingPayeeChangeOf(uint256 needId) external view returns (PayeeChange memory) {
+        _need(needId);
+        return _pendingChange[needId];
+    }
+
     // ─── internal ──────────────────────────────────────────────────────────────
 
     function _need(uint256 needId) internal view returns (NeedRecord storage n) {
@@ -388,6 +522,60 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
             }
         }
         _validateTranches(p.trancheBps);
+        _validatePayees(p);
+    }
+
+    /// @dev The rules of a payment plan. Off-chain money is paid by its custodian, so only on-chain needs have one,
+    ///      and every on-chain need must: its vault pays nobody that is not in it.
+    function _validatePayees(CreateNeedParams calldata p) internal view {
+        uint256 count = p.payees.length;
+        if (p.custodyMode == CustodyMode.OffChain) {
+            if (count != 0) revert Errors.InvalidPaymentPlan();
+            return;
+        }
+        if (count == 0 || count > MAX_PAYEES) revert Errors.InvalidPaymentPlan();
+        uint256 tranches = p.trancheBps.length;
+        uint256[MAX_TRANCHES] memory sums;
+        uint256 ngoShare; // Σ trancheBps × the NGO's share of that tranche, in bps × bps
+        bool ngoListed;
+        for (uint256 i; i < count; ++i) {
+            Payee calldata payee = p.payees[i];
+            if (payee.shareBps.length != tranches) revert Errors.InvalidPaymentPlan();
+            address account = payee.account;
+            if (account == address(0)) {
+                if (ngoListed) revert Errors.InvalidPaymentPlan();
+                ngoListed = true;
+            } else {
+                if (!roles.isActiveSupplier(account)) revert Errors.SupplierNotRegistered();
+                for (uint256 j; j < i; ++j) {
+                    if (p.payees[j].account == account) revert Errors.InvalidPaymentPlan();
+                }
+            }
+            uint256 total;
+            for (uint256 t; t < tranches; ++t) {
+                uint256 share = payee.shareBps[t];
+                sums[t] += share;
+                total += share;
+                if (account == address(0)) ngoShare += share * p.trancheBps[t];
+            }
+            // A payee that is never paid has no place in the plan.
+            if (total == 0) revert Errors.InvalidPaymentPlan();
+        }
+        for (uint256 t; t < tranches; ++t) {
+            if (sums[t] != BPS_DENOMINATOR) revert Errors.InvalidPaymentPlan();
+        }
+        if (ngoShare > uint256(MAX_NGO_SHARE_BPS) * BPS_DENOMINATOR) revert Errors.NgoShareTooHigh();
+    }
+
+    function _storePayees(uint256 needId, Payee[] calldata payees) internal {
+        PayeeRecord[] storage list = _payees[needId];
+        for (uint256 i; i < payees.length; ++i) {
+            list.push(PayeeRecord({account: payees[i].account, shares: _packTranches(payees[i].shareBps)}));
+        }
+    }
+
+    function _shareAt(uint80 packed, uint256 index) internal pure returns (uint16) {
+        return index < MAX_TRANCHES ? uint16(packed >> uint80(16 * index)) : 0;
     }
 
     function _validateTranches(uint16[] calldata bps) internal pure {

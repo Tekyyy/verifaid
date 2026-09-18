@@ -174,8 +174,7 @@ contract NonCustodialLedgerTest is PoATest {
 
     function test_expire_belowThresholdMarksTheNeedExpired() public {
         INeedsRegistry.CreateNeedParams memory p = _needParams(programId, TARGET, 1, _threeTrancheBps());
-        p.custodyMode = INeedsRegistry.CustodyMode.OffChain;
-        p.custodian = bankPartner;
+        _asOffChain(p, bankPartner);
         p.fundingDeadline = uint64(block.timestamp + 7 days);
         p.minFundingBps = 5000;
         uint256 shortNeed = _verifiedNeedWith(p);
@@ -276,8 +275,7 @@ contract NonCustodialLedgerTest is PoATest {
 
     function test_expiryAfterExecutionDeadlineWaitsForAnEarnedTranche() public {
         INeedsRegistry.CreateNeedParams memory p = _needParams(programId, TARGET, 1, _threeTrancheBps());
-        p.custodyMode = INeedsRegistry.CustodyMode.OffChain;
-        p.custodian = bankPartner;
+        _asOffChain(p, bankPartner);
         p.executionDeadline = uint64(block.timestamp + 60 days);
         uint256 dueNeed = _verifiedNeedWith(p);
         NonCustodialLedger dueLedger = NonCustodialLedger(registry.vaultOf(dueNeed));

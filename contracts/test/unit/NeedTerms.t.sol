@@ -43,8 +43,7 @@ contract NeedTermsTest is PoATest {
 
     function test_createNeed_storesTheTerms() public {
         INeedsRegistry.CreateNeedParams memory p = _terms(6000);
-        p.custodyMode = INeedsRegistry.CustodyMode.OffChain;
-        p.custodian = bankPartner;
+        _asOffChain(p, bankPartner);
         p.thirdPartyCostBps = 150;
         p.costDisclosureHash = COST_DISCLOSURE_HASH;
 
@@ -65,6 +64,7 @@ contract NeedTermsTest is PoATest {
         uint16[] memory bps = new uint16[](5);
         (bps[0], bps[1], bps[2], bps[3], bps[4]) = (1, 9996, 1, 1, 1);
         p.trancheBps = bps;
+        p.payees = _singlePayee(supplierA, 5);
         uint256 needId = _create(p);
 
         uint16[] memory stored = registry.trancheBpsOf(needId);
@@ -227,7 +227,7 @@ contract NeedTermsTest is PoATest {
         assertEq(tranches[0].status, ITrancheLedger.TrancheStatus.Releasable);
 
         vault.releaseTranche(0);
-        assertEq(token.balanceOf(ngoPayout), 1800e6);
+        assertEq(token.balanceOf(supplierA), 1800e6);
         assertVaultInvariant(vault);
     }
 

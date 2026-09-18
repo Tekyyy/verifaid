@@ -52,8 +52,7 @@ contract V2ReviewFindingsTest is PoATest {
 
     function _offChainParams(uint256 target) internal view returns (INeedsRegistry.CreateNeedParams memory p) {
         p = _needParams(programId, target, 1, _threeTrancheBps());
-        p.custodyMode = INeedsRegistry.CustodyMode.OffChain;
-        p.custodian = bankPartner;
+        _asOffChain(p, bankPartner);
     }
 
     // ─── F1: one named custodian per off-chain need ────────────────────────────
@@ -144,7 +143,7 @@ contract V2ReviewFindingsTest is PoATest {
         assertLt(deliveryManager.getDelivery(d).challengeDeadline, deadline);
         deliveryManager.finalize(d);
         vault.releaseTranche(1);
-        assertEq(token.balanceOf(ngoPayout), 700e6, "the NGO is paid for the delivery it made");
+        assertEq(token.balanceOf(supplierA), 700e6, "the NGO is paid for the delivery it made");
 
         registry.expire(needId);
         vm.prank(donor1);
