@@ -254,6 +254,19 @@ gets stuck between the two.*
   in, with no window for donors to leave first. And a plan can still be changed while the need is Pending, so an
   integrator must follow `PayeeChanged` rather than read the plan out of `NeedCreated` alone.
 
+### 3.16 Taking a donation back (v5)
+
+*A donor withdraws to sabotage a need, or to dodge a cost the NGO disclosed.*
+
+- **Mitigation.** Withdrawals are possible only while the need is still raising, only for the wallet that holds
+  the receipt, and never inside the two days before the funding deadline — so an NGO's go/no-go decision is made
+  on a number that can no longer move. The vault re-checks the disclosed cost cap against the post-withdrawal
+  total and refuses a withdrawal that would push recorded costs over it.
+- **Residual risk.** A donor can still lower a need's raise at any earlier point, which is the price of letting
+  people change their mind; an NGO that needs certainty earlier can close funding as soon as it is above its
+  minimum, which locks both sides at once. And a withdrawal is public — it shows up on the need's timeline and
+  on the donation, so a coordinated pull-out is visible rather than silent.
+
 ### 3.10 GDPR versus immutability
 
 - **Mitigation.** Personal data is only ever in the PII vault, encrypted with a per-record data key. Erasure is

@@ -500,3 +500,47 @@ by `test/regression/V4ReviewFindings.t.sol`.
 Accepted and documented in `THREAT_MODEL.md` §3.15: the admin's vetting is what makes a supplier independent;
 a change has no cooling-off period for donors (unlike `ConversionRouter`'s two days); and a plan may be changed
 while a need is still Pending, so consumers must replay `PayeeChanged` rather than trust `NeedCreated`.
+
+## 16. Taking a donation back (v5)
+
+Until now money could only leave a vault forward, to the payment plan, or back as a **pro-rata refund** once a
+need was cancelled or expired. That is the right rule for money that is already committed — an NGO orders goods
+against the escrow and the plan's suppliers are named on chain — but it made a mistimed or mistaken donation
+irreversible for weeks. `AidVault.withdrawDonation(receiptId, amount)` closes that gap at the only point where
+nothing is committed yet: while the need is still raising.
+
+### The rule
+
+- **Only while funding is open.** The call reverts once `fundingClosed` or the need has left `Funding`: from
+  that moment the tranches are fixed and the plan's suppliers are entitled to them. Reaching the target closes
+  funding in the same transaction as the donation that reached it, so there is no window after a need fills up.
+- **Only the receipt's owner, and only their own money.** The withdrawal names a receipt; `DonationReceipt.reduce`
+  refuses unless the caller owns it, which is also the authorization check. It is bounded by both the receipt's
+  amount and `donatedBy[msg.sender]`, so one receipt can never drain another donation.
+- **Not in the final stretch.** `WITHDRAW_LOCK_PERIOD` (2 days) before the funding deadline, withdrawals stop.
+  Without it a large donor could sink an all-or-nothing need at the last second, after the NGO had already
+  committed to suppliers on the strength of the raise. A need with no funding deadline raises until its target,
+  so it has no window to protect and none is applied.
+- **A withdrawal cannot break a published promise.** The cost cap is a statement about what donors paid, and a
+  donation that is in the vault when a fee is recorded is part of what keeps it true. The vault mirrors
+  `ProofOfAidResolver._checkCostCap` against the post-withdrawal figure and refuses with `FeeExceedsDisclosure`
+  when taking the money out would push the recorded costs over the cap the NGO disclosed.
+- **The receipt is lowered, never burned.** A receipt states what a donation *currently* stands at, so leaving it
+  claiming money the donor took back would make the most visible artefact in the system a lie. The token stays
+  (it is the tracking reference), its amount falls, and the pair of events — `Donated`, `DonationWithdrawn` —
+  remains the full history.
+- **Wallet donations only, for now.** Money deposited by a payment provider or sitting in `donatedByRef` is not
+  withdrawable this way: a different party holds the claim. Deposit addresses already have a better answer —
+  money that has not been swept can be pulled back at any time.
+
+`_totalDonated` is no longer monotonic, which is the change everything downstream had to absorb: the accounting
+identity still holds (balance and donated fall together), the invariant suite now fuzzes withdrawals alongside
+freezes and releases, and the indexer keeps both figures on the donation row (`amount` net, `withdrawn`) rather
+than deleting a row and erasing a fact.
+
+### What was deliberately not built
+
+- **Withdrawing after funding closes.** The NGO has ordered against that escrow. Failure after that point is what
+  tranches, the delivery gate, the execution deadline and pro-rata refunds are for.
+- **A donor-initiated dispute** that freezes releases mid-delivery. It is the honest answer to "something went
+  wrong later", it reuses the existing challenge machinery, and it is a separate feature.

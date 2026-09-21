@@ -20,6 +20,7 @@ import { NeedStatusBadge } from '@/components/StatusBadge'
 import { TermsPanel } from '@/components/TermsPanel'
 import { Timeline } from '@/components/Timeline'
 import { TrancheBar } from '@/components/TrancheBar'
+import { WithdrawDonationPanel } from '@/components/WithdrawDonationPanel'
 import { WorkPhotos } from '@/components/WorkPhotos'
 import { conversionsEnabled } from '@/lib/config'
 import { amount, percent, timestamp } from '@/lib/format'
@@ -232,6 +233,7 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
         <aside className="min-w-0 space-y-6">
           {deadlineReached ? <ExpireButton needId={data.id} /> : null}
           {refundable ? <RefundPanel vault={data.vault} /> : null}
+          <WithdrawDonationPanel need={data} />
 
           {data.custodyMode === 'OnChain' ? (
             <DonatePanel

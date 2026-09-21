@@ -37,6 +37,11 @@ export function DonationList({ donations }: { donations: DonationView[] }) {
             <div className="flex items-center justify-between gap-2">
               <span className="font-semibold tabular-nums">
                 {amount(donation.amount)} {tCommon('amountUnit')}
+                {BigInt(donation.withdrawn) > 0n ? (
+                  <span className="ml-2 text-xs font-normal text-slate-600">
+                    {t('withdrawnNote', { amount: amount(donation.withdrawn) })}
+                  </span>
+                ) : null}
               </span>
               <span className="text-slate-600">{t(KIND_KEY[donation.kind])}</span>
             </div>

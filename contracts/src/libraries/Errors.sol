@@ -48,6 +48,8 @@ library Errors {
     // ─── ledgers and vaults ────────────────────────────────────────────────────
     error NotLedger();
     error FundingNotOpen();
+    /// @notice A donation can no longer be taken back: the funding deadline is too close.
+    error WithdrawalLocked();
     error ExceedsTarget();
     error NothingDonated();
     error PaymentRefAlreadyUsed();

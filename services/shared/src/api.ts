@@ -107,6 +107,8 @@ export interface ConversionView {
 }
 
 export interface DonationView {
+  /** Taken back by the donor while the need was still raising; `amount` is already net of it. */
+  withdrawn: string
   id: string
   needId: string
   kind: DonationKind
@@ -328,6 +330,7 @@ export type TimelineEventType =
   | 'PayeeChanged'
   | 'PayeeChangeCancelled'
   | 'WorkPhotosPublished'
+  | 'DonationWithdrawn'
 
 export interface TimelineEvent {
   id: string

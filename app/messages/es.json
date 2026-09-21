@@ -132,7 +132,8 @@
     "PayeeChangeApproved": "Un verificador aprobó la sustitución",
     "PayeeChanged": "Proveedor sustituido en el plan de pagos",
     "PayeeChangeCancelled": "Sustitución de proveedor retirada",
-    "WorkPhotosPublished": "Fotos del trabajo publicadas"
+    "WorkPhotosPublished": "Fotos del trabajo publicadas",
+    "DonationWithdrawn": "Donación recuperada por quien donó"
   },
   "home": {
     "title": "Ayuda auditable, personas no identificables",
@@ -185,7 +186,8 @@
     "sort_urgency": "Urgencia (plazo más próximo)",
     "sort_gap": "Mayor importe pendiente",
     "sort_newest": "Más recientes",
-    "gap": "Falta"
+    "gap": "Falta",
+    "withdrawnNote": "({amount} recuperados)"
   },
   "need": {
     "title": "Necesidad n.º {id}",
@@ -261,7 +263,14 @@
     "donateQuoteUnavailable": "Ahora mismo no hay precio (una fuente de precios está desactualizada o la ruta no está configurada), así que una donación convertida se revertiría.",
     "donateConvert": "Donar {symbol}",
     "donateInvalidToken": "Introduce un importe en {symbol} con {decimals} decimales como máximo.",
-    "donateReturned": "La necesidad solo puede recibir una parte: hasta {used} {symbol} se convierten y se donan, y los otros {returned} {symbol} vuelven a tu cartera sin convertir."
+    "donateReturned": "La necesidad solo puede recibir una parte: hasta {used} {symbol} se convierten y se donan, y los otros {returned} {symbol} vuelven a tu cartera sin convertir.",
+    "withdrawTitle": "Recupera tu donación",
+    "withdrawBody": "Esta necesidad sigue recaudando, así que todavía no hay nada comprometido con ningún proveedor y el dinero sigue siendo tuyo. Deja el importe vacío para recuperarlo todo.",
+    "withdrawUntil": "Puedes recuperarla hasta el {date}.",
+    "withdrawLocked": "Demasiado cerca de la fecha límite de financiación: las retiradas se cierran 2 días antes, para que la ONG decida si sigue adelante con una cifra ya asentada.",
+    "withdrawAmount": "Importe a recuperar",
+    "withdrawButton": "Recuperarla",
+    "withdrawReceipt": "Recibo n.º {id} · {date}"
   },
   "donor": {
     "title": "Mis donaciones",

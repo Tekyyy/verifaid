@@ -184,8 +184,10 @@ export const donation = onchainTable(
     paymentRefHash: t.hex(),
     /** Payment provider that deposited or recorded the donation. It is the intermediary, never the donor. */
     partner: t.hex(),
-    /** Net amount: what counts toward the target. */
+    /** Net amount that still counts toward the target, i.e. given minus anything withdrawn. */
     amount: t.bigint().notNull(),
+    /** Taken back by the donor while the need was still raising. The `Donated` event keeps the original. */
+    withdrawn: t.bigint().notNull(),
     /** What the donor paid and what the provider kept, once a FundingRecorded attestation states them. */
     gross: t.bigint(),
     fee: t.bigint(),

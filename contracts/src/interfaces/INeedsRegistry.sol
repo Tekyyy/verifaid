@@ -210,5 +210,8 @@ interface INeedsRegistry is IRoleAware {
     function trancheBpsOf(uint256 needId) external view returns (uint16[] memory);
     function custodyModeOf(uint256 needId) external view returns (CustodyMode);
     function thirdPartyCostBpsOf(uint256 needId) external view returns (uint16);
+
+    /// @notice When funding closes, or zero for a need that raises until its target is reached.
+    function fundingDeadlineOf(uint256 needId) external view returns (uint64);
     function custodianOf(uint256 needId) external view returns (address);
 }

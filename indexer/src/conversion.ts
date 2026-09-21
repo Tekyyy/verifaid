@@ -60,6 +60,7 @@ ponder.on('Ledger:DonatedVia', async ({ event, context }) => {
     paymentRefHash: null,
     partner: null,
     amount,
+    withdrawn: 0n,
     gross: null,
     fee: null,
     currency: null,

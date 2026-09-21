@@ -30,6 +30,9 @@ contract AidVault is TrancheLedger, IAidVault {
     /// @notice Where conversion costs are counted against the need's cost cap.
     IFeeRecorder public immutable feeRecorder;
 
+    /// @notice A donation can be taken back until this long before the funding deadline.
+    uint256 public constant WITHDRAW_LOCK_PERIOD = 2 days;
+
     uint128 private _totalRefunded;
     /// @inheritdoc IAidVault
     uint256 public totalHeld;
@@ -150,6 +153,46 @@ contract AidVault is TrancheLedger, IAidVault {
         emit DonatedVia(id, msg.sender, receiptTo, amount, conversionFee, receiptId);
 
         if (_totalDonated == target) _closeFunding(id);
+    }
+
+    /// @inheritdoc IAidVault
+    function withdrawDonation(uint256 receiptId, uint256 amount) external nonReentrant onlyClone {
+        _requireNotPaused();
+        if (amount == 0) revert Errors.ZeroAmount();
+        uint256 id = needId();
+
+        // Only while the need is still raising. Once funding closes the tranches are fixed and the plan's
+        // suppliers are entitled to them; from there money comes back as a refund, not as a withdrawal.
+        if (_fundingClosed || registry.statusOf(id) != INeedsRegistry.NeedStatus.Funding) {
+            revert Errors.FundingNotOpen();
+        }
+        // ...and not at the last moment: the NGO commits to suppliers on the strength of the raise, so the
+        // final stretch before the deadline is settled.
+        uint64 deadline = registry.fundingDeadlineOf(id);
+        if (deadline != 0 && block.timestamp + WITHDRAW_LOCK_PERIOD > deadline) revert Errors.WithdrawalLocked();
+
+        IDonationReceipt.Receipt memory record = receipt.receiptOf(receiptId);
+        if (record.needId != id) revert Errors.InvalidParameter();
+        if (amount > record.amount || amount > donatedBy[msg.sender]) revert Errors.InvalidParameter();
+
+        // What donors paid shrinks, so a cost already recorded must still fit the cap the NGO disclosed: a
+        // withdrawal must not retroactively break a published promise. Mirrors ProofOfAidResolver._checkCostCap,
+        // against what donors would have paid without this donation. Settlement fees cannot exist yet, because
+        // nothing is released while funding is open.
+        uint256 fees = feeRecorder.fundingFeesOf(id);
+        if (fees != 0) {
+            uint256 paidByDonors = uint256(_totalDonated) - amount + fees;
+            if (fees * BPS_DENOMINATOR > paidByDonors * registry.thirdPartyCostBpsOf(id)) {
+                revert Errors.FeeExceedsDisclosure();
+            }
+        }
+
+        donatedBy[msg.sender] -= amount;
+        _totalDonated -= uint128(amount);
+        // Reverts unless msg.sender owns the receipt, so this is also the authorization check.
+        receipt.reduce(receiptId, msg.sender, uint256(record.amount) - amount);
+        token.safeTransfer(msg.sender, amount);
+        emit DonationWithdrawn(id, msg.sender, receiptId, amount);
     }
 
     // ─── tranches ──────────────────────────────────────────────────────────────

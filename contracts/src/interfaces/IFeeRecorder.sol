@@ -10,4 +10,7 @@ interface IFeeRecorder {
     /// @notice Adds `fee` to the need's inbound fees and reverts if the cumulative cap is exceeded. Callable only by
     ///         the need's own vault, after the donation it belongs to was counted.
     function recordConversionFee(uint256 needId, uint256 fee) external;
+
+    /// @notice Inbound fees recorded against a need so far (provider fees and conversion costs).
+    function fundingFeesOf(uint256 needId) external view returns (uint256);
 }

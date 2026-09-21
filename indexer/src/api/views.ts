@@ -178,6 +178,7 @@ export const toDonationView = (row: DonationRow): DonationView => ({
   donorRefHash: (row.donorRefHash as Hex | null) ?? null,
   paymentRefHash: (row.paymentRefHash as Hex | null) ?? null,
   amount: row.amount.toString(),
+  withdrawn: row.withdrawn.toString(),
   gross: row.gross?.toString() ?? null,
   fee: row.fee?.toString() ?? null,
   currency: row.currency,

@@ -87,6 +87,21 @@ contract DonationReceipt is IDonationReceipt, ERC721, RoleAware {
     }
 
     /// @inheritdoc IDonationReceipt
+    /// @dev A receipt states what a donation *currently* stands at, so taking money back has to lower it — the
+    ///      alternative is a public artefact that keeps claiming money the donor no longer gave. The two events
+    ///      (Donated, DonationWithdrawn) remain the full history; this is the standing figure.
+    function reduce(uint256 tokenId, address owner, uint256 newAmount) external {
+        Receipt storage stored = _receipts[tokenId];
+        if (!factory.isVault(msg.sender) || IAidVault(msg.sender).needId() != stored.needId) {
+            revert Errors.NotVault();
+        }
+        if (ownerOf(tokenId) != owner) revert Errors.Unauthorized();
+        if (newAmount > stored.amount) revert Errors.InvalidParameter();
+        stored.amount = uint128(newAmount);
+        emit ReceiptReduced(tokenId, newAmount);
+    }
+
+    /// @inheritdoc IDonationReceipt
     function receiptOf(uint256 tokenId) external view returns (Receipt memory) {
         _requireOwned(tokenId);
         return _receipts[tokenId];

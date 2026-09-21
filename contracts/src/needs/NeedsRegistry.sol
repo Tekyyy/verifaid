@@ -446,6 +446,11 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     }
 
     /// @inheritdoc INeedsRegistry
+    function fundingDeadlineOf(uint256 needId) external view returns (uint64) {
+        return _need(needId).fundingDeadline;
+    }
+
+    /// @inheritdoc INeedsRegistry
     function thirdPartyCostBpsOf(uint256 needId) external view returns (uint16) {
         return _need(needId).thirdPartyCostBps;
     }

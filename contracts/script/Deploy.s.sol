@@ -154,7 +154,7 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
 
         string memory root = "deployment";
         root.serialize("network", _networkName(block.chainid));
-        root.serialize("version", uint256(4));
+        root.serialize("version", uint256(5));
         root.serialize("chainId", block.chainid);
         root.serialize("startBlock", startBlock);
         root.serialize("deployer", deployer);

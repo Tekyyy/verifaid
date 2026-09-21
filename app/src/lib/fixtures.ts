@@ -313,6 +313,7 @@ const donation = (
   receiptId: null,
   attestationUID: null,
   conversion: null,
+  withdrawn: '0',
   txHash: tx(Number(fields.id)),
   timestamp: 1_757_010_000,
   ...fields,

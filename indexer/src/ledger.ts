@@ -36,6 +36,7 @@ ponder.on('Ledger:Donated', async ({ event, context }) => {
     paymentRefHash: null,
     partner: null,
     amount,
+    withdrawn: 0n,
     gross: amount,
     fee: 0n,
     currency: null,
@@ -71,6 +72,40 @@ ponder.on('Ledger:Donated', async ({ event, context }) => {
   })
 })
 
+/**
+ * A donor took money back while the need was still raising. The donation row keeps what was given and what was
+ * withdrawn — deleting it would erase a fact — and everything that reads "raised" uses `amount`, which is the
+ * net. The receipt NFT states the same net, because it is a public claim about a donation that changed.
+ */
+ponder.on('Ledger:DonationWithdrawn', async ({ event, context }) => {
+  const { needId, donor, receiptId, amount } = event.args
+
+  const [row] = await context.db.sql
+    .select({ id: schema.donation.id })
+    .from(schema.donation)
+    .where(and(eq(schema.donation.receiptId, receiptId), eq(schema.donation.needId, needId)))
+    .limit(1)
+  if (row) {
+    await context.db.update(schema.donation, { id: row.id }).set((donation) => ({
+      amount: donation.amount - amount,
+      withdrawn: donation.withdrawn + amount,
+    }))
+  }
+
+  await context.db
+    .update(schema.receipt, { id: receiptId })
+    .set((receipt) => ({ amount: receipt.amount - amount }))
+  await context.db
+    .update(schema.need, { id: needId })
+    .set((need) => ({ totalDonated: need.totalDonated - amount }))
+
+  await appendTimeline(context, event, {
+    needId,
+    type: 'DonationWithdrawn',
+    data: { donor, amount: amount.toString(), receiptId: receiptId.toString() },
+  })
+})
+
 /** Fiat donation deposited by a bank partner. The donor exists only as a salted reference hash (spec §5.6). */
 ponder.on('Ledger:DonatedOnBehalf', async ({ event, context }) => {
   const { needId, partner, amount, donorRefHash, paymentRefHash } = event.args
@@ -79,6 +114,7 @@ ponder.on('Ledger:DonatedOnBehalf', async ({ event, context }) => {
     id: eventId(event),
     needId,
     kind: 'FIAT',
+    withdrawn: 0n,
     donor: null,
     donorRefHash,
     paymentRefHash,
@@ -128,6 +164,7 @@ ponder.on('Ledger:FundingRecorded', async ({ event, context }) => {
     id: eventId(event),
     needId,
     kind: 'OFFCHAIN',
+    withdrawn: 0n,
     donor: null,
     donorRefHash,
     paymentRefHash,

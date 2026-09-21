@@ -33,6 +33,8 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
     uint256 public immutable needId;
 
     address[3] public donors;
+    /// @dev Receipts the handler's donations minted, so `withdrawDonation` has one to name.
+    mapping(address => uint256[]) public receiptsOf;
     address[3] public payees; // the plan: supplier A, supplier B, the NGO's payout Safe
     bytes32[2] public donorRefs;
     uint256 public paymentRefNonce;
@@ -49,6 +51,7 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
     uint256 public forwarderRefundCalls;
     uint256 public freezeCalls;
     uint256 public claimHeldCalls;
+    uint256 public withdrawCalls;
 
     // ─── conversion path ───────────────────────────────────────────────────────
     DonationForwarderFactory public forwarderFactory;
@@ -174,7 +177,7 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
         token.mint(donor, amount);
         vm.startPrank(donor);
         token.approve(address(vault), amount);
-        vault.donate(amount);
+        receiptsOf[donor].push(vault.donate(amount));
         vm.stopPrank();
         donateCalls++;
     }
@@ -265,6 +268,23 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
         refundCalls++;
     }
 
+    /// @dev A donor changes their mind while the need is still raising. Every precondition (funding open, the
+    ///      settling window, the disclosed cost cap) is enforced on chain, so a refusal is a legal outcome here.
+    function withdrawDonation(uint256 actorSeed, uint256 amount) external {
+        address donor = donors[actorSeed % donors.length];
+        uint256[] storage ids = receiptsOf[donor];
+        if (ids.length == 0) return;
+        uint256 receiptId = ids[actorSeed % ids.length];
+        uint256 held = vault.donatedBy(donor);
+        if (held == 0) return;
+        amount = bound(amount, 1, held);
+
+        vm.prank(donor);
+        try vault.withdrawDonation(receiptId, amount) {
+            withdrawCalls++;
+        } catch {}
+    }
+
     /// @dev The stablecoin issuer freezes or unfreezes a payee: its share of a release is held instead of paid.
     function setPayeeFrozen(uint256 seed) external {
         BlocklistEURC(address(token)).setBlocked(payees[seed % payees.length], seed % 3 != 0);
@@ -334,7 +354,7 @@ contract AidVaultInvariantTest is PoATest {
             forwarderFactory, usdc, [eurUsdFeed, usdcUsdFeed, ethUsdFeed], [MOCK_EUR_USD, MOCK_USDC_USD, MOCK_ETH_USD]
         );
 
-        bytes4[] memory selectors = new bytes4[](14);
+        bytes4[] memory selectors = new bytes4[](15);
         selectors[0] = VaultHandler.donate.selector;
         selectors[1] = VaultHandler.donateOnBehalf.selector;
         selectors[2] = VaultHandler.closeFunding.selector;
@@ -349,6 +369,7 @@ contract AidVaultInvariantTest is PoATest {
         selectors[11] = VaultHandler.claimForwarderRefund.selector;
         selectors[12] = VaultHandler.setPayeeFrozen.selector;
         selectors[13] = VaultHandler.claimHeldPayment.selector;
+        selectors[14] = VaultHandler.withdrawDonation.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
         targetContract(address(handler));
     }
@@ -418,7 +439,8 @@ contract AidVaultInvariantTest is PoATest {
         assertTrue(
             handler.donateCalls() + handler.donateOnBehalfCalls() + handler.releaseCalls() + handler.refundCalls()
                     + handler.cancelCalls() + handler.expireCalls() + handler.convertedCalls() + handler.sweepCalls()
-                    + handler.forwarderRefundCalls() + handler.freezeCalls() + handler.claimHeldCalls() >= 0
+                    + handler.forwarderRefundCalls() + handler.freezeCalls() + handler.claimHeldCalls()
+                    + handler.withdrawCalls() >= 0
         );
     }
 }

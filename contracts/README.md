@@ -5,7 +5,7 @@ Solidity 0.8.24, Foundry, OpenZeppelin v5. Dependencies come from npm (`pnpm ins
 ```bash
 pnpm install                # installs OpenZeppelin, EAS, Semaphore, forge-std
 forge build
-forge test                  # 354 tests: unit, fuzz, invariant, end-to-end, real Semaphore, review regressions
+forge test                  # 365 tests: unit, fuzz, invariant, end-to-end, real Semaphore, review regressions
 BASE_MAINNET_RPC_URL=https://mainnet.base.org forge test --match-path test/fork/*   # conversions on real Base
 forge coverage --report summary --no-match-coverage "(script|test|mocks)"
 ```
@@ -17,7 +17,7 @@ forge coverage --report summary --no-match-coverage "(script|test|mocks)"
 | `access/RoleRegistry` | Who is an NGO, a verifier, a field agent, a payment provider (`BANK_PARTNER_ROLE`), a supplier (`SUPPLIER_ROLE`), and the global pause. One address holds at most one operational role, and never held another one before, which is what makes "independent verifier" and "independent supplier" checkable on-chain. |
 | `needs/NeedsRegistry` | The need (the proposal's *NeedClaim*): its terms, lifecycle and state machine. Records verifications forwarded by the resolver, clones the need's ledger when the threshold is reached, and applies deadlines through the permissionless `expire`. |
 | `funds/TrancheLedger` | Funding and tranche rules shared by both custody modes: the minimum threshold, the tranche split of what was actually raised, releases in order, and the delivery gate. |
-| `funds/AidVault` | On-chain custody (Model B). Escrow for stablecoin donations from wallets and payment providers; pays each released tranche straight to the need's payment plan (registered suppliers, and the NGO only for its disclosed share); refunds pro-rata if the need is cancelled or expires. **No admin withdrawal path exists.** |
+| `funds/AidVault` | On-chain custody (Model B). Escrow for stablecoin donations from wallets and payment providers; a donor can take a donation back while the need is still raising; pays each released tranche straight to the need's payment plan (registered suppliers, and the NGO only for its disclosed share); refunds pro-rata if the need is cancelled or expires. **No admin withdrawal path exists.** |
 | `funds/NonCustodialLedger` | Off-chain custody (Model A). No token ever touches it: the need's named custodian records funding and tranche payouts by attestation, under the same rules. |
 | `funds/AidVaultFactory` | Clones one ledger per verified need, with the need id baked into the clone's code; also the system-wide registry of payment references, scoped per provider. |
 | `funds/DonationReceipt` | Soulbound (ERC-5192) ERC-721 receipt with fully on-chain metadata. Evidence, not an asset, so it cannot be transferred or sold. |

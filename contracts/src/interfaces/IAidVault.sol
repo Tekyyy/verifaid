@@ -28,6 +28,8 @@ interface IAidVault is ITrancheLedger {
     /// @notice Part of a released tranche the token would not deliver (a frozen address); kept for the payee.
     event PaymentHeld(uint256 indexed needId, uint256 indexed index, address indexed payee, uint256 amount);
     event HeldPaymentClaimed(uint256 indexed needId, address indexed payee, uint256 amount);
+    /// @notice A donor took back part or all of a donation while the need was still raising.
+    event DonationWithdrawn(uint256 indexed needId, address indexed donor, uint256 indexed receiptId, uint256 amount);
     /// @notice A held payment moved to the payee that replaced the one it was owed to.
     event HeldPaymentReassigned(uint256 indexed needId, address indexed from, address indexed to, uint256 amount);
 
@@ -46,6 +48,12 @@ interface IAidVault is ITrancheLedger {
     ///         (the NGO receives only its disclosed share). Callable by anyone. `TrancheReleased.to` is zero: the
     ///         recipients are in the `PayeePaid` events that follow.
     function releaseTranche(uint256 index) external;
+
+    /// @notice Takes back `amount` of the donation `receiptId` records, while the need is still raising.
+    /// @dev Only the receipt's owner, only while funding is open, and not within `WITHDRAW_LOCK_PERIOD` of the
+    ///      funding deadline: an NGO decides whether to go ahead on a number that is settled. Once funding
+    ///      closes the money is committed to the need's payment plan and only refunds can return it.
+    function withdrawDonation(uint256 receiptId, uint256 amount) external;
 
     /// @notice Sends a payee the payments that were held for it. Callable by anyone; it only ever pays the payee.
     function claimHeldPayment(address payee) external returns (uint256 amount);

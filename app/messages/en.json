@@ -132,7 +132,8 @@
     "PayeeChangeApproved": "Verifier approved the replacement",
     "PayeeChanged": "Supplier replaced in the payment plan",
     "PayeeChangeCancelled": "Supplier replacement withdrawn",
-    "WorkPhotosPublished": "Photos of the work published"
+    "WorkPhotosPublished": "Photos of the work published",
+    "DonationWithdrawn": "Donation taken back by the donor"
   },
   "home": {
     "title": "Aid you can audit, beneficiaries you cannot identify",
@@ -185,7 +186,8 @@
     "sort_urgency": "Urgency (soonest deadline)",
     "sort_gap": "Largest funding gap",
     "sort_newest": "Newest",
-    "gap": "Still needed"
+    "gap": "Still needed",
+    "withdrawnNote": "({amount} taken back)"
   },
   "need": {
     "title": "Need #{id}",
@@ -261,7 +263,14 @@
     "donateQuoteUnavailable": "No live price right now (a price feed is stale or the route is not configured), so a converted donation would revert.",
     "donateConvert": "Donate {symbol}",
     "donateInvalidToken": "Enter an amount in {symbol} with at most {decimals} decimals.",
-    "donateReturned": "The need can only take part of this: up to {used} {symbol} is converted and donated, and the other {returned} {symbol} is returned to your wallet unconverted."
+    "donateReturned": "The need can only take part of this: up to {used} {symbol} is converted and donated, and the other {returned} {symbol} is returned to your wallet unconverted.",
+    "withdrawTitle": "Take your donation back",
+    "withdrawBody": "This need is still raising, so nothing has been committed to a supplier yet and the money is still yours. Leave the amount empty to take all of it.",
+    "withdrawUntil": "You can take it back until {date}.",
+    "withdrawLocked": "Too close to the funding deadline: withdrawals stop 2 days before it, so the NGO decides whether to go ahead on a settled number.",
+    "withdrawAmount": "Amount to take back",
+    "withdrawButton": "Take it back",
+    "withdrawReceipt": "Receipt #{id} · {date}"
   },
   "donor": {
     "title": "My donations",
