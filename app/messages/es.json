@@ -412,7 +412,15 @@
     "planEmptyPayee": "Un destinatario que nunca recibe nada no puede estar en el plan.",
     "planNgoTwice": "La ONG solo puede aparecer una vez en el plan.",
     "planTrancheSum": "Las partes de cada tramo deben sumar exactamente 100%.",
-    "planNgoCap": "La parte de la propia ONG no puede superar el 25% de la necesidad."
+    "planNgoCap": "La parte de la propia ONG no puede superar el 25% de la necesidad.",
+    "changeTitle": "Sustituir a un proveedor del plan de pagos",
+    "changeBody": "Un proveedor que no puede entregar se puede cambiar por otro registrado. Solo surte efecto cuando lo aprueban suficientes verificadores independientes, y un tramo que ya se puede liberar no se puede redirigir: libéralo primero, para que cobre quien hizo el trabajo.",
+    "changeWhich": "A quién se sustituye",
+    "changePickPayee": "Elige a quién sustituir…",
+    "changeNoNgo": "La parte de la propia ONG no se puede mover ni renombrar.",
+    "changeReplacement": "Sustituido por",
+    "changePropose": "Proponer la sustitución",
+    "changeErrorFields": "Indica la necesidad, a quién sustituyes y la dirección de un proveedor registrado."
   },
   "verifier": {
     "title": "Cola del verificador",
@@ -433,7 +441,13 @@
     "noEvidence": "Esta entrega aún no tiene atestación de evidencia, así que no se puede firmar.",
     "emptyNeeds": "No hay necesidades esperando verificación.",
     "emptyDeliveries": "No hay entregas esperando firma.",
-    "deadlinePassed": "Ha vencido un plazo de esta necesidad, así que ya no se puede verificar; solo puede caducar."
+    "deadlinePassed": "Ha vencido un plazo de esta necesidad, así que ya no se puede verificar; solo puede caducar.",
+    "changeTitle": "Sustituciones de proveedor",
+    "changeBody": "Una ONG propone pagar a otro proveedor. Comprueba al nuevo proveedor como comprobaste la necesidad y apruébalo: la aprobación que alcanza el umbral cambia a dónde va el dinero.",
+    "changeNone": "No hay nada pendiente de ti en esta necesidad.",
+    "changeApprove": "Aprobar la sustitución",
+    "changeErrorNeed": "Introduce primero el id de la necesidad.",
+    "needId": "Id de la necesidad"
   },
   "field": {
     "title": "Agente de campo",

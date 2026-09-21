@@ -412,7 +412,15 @@
     "planEmptyPayee": "A payee that never receives anything cannot be in the plan.",
     "planNgoTwice": "The NGO can only appear once in the plan.",
     "planTrancheSum": "The shares of every tranche must add up to exactly 100%.",
-    "planNgoCap": "The NGO’s own share cannot exceed 25% of the need."
+    "planNgoCap": "The NGO’s own share cannot exceed 25% of the need.",
+    "changeTitle": "Replace a supplier in a payment plan",
+    "changeBody": "A supplier that cannot deliver can be swapped for another registered one. It only takes effect once enough independent verifiers approve it, and a tranche that is already releasable cannot be redirected: release it first, so whoever did the work is paid.",
+    "changeWhich": "Which payee",
+    "changePickPayee": "Choose a payee…",
+    "changeNoNgo": "The NGO’s own share cannot be moved or renamed.",
+    "changeReplacement": "Replaced by",
+    "changePropose": "Propose the replacement",
+    "changeErrorFields": "Give a need, the payee to replace and a registered supplier address."
   },
   "verifier": {
     "title": "Verifier queue",
@@ -433,7 +441,13 @@
     "noEvidence": "This delivery has no evidence attestation yet, so it cannot be signed off.",
     "emptyNeeds": "No needs are waiting for verification.",
     "emptyDeliveries": "No deliveries are waiting for sign-off.",
-    "deadlinePassed": "A deadline of this need has passed, so it can no longer be verified; it can only expire."
+    "deadlinePassed": "A deadline of this need has passed, so it can no longer be verified; it can only expire.",
+    "changeTitle": "Supplier replacements",
+    "changeBody": "An NGO proposed to pay a different supplier. Check the new supplier the way you checked the need, then approve: the approval that reaches the threshold moves where the money goes.",
+    "changeNone": "Nothing is waiting on you for this need.",
+    "changeApprove": "Approve the replacement",
+    "changeErrorNeed": "Enter the need id first.",
+    "needId": "Need id"
   },
   "field": {
     "title": "Field agent",

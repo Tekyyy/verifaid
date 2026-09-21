@@ -8,6 +8,7 @@ import { useReadContract } from 'wagmi'
 import { CreateNeedPanel } from '@/components/CreateNeedPanel'
 import { FormError, Panel, TextArea, TextField } from '@/components/form'
 import { MissingDeployment, Notice } from '@/components/Notice'
+import { ProposePayeeChangePanel } from '@/components/PayeeChangePanel'
 import { SettlementPanel } from '@/components/SettlementPanel'
 import { TxStatus } from '@/components/TxStatus'
 import { deployment } from '@/lib/config'
@@ -25,6 +26,7 @@ export function NgoConsole() {
       <CreateNeedPanel />
       <CloseFunding />
       <ReleaseTranche />
+      <ProposePayeeChangePanel />
       <SettlementPanel />
       <PublishImpactReport />
     </div>

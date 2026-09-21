@@ -10,6 +10,7 @@ import { CustodyBadge } from '@/components/CustodyBadge'
 import { Deadline } from '@/components/Deadline'
 import { FormError, TextField } from '@/components/form'
 import { EmptyState, MissingDeployment } from '@/components/Notice'
+import { ApprovePayeeChangePanel } from '@/components/PayeeChangePanel'
 import { DeliveryStatusBadge } from '@/components/StatusBadge'
 import { TxStatus } from '@/components/TxStatus'
 import { Link } from '@/i18n/navigation'
@@ -43,6 +44,8 @@ export function VerifierQueue({ needs, deliveries }: { needs: NeedSummary[]; del
           needs.map((need) => <NeedRow key={need.id} need={need} />)
         )}
       </section>
+
+      <ApprovePayeeChangePanel />
 
       <section aria-labelledby="deliveries-queue" className="space-y-3">
         <h2 id="deliveries-queue" className="section-title">
