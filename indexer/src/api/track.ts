@@ -1,4 +1,5 @@
 import {
+  type NeedBadges,
   type DepositAddressView,
   type DonationOutcome,
   type DonationTrack,
@@ -52,6 +53,8 @@ export interface TrackInputs {
   timeline: TimelineRow[]
   /** The deposit address behind a 'deposit' reference, with its sweeps and refunds. */
   deposit: DepositAddressView | null
+  /** The public record of the NGO behind the need, computed by the route that loaded it. */
+  badges: NeedBadges
   /** v4 payment plan and the vault's payments to it (empty for off-chain custody). */
   payees: PayeeRow[]
   payments: PayeePaymentRow[]
@@ -215,7 +218,7 @@ export const buildDonationTrack = (inputs: TrackInputs): DonationTrack => {
     ref: inputs.ref,
     refKind: inputs.refKind,
     donation: toDonationView(donation),
-    need: toNeedSummary(need),
+    need: { ...toNeedSummary(need), badges: inputs.badges },
     shareBps: funding === 0n ? 0 : Number((donation.amount * 10_000n) / funding),
     stages,
     currentStage,

@@ -1,0 +1,102 @@
+import {
+  type CommunitySchemaName,
+  decodeCommunityData,
+  type SupplierApplicationData,
+  type WorkPhotosData,
+} from '@poa/shared'
+import schema from 'ponder:schema'
+import type { Address, Hex } from 'viem'
+
+/**
+ * The two schemas with no resolver (see `RegisterCommunitySchemas.s.sol`): anyone can attest them and nothing
+ * on-chain reads them, so this is where they are given meaning — and where the rules the chain does not enforce
+ * are applied instead:
+ *
+ * - **Work photos** count only when the need's own NGO signed them. Anyone else's attestation on that need is
+ *   ignored, so the "photos published" tag always means "published by the organisation accountable for it".
+ * - **Supplier applications** count only when the applicant signed for itself. An application is a public
+ *   request, never a grant: `SUPPLIER_ROLE` is still an admin decision on chain.
+ */
+
+/** Bounds, because this data is free to write: a page renders a handful of photos, not a thousand. */
+const MAX_PHOTOS = 12
+const MAX_URL = 500
+const MAX_TEXT = 500
+
+const trim = (value: string, max: number): string => (value.length > max ? value.slice(0, max) : value)
+
+/** Only what a browser can render as an image src, and only from schemes a page can be told to fetch. */
+const usablePhotos = (photos: readonly string[]): string[] =>
+  photos
+    .filter((url) => /^(https:\/\/|ipfs:\/\/)/i.test(url.trim()) && url.trim().length <= MAX_URL)
+    .slice(0, MAX_PHOTOS)
+    .map((url) => url.trim())
+
+interface AttestationContext {
+  uid: Hex
+  attester: Address
+  data: Hex
+  timestamp: number
+  txHash: Hex
+  // biome-ignore lint/suspicious/noExplicitAny: Ponder's generated db type is not exported
+  db: any
+}
+
+/** Returns the need a community attestation belongs to, so the caller can still write a timeline row for it. */
+export const recordCommunityAttestation = async (
+  name: CommunitySchemaName,
+  ctx: AttestationContext,
+): Promise<bigint | null> => {
+  if (name === 'WorkPhotos') {
+    const [needId, photos, note] = decodeCommunityData<WorkPhotosData>('WorkPhotos', ctx.data)
+    const need = await ctx.db.find(schema.need, { id: needId })
+    // Only the NGO that owns the need can publish its work photos.
+    if (!need || need.ngo.toLowerCase() !== ctx.attester.toLowerCase()) return null
+    const usable = usablePhotos(photos)
+    if (usable.length === 0) return null
+
+    await ctx.db.insert(schema.workPhotos).values({
+      uid: ctx.uid,
+      needId,
+      ngo: ctx.attester,
+      photos: usable,
+      note: trim(note, MAX_TEXT),
+      revoked: false,
+      timestamp: ctx.timestamp,
+      txHash: ctx.txHash,
+    })
+    return needId
+  }
+
+  const [supplier, label, services, uri, credentialHash] = decodeCommunityData<SupplierApplicationData>(
+    'SupplierApplication',
+    ctx.data,
+  )
+  // An application is a request to register *yourself*: nobody applies on someone else's behalf.
+  if (supplier.toLowerCase() !== ctx.attester.toLowerCase()) return null
+
+  await ctx.db.insert(schema.supplierApplication).values({
+    uid: ctx.uid,
+    supplier,
+    name: trim(label, MAX_TEXT),
+    services: trim(services, MAX_TEXT),
+    uri: trim(uri, MAX_URL),
+    credentialHash,
+    revoked: false,
+    timestamp: ctx.timestamp,
+    txHash: ctx.txHash,
+  })
+  return null
+}
+
+/** Revoking a community attestation withdraws it: the photos stop counting, the application stops showing. */
+export const revokeCommunityAttestation = async (
+  name: CommunitySchemaName,
+  // biome-ignore lint/suspicious/noExplicitAny: Ponder's generated db type is not exported
+  db: any,
+  uid: Hex,
+): Promise<void> => {
+  const table = name === 'WorkPhotos' ? schema.workPhotos : schema.supplierApplication
+  const row = await db.find(table, { uid })
+  if (row) await db.update(table, { uid }).set({ revoked: true })
+}

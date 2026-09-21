@@ -45,6 +45,8 @@ export interface NeedSummary {
   settlementFees: string
   createdAt: number
   expiredAt: number | null
+  /** Public record of the organisation behind it; see `NeedBadges`. */
+  badges: NeedBadges
 }
 
 /** Ways to order the needs list. `urgency` = soonest funding deadline first, then the largest funding gap. */
@@ -152,6 +154,8 @@ export interface NeedDetail extends NeedSummary {
   payments: PayeePaymentView[]
   /** Supplier replacements proposed by the NGO, newest first. */
   payeeChanges: PayeeChangeView[]
+  /** Photos of the work, published by this need's NGO, newest first. */
+  photos: WorkPhotoView[]
 }
 
 // ─── payment plans (v4) ───────────────────────────────────────────────────────
@@ -206,6 +210,48 @@ export interface PayeePaymentView {
 /** A supplier and every payment vaults made to it. */
 export interface SupplierDetail extends SupplierView {
   payments: PayeePaymentView[]
+}
+
+/** Photos of finished work an NGO published for one of its needs. */
+export interface WorkPhotoView {
+  uid: Hex
+  needId: string
+  photos: string[]
+  note: string
+  timestamp: number
+  txHash: Hex
+}
+
+/** A supplier that asked to be registered. An admin still has to grant the role. */
+export interface SupplierApplicationView {
+  uid: Hex
+  supplier: Address
+  name: string
+  services: string
+  uri: string
+  credentialHash: Hex
+  /** True once the admin granted SUPPLIER_ROLE to this address. */
+  registered: boolean
+  timestamp: number
+  txHash: Hex
+}
+
+/**
+ * What a need's card can say about the organisation behind it, computed from what actually happened on chain:
+ * whether it publishes photos of the work, and whether the money it released reached the payees its plans
+ * named. Both are facts, not reputation — nobody awards them.
+ */
+export interface NeedBadges {
+  /** Live (non-revoked) work-photo attestations the need's own NGO published for it. */
+  workPhotos: number
+  /**
+   * Share of everything this NGO ever released that reached a payee, in basis points; null before it has
+   * released anything. Below 10000 means a payment is still held because a token refused it.
+   */
+  payoutAccuracyBps: number | null
+  /** Needs of this NGO that reached Completed, and how many it has run in total. */
+  needsCompleted: number
+  needsTotal: number
 }
 
 /** One NGO programme: a Semaphore group, the hash of its published eligibility rules and who is enrolled. */
@@ -281,6 +327,7 @@ export type TimelineEventType =
   | 'PayeeChangeApproved'
   | 'PayeeChanged'
   | 'PayeeChangeCancelled'
+  | 'WorkPhotosPublished'
 
 export interface TimelineEvent {
   id: string

@@ -4,7 +4,7 @@ import { ExplorerLink } from '@/components/ExplorerLink'
 import { EmptyState, IndexerNotice } from '@/components/Notice'
 import { Link } from '@/i18n/navigation'
 import { amount, shorten, timestamp } from '@/lib/format'
-import { getSuppliers } from '@/lib/indexer'
+import { getSupplierApplications, getSuppliers } from '@/lib/indexer'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +26,8 @@ export default async function SuppliersPage() {
   const t = await getTranslations('suppliers')
   const tCommon = await getTranslations('common')
   const suppliers = await getSuppliers()
+  const applications = await getSupplierApplications()
+  const pending = applications.ok ? applications.data.filter((row) => !row.registered) : []
   const unit = tCommon('amountUnit')
 
   return (
@@ -33,11 +35,39 @@ export default async function SuppliersPage() {
       <header>
         <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
         <p className="mt-1 max-w-3xl text-sm text-slate-700">{t('subtitle')}</p>
+        <p className="mt-2 text-sm">
+          <Link className="link" href="/suppliers/apply">
+            {t('applyCta')}
+          </Link>
+        </p>
       </header>
 
       {!suppliers.ok ? <IndexerNotice error={suppliers.error} /> : null}
       {suppliers.ok && suppliers.data.length === 0 ? (
         <EmptyState title={t('empty')} body={t('emptyBody')} />
+      ) : null}
+
+      {pending.length > 0 ? (
+        <section aria-labelledby="applications" className="space-y-3">
+          <h2 id="applications" className="section-title">
+            {t('applicationsTitle')}
+          </h2>
+          <p className="text-sm text-slate-700">{t('applicationsNote')}</p>
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {pending.map((application) => (
+              <li key={application.uid} className="card">
+                <p className="font-semibold text-slate-900">{application.name}</p>
+                <p className="mono text-xs text-slate-600">{application.supplier}</p>
+                <p className="mt-2 text-sm text-slate-800">{application.services}</p>
+                <p className="mt-2 flex flex-wrap items-center gap-x-2 text-xs text-slate-600">
+                  <span className="badge bg-amber-100 text-amber-900">{t('applicationPending')}</span>
+                  <span>{timestamp(application.timestamp)}</span>
+                  <ExplorerLink kind="attestation" value={application.uid} />
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
 
       {suppliers.ok && suppliers.data.length > 0 ? (

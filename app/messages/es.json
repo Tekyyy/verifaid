@@ -131,7 +131,8 @@
     "PayeeChangeProposed": "Sustitución de proveedor propuesta",
     "PayeeChangeApproved": "Un verificador aprobó la sustitución",
     "PayeeChanged": "Proveedor sustituido en el plan de pagos",
-    "PayeeChangeCancelled": "Sustitución de proveedor retirada"
+    "PayeeChangeCancelled": "Sustitución de proveedor retirada",
+    "WorkPhotosPublished": "Fotos del trabajo publicadas"
   },
   "home": {
     "title": "Ayuda auditable, personas no identificables",
@@ -458,7 +459,21 @@
     "summaryPlan": "La bóveda paga directamente a {payee}; tu organización se queda el {ngo}% de cada tramo.",
     "summaryPlanCustom": "quienes figuran en tu plan",
     "summaryVerifications": "{count} verificador(es) independiente(s) deben atestiguarla antes de que reciba un céntimo.",
-    "programConnect": "Conecta la cartera con la que está registrada tu ONG para ver sus programas."
+    "programConnect": "Conecta la cartera con la que está registrada tu ONG para ver sus programas.",
+    "photosTitle": "Publica fotos del trabajo",
+    "photosBody": "Enseña a quien dona qué compró su dinero. Firmas los enlaces, no las imágenes: alójalas donde quieras (tu web, IPFS) y pega las URL. Solo cuentan las fotos publicadas por la ONG dueña de la necesidad, y entonces la necesidad luce la etiqueta «Fotos del trabajo».",
+    "photosUrls": "Enlaces de imagen, uno por línea",
+    "photosUrlsHint": "Enlaces https:// o ipfs://. Fotos de bienes, lugares y entregas, nunca de personas.",
+    "photosNote": "Una línea sobre lo que se ve",
+    "photosNoteHint": "Opcional y público.",
+    "photosCount": "{count} enlace(s) utilizable(s)",
+    "photosPublish": "Publicar las fotos",
+    "photosErrorNeed": "Introduce el id de una de tus necesidades.",
+    "photosErrorUrls": "Cada línea debe ser un enlace https:// o ipfs://.",
+    "photosErrorCount": "Como mucho {max} fotos por atestación.",
+    "timeline_custom": "Elegir las fechas",
+    "timelineCustomHint": "Tú eliges las dos fechas límite",
+    "timelineDates": "Financiación hasta {funding}, entrega antes del {delivery}"
   },
   "verifier": {
     "title": "Cola del verificador",
@@ -885,6 +900,38 @@
     "paymentsTitle": "Pagos recibidos",
     "paymentsNote": "Cada parte de tramo que una bóveda envió a este proveedor, del más antiguo al más reciente.",
     "paymentLine": "de la necesidad #{need}, tramo {index}",
-    "held": "Retenido"
+    "held": "Retenido",
+    "applyCta": "¿Eres proveedor? Solicita registrarte →",
+    "applyTitle": "Solicita registrarte como proveedor",
+    "applyLead": "Las bóvedas solo pueden pagar a direcciones que un administrador haya registrado. Solicitarlo es una petición pública y firmada que revisa un administrador: por sí sola no concede nada.",
+    "applyBody": "Firmas con la cartera en la que quieres cobrar. La solicitud es una atestación: pública, fechada y atribuible a esa dirección.",
+    "applyConnect": "Conecta la cartera en la que quieres que te paguen las bóvedas.",
+    "applyName": "Nombre de la organización",
+    "applyServices": "Qué suministras y dónde",
+    "applyUri": "Perfil público o web",
+    "applyCredential": "Número de registro o acreditación",
+    "applyCredentialHint": "Solo se publica su hash, para que un administrador pueda comprobarlo contra el documento que le enseñes.",
+    "applySubmit": "Enviar la solicitud",
+    "applyAfter": "Un administrador todavía tiene que concederte SUPPLIER_ROLE antes de que una ONG pueda nombrarte en un plan de pagos. Hasta entonces tu solicitud sigue visible en la página de proveedores.",
+    "applyErrorConnect": "Conecta antes una cartera.",
+    "applyErrorFields": "Hacen falta un nombre y qué suministras.",
+    "applyBack": "← Volver al directorio de proveedores",
+    "applicationsTitle": "Solicitudes pendientes de revisión",
+    "applicationsNote": "Peticiones públicas firmadas por la dirección que quiere cobrar. Un administrador concede el rol; hasta entonces no se las puede nombrar en un plan de pagos.",
+    "applicationPending": "Pendiente"
+  },
+  "badges": {
+    "photos": "Fotos del trabajo",
+    "photosHint": "La propia ONG de esta necesidad publicó imágenes de lo que entregó, firmadas como atestación.",
+    "payouts": "Todos los pagos llegaron a su destinatario",
+    "payoutsHint": "Todo lo que esta organización ha liberado llegó a los proveedores que nombraban sus planes de pago: no hay nada atascado.",
+    "payoutsPartial": "El {percent}% de los pagos llegó a su destinatario",
+    "payoutsPartialHint": "Parte de lo que esta organización liberó sigue retenido en una bóveda porque la stablecoin rechazó la transferencia. Sigue siendo dinero de quien debía cobrarlo.",
+    "delivered": "{completed} de {total} necesidades completadas",
+    "deliveredHint": "Necesidades de esta organización que llegaron a su último tramo."
+  },
+  "photos": {
+    "title": "Fotos del trabajo",
+    "note": "Publicadas por la ONG que ejecutó esta necesidad y firmadas con su cartera. Las imágenes las aloja la ONG; en cadena solo van los enlaces y la firma. Muestran bienes, lugares y entregas, nunca a las personas beneficiarias."
   }
 }

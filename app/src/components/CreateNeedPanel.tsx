@@ -43,7 +43,7 @@ const TIMELINES = {
   standard: { funding: 30, delivery: 90 },
   long: { funding: 60, delivery: 180 },
 } as const
-type Timeline = keyof typeof TIMELINES
+type Timeline = keyof typeof TIMELINES | 'custom'
 
 const DEFAULTS = {
   tranches: '30,40,30',
@@ -131,8 +131,9 @@ export function CreateNeedPanel() {
   const today = new Date().toISOString().slice(0, 10)
 
   // ── derived, and overridable in the advanced section ───────────────────────
-  const fundingDay = fundingDate || inDays(TIMELINES[timeline].funding)
-  const executionDay = executionDate || inDays(TIMELINES[timeline].delivery)
+  const custom = timeline === 'custom'
+  const fundingDay = custom ? fundingDate : inDays(TIMELINES[timeline].funding)
+  const executionDay = custom ? executionDate : inDays(TIMELINES[timeline].delivery)
   const fundingDeadline = dateInputToUnix(fundingDay)
   const executionDeadline = dateInputToUnix(executionDay)
   /** Above the high-value threshold the contract demands two independent verifications, so ask for them. */
@@ -267,8 +268,8 @@ export function CreateNeedPanel() {
 
       <div>
         <p className="label">{t('timelineLabel')}</p>
-        <div className="mt-1 grid gap-2 sm:grid-cols-3">
-          {(Object.keys(TIMELINES) as Timeline[]).map((key) => (
+        <div className="mt-1 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {([...Object.keys(TIMELINES), 'custom'] as Timeline[]).map((key) => (
             <label
               key={key}
               className={`flex cursor-pointer gap-2 rounded-md border p-3 text-sm ${
@@ -282,22 +283,44 @@ export function CreateNeedPanel() {
                 checked={timeline === key}
                 onChange={() => {
                   setTimeline(key)
-                  setFundingDate('')
-                  setExecutionDate('')
+                  if (key !== 'custom') {
+                    setFundingDate('')
+                    setExecutionDate('')
+                  }
                 }}
               />
               <span>
                 <span className="block font-semibold">{t(`timeline_${key}`)}</span>
                 <span className="block text-xs text-slate-700">
-                  {t('timelineDays', {
-                    funding: TIMELINES[key].funding,
-                    delivery: TIMELINES[key].delivery,
-                  })}
+                  {key === 'custom'
+                    ? t('timelineCustomHint')
+                    : t('timelineDates', {
+                        funding: inDays(TIMELINES[key].funding),
+                        delivery: inDays(TIMELINES[key].delivery),
+                      })}
                 </span>
               </span>
             </label>
           ))}
         </div>
+        {custom ? (
+          <div className="mt-2 grid gap-3 sm:grid-cols-2">
+            <DateField
+              label={t('fundingDeadline')}
+              value={fundingDate}
+              onChange={setFundingDate}
+              min={today}
+              hint={t('deadlineHint')}
+            />
+            <DateField
+              label={t('executionDeadline')}
+              value={executionDate}
+              onChange={setExecutionDate}
+              min={fundingDate || today}
+              hint={t('executionDeadlineHint')}
+            />
+          </div>
+        ) : null}
       </div>
 
       {/* ── who gets paid ──────────────────────────────────────────────────── */}
@@ -374,20 +397,6 @@ export function CreateNeedPanel() {
             onChange={setMinFunding}
             inputMode="decimal"
             hint={t('minFundingHint')}
-          />
-          <DateField
-            label={t('fundingDeadline')}
-            value={fundingDay}
-            onChange={setFundingDate}
-            min={today}
-            hint={t('deadlineHint')}
-          />
-          <DateField
-            label={t('executionDeadline')}
-            value={executionDay}
-            onChange={setExecutionDate}
-            min={fundingDay || today}
-            hint={t('executionDeadlineHint')}
           />
           <TextField
             label={t('verificationsRequired')}
@@ -490,8 +499,14 @@ export function CreateNeedPanel() {
                 })
               : t('summaryCustodyOffChain', { custodian: custodian ? shorten(custodian) : '—' })}
           </li>
-          <li>{t('summaryFundingDeadline', { date: fundingDay })}</li>
-          <li>{t('summaryExecutionDeadline', { date: executionDay })}</li>
+          <li>
+            {fundingDay ? t('summaryFundingDeadline', { date: fundingDay }) : t('summaryNoFundingDeadline')}
+          </li>
+          <li>
+            {executionDay
+              ? t('summaryExecutionDeadline', { date: executionDay })
+              : t('summaryNoExecutionDeadline')}
+          </li>
           <li>
             {minFundingBps === null || minFundingBps >= 10_000
               ? t('summaryAllOrNothing')

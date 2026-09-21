@@ -8,6 +8,7 @@ import type {
   DonorTrace,
   DonorTrancheSlice,
   ImpactSummary,
+  NeedBadges,
   NeedDetail,
   NeedSummary,
   PayeePaymentView,
@@ -16,10 +17,12 @@ import type {
   ProgramView,
   ProviderView,
   SettlementView,
+  SupplierApplicationView,
   SupplierDetail,
   SupplierView,
   TimelineEvent,
   TrancheView,
+  WorkPhotoView,
 } from '@poa/shared'
 import {
   categoryHash,
@@ -89,6 +92,38 @@ interface Terms {
 
 const OPEN_STATUSES: NeedSummary['status'][] = ['Pending', 'Verified', 'Funding']
 
+/** A record with nothing wrong in it: what most demo needs show on their card. */
+const BADGES: NeedBadges = { workPhotos: 0, payoutAccuracyBps: 10_000, needsCompleted: 1, needsTotal: 3 }
+
+/** Photos of the work, as need #1's NGO published them. */
+const PHOTOS_1: WorkPhotoView[] = [
+  {
+    uid: uid(88),
+    needId: '1',
+    photos: [
+      'https://images.unsplash.com/photo-1593113598332-cd288d649433?w=640',
+      'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=640',
+    ],
+    note: 'Kits packed at the parish hall and loaded for the first distribution round.',
+    timestamp: 1_757_100_000,
+    txHash: tx(198),
+  },
+]
+
+export const supplierApplications: SupplierApplicationView[] = [
+  {
+    uid: uid(89),
+    supplier: getAddress('0x1c39ba39e4735cb65978d4db400ddd70a72dc750'),
+    name: 'Aguas del Sur SL',
+    services: 'Water purification tablets and 20L containers, Andalucía and Castilla-La Mancha',
+    uri: 'ipfs://bafybeidemosupplierapplication',
+    credentialHash: uid(90),
+    registered: false,
+    timestamp: 1_770_400_000,
+    txHash: tx(420),
+  },
+]
+
 const summary = (
   id: string,
   category: string,
@@ -103,6 +138,7 @@ const summary = (
 ): NeedSummary => {
   const costBps = terms.thirdPartyCostBps ?? 0
   return {
+    badges: BADGES,
     id,
     ngo: NGO,
     ngoName: 'Aurora Relief',
@@ -495,6 +531,7 @@ const detail = (index: number, rest: Partial<NeedDetail>): NeedDetail => ({
   payees: [],
   payments: [],
   payeeChanges: [],
+  photos: [],
   tranches: [],
   deliveries: [],
   donations: [],
@@ -507,6 +544,8 @@ const DETAILS: Record<string, NeedDetail> = {
   '1': detail(0, {
     payees: PAYEES_1,
     payments: PAYMENTS_1,
+    photos: PHOTOS_1,
+    badges: { workPhotos: 1, payoutAccuracyBps: 10_000, needsCompleted: 1, needsTotal: 3 },
     tranches: [
       tranche(0, 3000, '3600000000', 'Released', null),
       tranche(1, 4000, '4800000000', 'Releasable', '1'),

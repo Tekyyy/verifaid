@@ -21,6 +21,7 @@ const ALLOWED = [
   /^programs\/[^/]+\/members$/,
   /^programs$/,
   /^providers$/,
+  /^supplier-applications$/,
   /^suppliers$/,
   /^suppliers\/0x[a-fA-F0-9]{40}$/,
   /^deliveries$/,

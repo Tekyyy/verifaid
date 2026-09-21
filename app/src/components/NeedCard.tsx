@@ -2,6 +2,7 @@ import type { NeedSummary } from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import { CustodyBadge } from '@/components/CustodyBadge'
 import { Deadline } from '@/components/Deadline'
+import { NeedBadgeRow } from '@/components/NeedBadgeRow'
 import { ProgressBar } from '@/components/ProgressBar'
 import { NeedStatusBadge } from '@/components/StatusBadge'
 import { Link } from '@/i18n/navigation'
@@ -30,6 +31,8 @@ export function NeedCard({ need }: { need: NeedSummary }) {
         </div>
         <NeedStatusBadge status={need.status} />
       </div>
+
+      <NeedBadgeRow badges={need.badges} />
 
       <div>
         <ProgressBar value={progress} label={t('progress', { percent: progress.toFixed(0) })} />

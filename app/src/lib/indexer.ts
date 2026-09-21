@@ -11,6 +11,7 @@ import type {
   ProgramMembersResponse,
   ProgramView,
   ProviderView,
+  SupplierApplicationView,
   SupplierDetail,
   SupplierView,
   TimelineEvent,
@@ -130,6 +131,12 @@ export const getDepositAddress = async (address: string): Promise<Result<Deposit
 
 export const getProviders = async (): Promise<Result<ProviderView[]>> =>
   useFixtures ? { ok: true, data: fixtures.providers } : get<ProviderView[]>('/providers')
+
+/** Suppliers that asked to be registered: a public queue an admin acts on, not a role. */
+export const getSupplierApplications = async (): Promise<Result<SupplierApplicationView[]>> =>
+  useFixtures
+    ? { ok: true, data: fixtures.supplierApplications }
+    : get<SupplierApplicationView[]>('/supplier-applications')
 
 /** The programmes one NGO owns, for the console's "which programme" picker. */
 export const getPrograms = async (ngo: string): Promise<Result<ProgramView[]>> =>

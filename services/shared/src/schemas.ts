@@ -67,6 +67,45 @@ export const SCHEMAS: Record<SchemaName, SchemaDefinition> = {
 }
 
 /**
+ * Schemas with **no resolver**: anyone can attest them, and nothing on-chain reads them. They carry what the
+ * system deliberately does not gate — an NGO publishing photos of the work it did, and a supplier asking to be
+ * registered — so they add a public, attributable record without widening what can move money. The indexer is
+ * what gives them meaning: it keeps a photo attestation only when the need's own NGO signed it.
+ */
+export const COMMUNITY_SCHEMAS = {
+  WorkPhotos: {
+    name: 'WorkPhotos' as const,
+    schema: 'uint256 needId,string[] photos,string note',
+    revocable: true,
+  },
+  SupplierApplication: {
+    name: 'SupplierApplication' as const,
+    schema: 'address supplier,string name,string services,string uri,bytes32 credentialHash',
+    revocable: true,
+  },
+}
+
+export type CommunitySchemaName = keyof typeof COMMUNITY_SCHEMAS
+
+export const encodeCommunityData = (name: CommunitySchemaName, values: readonly unknown[]): Hex =>
+  encodeAbiParameters(schemaToAbiParameters(COMMUNITY_SCHEMAS[name].schema), values as never)
+
+export const decodeCommunityData = <T extends readonly unknown[]>(name: CommunitySchemaName, data: Hex): T =>
+  decodeAbiParameters(schemaToAbiParameters(COMMUNITY_SCHEMAS[name].schema), data) as unknown as T
+
+/** Photos of finished work, published by the NGO that ran the need. Never people: goods, sites, deliveries. */
+export type WorkPhotosData = readonly [needId: bigint, photos: readonly string[], note: string]
+
+/** A supplier asking to be registered. An admin still has to grant the role; this is the public request. */
+export type SupplierApplicationData = readonly [
+  supplier: Address,
+  name: string,
+  services: string,
+  uri: string,
+  credentialHash: Hex,
+]
+
+/**
  * Turns an EAS schema string ("uint256 needId,bool approved") into ABI parameters.
  * EAS encodes attestation data as plain ABI encoding of these fields, so viem can encode and decode it
  * directly — no ethers-based SDK needed on either side.

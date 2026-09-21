@@ -53,5 +53,9 @@
     "Settlement": "0x1d36c8b06f4a77902e5cb04bc2d275e7430b851eb13c3fafc0098206dada39a1"
   },
   "startBlock": 47092347,
-  "version": 4
+  "version": 4,
+  "communitySchemas": {
+    "WorkPhotos": "0x7f9f55f9579e964ddb61a70457b3bd3cee16bda465bda02204c9579a7ef1c46a",
+    "SupplierApplication": "0x5132ffaa7311d63e5cbfeea90075c4ecdaeb061bbce301ea9c81097ed6c8bb9c"
+  }
 }

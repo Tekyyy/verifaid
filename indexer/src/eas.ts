@@ -1,6 +1,7 @@
 import { ponder } from 'ponder:registry'
 import schema from 'ponder:schema'
 import {
+  type CommunitySchemaName,
   type DeliveryEvidenceData,
   type DeliveryVerifiedData,
   decodeSchemaData,
@@ -18,6 +19,7 @@ import {
 } from '@poa/shared'
 import { and, eq } from 'ponder'
 import type { Hex } from 'viem'
+import { recordCommunityAttestation, revokeCommunityAttestation } from './community.js'
 import { appendTimeline, seconds } from './lib/timeline.js'
 
 /**
@@ -36,6 +38,14 @@ const easAddress = deployment.external.EAS
 /** The six official schema UIDs of this deployment. Attestations under any other schema are ignored. */
 const SCHEMA_BY_UID = new Map<string, SchemaName>(
   Object.entries(deployment.schemas).map(([name, uid]) => [uid.toLowerCase(), name as SchemaName]),
+)
+
+/** The resolver-less schemas: anyone may attest them, so `community.ts` decides what counts. */
+const COMMUNITY_BY_UID = new Map<string, CommunitySchemaName>(
+  Object.entries(deployment.communitySchemas ?? {}).map(([name, uid]) => [
+    uid.toLowerCase(),
+    name as CommunitySchemaName,
+  ]),
 )
 
 const ZERO_UID: Hex = '0x0000000000000000000000000000000000000000000000000000000000000000'
@@ -57,7 +67,8 @@ const decodedRecord = (name: SchemaName, values: readonly unknown[]): Record<str
 
 ponder.on('EAS:Attested', async ({ event, context }) => {
   const schemaName = SCHEMA_BY_UID.get(event.args.schemaUID.toLowerCase())
-  if (!schemaName) return
+  const communityName = COMMUNITY_BY_UID.get(event.args.schemaUID.toLowerCase())
+  if (!schemaName && !communityName) return
 
   const record = await context.client.readContract({
     abi: easAbi,
@@ -65,6 +76,27 @@ ponder.on('EAS:Attested', async ({ event, context }) => {
     functionName: 'getAttestation',
     args: [event.args.uid],
   })
+
+  if (communityName) {
+    const needId = await recordCommunityAttestation(communityName, {
+      uid: event.args.uid,
+      attester: event.args.attester,
+      data: record.data,
+      timestamp: seconds(event),
+      txHash: event.transaction.hash,
+      db: context.db,
+    })
+    if (needId !== null) {
+      await appendTimeline(context, event, {
+        needId,
+        type: 'WorkPhotosPublished',
+        data: { attester: event.args.attester, uid: event.args.uid },
+        attestationUID: event.args.uid,
+      })
+    }
+    return
+  }
+  if (!schemaName) return
 
   const values = decodeSchemaData<readonly unknown[]>(schemaName, record.data)
   const decoded = decodedRecord(schemaName, values)
@@ -195,6 +227,11 @@ ponder.on('EAS:Attested', async ({ event, context }) => {
 })
 
 ponder.on('EAS:Revoked', async ({ event, context }) => {
+  const communityName = COMMUNITY_BY_UID.get(event.args.schemaUID.toLowerCase())
+  if (communityName) {
+    await revokeCommunityAttestation(communityName, context.db, event.args.uid)
+    return
+  }
   const schemaName = SCHEMA_BY_UID.get(event.args.schemaUID.toLowerCase())
   if (!schemaName) return
 

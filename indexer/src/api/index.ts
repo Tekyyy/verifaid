@@ -29,12 +29,14 @@ import {
   type TimelineEvent,
   type TimelinePage,
   trackingRefKind,
+  type NeedBadges,
   payeeChangeApprovalsRequired,
   type ProgramView,
+  type SupplierApplicationView,
 } from '@poa/shared'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { and, asc, desc, eq, graphql, gt, isNull, or } from 'ponder'
+import { and, asc, desc, eq, graphql, gt, inArray, isNull, or } from 'ponder'
 import type { Address, Hex } from 'viem'
 import { renderRss } from './rss.js'
 import { buildDonationTrack } from './track.js'
@@ -53,6 +55,8 @@ import {
   toPayeeChangeView,
   toPayeePaymentView,
   toPayeeView,
+  toSupplierApplicationView,
+  toWorkPhotoView,
   toSettlementView,
   toSupplierView,
   toTimelineEvent,
@@ -167,8 +171,83 @@ app.get('/needs', async (c) => {
   if (c.req.query('open') === 'true') rows = rows.filter((row) => isOpenForFunding(row, now))
   if (sort) rows = sortNeeds(rows, sort, now)
 
-  return c.json(rows.map(toNeedSummary) satisfies NeedSummary[])
+  const badges = await badgesFor(rows)
+  return c.json(
+    rows.map((row) => ({
+      ...toNeedSummary(row),
+      badges: badges.get(row.id) ?? EMPTY_BADGES,
+    })) satisfies NeedSummary[],
+  )
 })
+
+/** Zero history: an NGO that has never released anything gets no payout record, not a bad one. */
+const EMPTY_BADGES: NeedBadges = {
+  workPhotos: 0,
+  payoutAccuracyBps: null,
+  needsCompleted: 0,
+  needsTotal: 0,
+}
+
+/**
+ * What every need's card says about the organisation behind it, computed per NGO in two passes over the needs
+ * it has run: how much of what it released actually reached a payee (the rest is still held because a token
+ * refused it), and how many of its needs completed. Plus the photos it published for this particular need.
+ */
+const badgesFor = async (rows: NeedRow[]): Promise<Map<bigint, NeedBadges>> => {
+  if (rows.length === 0) return new Map()
+  const ngos = [...new Set(rows.map((row) => row.ngo.toLowerCase() as Address))]
+
+  const theirNeeds = await db
+    .select()
+    .from(schema.need)
+    .where(inArray(schema.need.ngo, ngos))
+  const needIds = theirNeeds.map((need) => need.id)
+  const held = needIds.length
+    ? await db.select().from(schema.payee).where(inArray(schema.payee.needId, needIds))
+    : []
+  const photos = await db
+    .select()
+    .from(schema.workPhotos)
+    .where(and(inArray(schema.workPhotos.needId, rows.map((row) => row.id)), eq(schema.workPhotos.revoked, false)))
+
+  const heldByNeed = new Map<bigint, bigint>()
+  for (const payee of held) {
+    heldByNeed.set(payee.needId, (heldByNeed.get(payee.needId) ?? 0n) + payee.held)
+  }
+
+  const perNgo = new Map<string, { released: bigint; held: bigint; completed: number; total: number }>()
+  for (const need of theirNeeds) {
+    const key = need.ngo.toLowerCase()
+    const entry = perNgo.get(key) ?? { released: 0n, held: 0n, completed: 0, total: 0 }
+    entry.released += need.totalReleased
+    entry.held += heldByNeed.get(need.id) ?? 0n
+    entry.total += 1
+    if (need.status === 'Completed') entry.completed += 1
+    perNgo.set(key, entry)
+  }
+
+  const photoCount = new Map<bigint, number>()
+  for (const row of photos) photoCount.set(row.needId, (photoCount.get(row.needId) ?? 0) + 1)
+
+  return new Map(
+    rows.map((row) => {
+      const record = perNgo.get(row.ngo.toLowerCase())
+      const reached = record && record.released > 0n ? record.released - record.held : null
+      return [
+        row.id,
+        {
+          workPhotos: photoCount.get(row.id) ?? 0,
+          payoutAccuracyBps:
+            reached === null || !record?.released
+              ? null
+              : Number((reached * 10_000n) / record.released),
+          needsCompleted: record?.completed ?? 0,
+          needsTotal: record?.total ?? 0,
+        },
+      ]
+    }),
+  )
+}
 
 app.get('/needs/:id', async (c) => {
   const id = parseId(c.req.param('id'))
@@ -206,8 +285,16 @@ app.get('/needs/:id', async (c) => {
 
   const live = liveReport(reports)
 
+  const photos = await db
+    .select()
+    .from(schema.workPhotos)
+    .where(and(eq(schema.workPhotos.needId, id), eq(schema.workPhotos.revoked, false)))
+    .orderBy(desc(schema.workPhotos.timestamp))
+  const badges = await badgesFor([row])
+
   return c.json({
     ...toNeedSummary(row),
+    badges: badges.get(row.id) ?? EMPTY_BADGES,
     tranches: tranches.map((tranche) => toTrancheView(tranche)),
     deliveries: deliveries.map(toDeliveryView),
     donations: donations.map(toDonationView),
@@ -216,6 +303,7 @@ app.get('/needs/:id', async (c) => {
     payees: payees.map(toPayeeView),
     payments: payments.map(toPayeePaymentView),
     payeeChanges: changes.map((change) => toPayeeChangeView(change, payeeChangeApprovalsRequired(row.verificationsRequired))),
+    photos: photos.map(toWorkPhotoView),
   } satisfies NeedDetail)
 })
 
@@ -408,6 +496,27 @@ app.get('/programs', async (c) => {
       active: row.active,
       createdAt: row.createdAt,
     })) satisfies ProgramView[],
+  )
+})
+
+/**
+ * Suppliers that asked to be registered. Anyone can attest one of these for themselves, so it is a queue for
+ * the admin, not a role: `registered` says whether the address actually holds SUPPLIER_ROLE now.
+ */
+app.get('/supplier-applications', async (c) => {
+  const rows = await db
+    .select()
+    .from(schema.supplierApplication)
+    .where(eq(schema.supplierApplication.revoked, false))
+    .orderBy(desc(schema.supplierApplication.timestamp))
+  const registered = new Set(
+    (await db.select().from(schema.supplier)).filter((row) => row.active).map((row) => row.address.toLowerCase()),
+  )
+
+  return c.json(
+    rows.map((row) =>
+      toSupplierApplicationView(row, registered.has(row.supplier.toLowerCase())),
+    ) satisfies SupplierApplicationView[],
   )
 })
 
@@ -791,6 +900,7 @@ const loadTrack = async (ref: string, provider: string | undefined): Promise<Loa
       deposit,
       payees,
       payments,
+      badges: (await badgesFor([need])).get(need.id) ?? EMPTY_BADGES,
     }),
   }
 }

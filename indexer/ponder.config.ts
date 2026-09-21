@@ -34,8 +34,12 @@ const rpc = process.env.PONDER_RPC_URL ?? chainFor(network).rpcUrls.default.http
 /** v3 conversion contracts; a deployment without them indexes nothing at the zero address. */
 const forwarderFactory = contracts.DonationForwarderFactory ?? zeroAddress
 
-/** The six schema UIDs of this deployment; every other EAS attestation on the chain is ignored. */
-const schemaUIDs = Object.values(schemas)
+/**
+ * The schema UIDs this deployment cares about: the six the resolver gates, plus the resolver-less ones an NGO
+ * and a supplier can write to (work photos, supplier applications). Every other attestation on the chain is
+ * ignored.
+ */
+const schemaUIDs = [...Object.values(schemas), ...Object.values(deployment.communitySchemas ?? {})]
 
 /**
  * Both ledger kinds (the custodial AidVault and the NonCustodialLedger) share the funding and tranche events,

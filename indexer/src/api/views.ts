@@ -20,12 +20,14 @@ import {
   regionLabel,
   resolveNetwork,
   type SettlementView,
+  type SupplierApplicationView,
   type SupplierView,
   type TimelineEvent,
   type TimelineEventType,
   type TrancheStatus,
   tokenSymbolOf,
   type TrancheView,
+  type WorkPhotoView,
 } from '@poa/shared'
 import { type Address, type Hex, zeroAddress } from 'viem'
 
@@ -48,6 +50,8 @@ export type PayeePaymentRow = typeof schema.payeePayment.$inferSelect
 export type PayeeChangeRow = typeof schema.payeeChange.$inferSelect
 export type SupplierRow = typeof schema.supplier.$inferSelect
 export type DepositRefundRow = typeof schema.depositRefund.$inferSelect
+export type WorkPhotosRow = typeof schema.workPhotos.$inferSelect
+export type SupplierApplicationRow = typeof schema.supplierApplication.$inferSelect
 
 const deployment = getDeployment(resolveNetwork(process.env.PONDER_NETWORK ?? 'anvil'))
 
@@ -55,7 +59,7 @@ const deployment = getDeployment(resolveNetwork(process.env.PONDER_NETWORK ?? 'a
 export const fundingGapOf = (row: NeedRow): bigint =>
   row.status === 'Funding' && row.targetAmount > row.totalDonated ? row.targetAmount - row.totalDonated : 0n
 
-export const toNeedSummary = (row: NeedRow): NeedSummary => ({
+export const toNeedSummary = (row: NeedRow): Omit<NeedSummary, 'badges'> => ({
   id: row.id.toString(),
   ngo: row.ngo as Address,
   // The NGO's display name lives in the off-chain profile JSON at metadataURI; only the URI is on-chain.
@@ -88,6 +92,30 @@ export const toNeedSummary = (row: NeedRow): NeedSummary => ({
   settlementFees: row.settlementFees.toString(),
   createdAt: row.createdAt,
   expiredAt: row.expiredAt,
+})
+
+export const toWorkPhotoView = (row: WorkPhotosRow): WorkPhotoView => ({
+  uid: row.uid as Hex,
+  needId: row.needId.toString(),
+  photos: (row.photos as string[]) ?? [],
+  note: row.note,
+  timestamp: row.timestamp,
+  txHash: row.txHash as Hex,
+})
+
+export const toSupplierApplicationView = (
+  row: SupplierApplicationRow,
+  registered: boolean,
+): SupplierApplicationView => ({
+  uid: row.uid as Hex,
+  supplier: row.supplier as Address,
+  name: row.name,
+  services: row.services,
+  uri: row.uri,
+  credentialHash: row.credentialHash as Hex,
+  registered,
+  timestamp: row.timestamp,
+  txHash: row.txHash as Hex,
 })
 
 export const toTrancheView = (row: TrancheRow): TrancheView => ({

@@ -152,15 +152,6 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         protocolParams.serialize("ethDonations", params.conversion.ethRoute || s.conversion.mocks);
         string memory paramsJson = protocolParams.serialize("dashboardBaseURI", params.dashboardBaseURI);
 
-        // Placeholders; RegisterSchemas.s.sol fills these in.
-        string memory schemas = "schemas";
-        schemas.serialize("NeedVerified", bytes32(0));
-        schemas.serialize("FundingRecorded", bytes32(0));
-        schemas.serialize("DeliveryEvidence", bytes32(0));
-        schemas.serialize("DeliveryVerified", bytes32(0));
-        schemas.serialize("Settlement", bytes32(0));
-        string memory schemasJson = schemas.serialize("ImpactReport", bytes32(0));
-
         string memory root = "deployment";
         root.serialize("network", _networkName(block.chainid));
         root.serialize("version", uint256(4));
@@ -171,10 +162,29 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         root.serialize("contracts", contractsJson);
         root.serialize("external", externalJson);
         root.serialize("params", paramsJson);
-        string memory json = root.serialize("schemas", schemasJson);
+        root.serialize("schemas", _schemaPlaceholders());
+        string memory json = root.serialize("communitySchemas", _communityPlaceholders());
 
         vm.writeJson(json, _deploymentPath());
         console2.log("");
         console2.log("Wrote", _deploymentPath());
+    }
+
+    /// @dev Placeholders; RegisterSchemas.s.sol fills these in. Its own frame: the writer is at the stack limit.
+    function _schemaPlaceholders() internal returns (string memory) {
+        string memory schemas = "schemas";
+        schemas.serialize("NeedVerified", bytes32(0));
+        schemas.serialize("FundingRecorded", bytes32(0));
+        schemas.serialize("DeliveryEvidence", bytes32(0));
+        schemas.serialize("DeliveryVerified", bytes32(0));
+        schemas.serialize("Settlement", bytes32(0));
+        return schemas.serialize("ImpactReport", bytes32(0));
+    }
+
+    /// @dev Same, for the resolver-less schemas that RegisterCommunitySchemas.s.sol fills in.
+    function _communityPlaceholders() internal returns (string memory) {
+        string memory community = "communitySchemas";
+        community.serialize("WorkPhotos", bytes32(0));
+        return community.serialize("SupplierApplication", bytes32(0));
     }
 }

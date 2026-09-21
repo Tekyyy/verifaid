@@ -1,4 +1,11 @@
-import { encodeSchemaData, SCHEMAS, type SchemaName } from '@poa/shared'
+import {
+  COMMUNITY_SCHEMAS,
+  type CommunitySchemaName,
+  encodeCommunityData,
+  encodeSchemaData,
+  SCHEMAS,
+  type SchemaName,
+} from '@poa/shared'
 import type { Address, Hex } from 'viem'
 import { requireDeployment } from './config'
 
@@ -55,5 +62,35 @@ export const attestationRequest = ({ name, recipient, refUID, values }: Attestat
       data: encodeSchemaData(name, values),
       value: 0n,
     },
+  }
+}
+
+/**
+ * The resolver-less schemas (work photos, supplier applications). Nothing on-chain reads them, so they take no
+ * recipient and no resolver: the attestation is the record, and the indexer decides what counts (a photo only
+ * when the need's own NGO signed it, an application only for the address signing it).
+ */
+export const communityAttestationRequest = (name: CommunitySchemaName, values: readonly unknown[]) => {
+  const schema = requireDeployment().communitySchemas?.[name]
+  if (!schema) throw new Error(`The bundled deployment has no "${name}" schema.`)
+  return {
+    schema,
+    data: {
+      recipient: '0x0000000000000000000000000000000000000000' as Address,
+      expirationTime: 0n,
+      revocable: COMMUNITY_SCHEMAS[name].revocable,
+      refUID: ZERO_UID,
+      data: encodeCommunityData(name, values),
+      value: 0n,
+    },
+  }
+}
+
+/** True when the bundled deployment registered the resolver-less schemas (older ones did not). */
+export const hasCommunitySchema = (name: CommunitySchemaName): boolean => {
+  try {
+    return Boolean(requireDeployment().communitySchemas?.[name])
+  } catch {
+    return false
   }
 }

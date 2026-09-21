@@ -11,6 +11,7 @@ import { Advanced, FormError, Panel, TextArea, TextField } from '@/components/fo
 import { MissingDeployment, Notice } from '@/components/Notice'
 import { ProposePayeeChangePanel } from '@/components/PayeeChangePanel'
 import { ProgramPicker } from '@/components/ProgramPicker'
+import { PublishPhotosPanel } from '@/components/PublishPhotosPanel'
 import { SettlementPanel } from '@/components/SettlementPanel'
 import { TxStatus } from '@/components/TxStatus'
 import { deployment } from '@/lib/config'
@@ -30,6 +31,7 @@ export function NgoConsole() {
       <ReleaseTranche />
       <ProposePayeeChangePanel />
       <SettlementPanel />
+      <PublishPhotosPanel />
       <PublishImpactReport />
     </div>
   )

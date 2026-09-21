@@ -131,7 +131,8 @@
     "PayeeChangeProposed": "Supplier replacement proposed",
     "PayeeChangeApproved": "Verifier approved the replacement",
     "PayeeChanged": "Supplier replaced in the payment plan",
-    "PayeeChangeCancelled": "Supplier replacement withdrawn"
+    "PayeeChangeCancelled": "Supplier replacement withdrawn",
+    "WorkPhotosPublished": "Photos of the work published"
   },
   "home": {
     "title": "Aid you can audit, beneficiaries you cannot identify",
@@ -458,7 +459,21 @@
     "summaryPlan": "The vault pays {payee} directly; your organisation keeps {ngo}% of every tranche.",
     "summaryPlanCustom": "the payees in your plan",
     "summaryVerifications": "{count} independent verifier(s) must attest it before it can take a cent.",
-    "programConnect": "Connect the wallet your NGO is registered with to see its programmes."
+    "programConnect": "Connect the wallet your NGO is registered with to see its programmes.",
+    "photosTitle": "Publish photos of the work",
+    "photosBody": "Show donors what their money bought. You sign the links, not the images: host them anywhere (your site, IPFS) and paste the URLs. Only photos published by the NGO that owns the need count, and the need then carries a \"Photos of the work\" badge.",
+    "photosUrls": "Image links, one per line",
+    "photosUrlsHint": "https:// or ipfs:// links. Photos of goods, sites and deliveries — never of people.",
+    "photosNote": "One line about what is shown",
+    "photosNoteHint": "Optional, public.",
+    "photosCount": "{count} usable link(s)",
+    "photosPublish": "Publish the photos",
+    "photosErrorNeed": "Enter the id of one of your needs.",
+    "photosErrorUrls": "Every line must be an https:// or ipfs:// link.",
+    "photosErrorCount": "At most {max} photos per attestation.",
+    "timeline_custom": "Pick the dates",
+    "timelineCustomHint": "Choose both deadlines yourself",
+    "timelineDates": "Funding until {funding}, delivery by {delivery}"
   },
   "verifier": {
     "title": "Verifier queue",
@@ -885,6 +900,38 @@
     "paymentsTitle": "Payments received",
     "paymentsNote": "Every tranche share a vault sent to this supplier, newest last.",
     "paymentLine": "from need #{need}, tranche {index}",
-    "held": "Held"
+    "held": "Held",
+    "applyCta": "Are you a supplier? Apply to be registered →",
+    "applyTitle": "Apply to be a registered supplier",
+    "applyLead": "Vaults can only pay addresses an admin registered. Applying is a public, signed request an admin reviews — it grants nothing by itself.",
+    "applyBody": "You sign this with the wallet you want to be paid at. The application is an attestation: public, dated and attributable to that address.",
+    "applyConnect": "Connect the wallet you want vaults to pay.",
+    "applyName": "Organisation name",
+    "applyServices": "What you supply, and where",
+    "applyUri": "Public profile or website",
+    "applyCredential": "Registration number or credential",
+    "applyCredentialHint": "Only its hash is published, so an admin can check it against the document you show them.",
+    "applySubmit": "Submit the application",
+    "applyAfter": "An admin still has to grant SUPPLIER_ROLE before an NGO can name you in a payment plan. Your application stays visible on the suppliers page until then.",
+    "applyErrorConnect": "Connect a wallet first.",
+    "applyErrorFields": "A name and what you supply are required.",
+    "applyBack": "← Back to the suppliers directory",
+    "applicationsTitle": "Applications waiting for review",
+    "applicationsNote": "Public requests signed by the address that wants to be paid. An admin grants the role; until then they cannot be named in a payment plan.",
+    "applicationPending": "Pending"
+  },
+  "badges": {
+    "photos": "Photos of the work",
+    "photosHint": "This need’s own NGO published images of what it delivered, signed as an attestation.",
+    "payouts": "Every payout reached its payee",
+    "payoutsHint": "Everything this organisation has ever released reached the suppliers its payment plans named — nothing is stuck.",
+    "payoutsPartial": "{percent}% of payouts reached their payee",
+    "payoutsPartialHint": "Part of what this organisation released is still held in a vault because the stablecoin refused the transfer. It stays that payee’s money.",
+    "delivered": "{completed} of {total} needs completed",
+    "deliveredHint": "Needs this organisation ran that reached their final tranche."
+  },
+  "photos": {
+    "title": "Photos of the work",
+    "note": "Published by the NGO that ran this need and signed with its wallet. The images are hosted by the NGO; only the links and the signature are on chain. They show goods, sites and deliveries — never beneficiaries."
   }
 }

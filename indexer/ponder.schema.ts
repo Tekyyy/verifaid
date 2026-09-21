@@ -574,6 +574,44 @@ export const confirmationRelations = relations(confirmation, ({ one }) => ({
   delivery: one(delivery, { fields: [confirmation.deliveryId], references: [delivery.id] }),
 }))
 
+/** Photos of finished work, published by the NGO that ran the need (resolver-less `WorkPhotos` schema). */
+export const workPhotos = onchainTable(
+  'work_photos',
+  (t) => ({
+    uid: t.hex().primaryKey(),
+    needId: t.bigint().notNull(),
+    ngo: t.hex().notNull(),
+    /** string[]: image URLs, https or ipfs, capped when indexed. */
+    photos: t.json().notNull(),
+    note: t.text().notNull(),
+    revoked: t.boolean().notNull(),
+    timestamp: t.integer().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (table) => ({ needIdx: index().on(table.needId) }),
+)
+
+/** A supplier asking an admin to register it (resolver-less `SupplierApplication` schema). A request, not a role. */
+export const supplierApplication = onchainTable(
+  'supplier_application',
+  (t) => ({
+    uid: t.hex().primaryKey(),
+    supplier: t.hex().notNull(),
+    name: t.text().notNull(),
+    services: t.text().notNull(),
+    uri: t.text().notNull(),
+    credentialHash: t.hex().notNull(),
+    revoked: t.boolean().notNull(),
+    timestamp: t.integer().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (table) => ({ supplierIdx: index().on(table.supplier) }),
+)
+
+export const workPhotosRelations = relations(workPhotos, ({ one }) => ({
+  need: one(need, { fields: [workPhotos.needId], references: [need.id] }),
+}))
+
 export const challengeRelations = relations(challenge, ({ one }) => ({
   delivery: one(delivery, { fields: [challenge.deliveryId], references: [delivery.id] }),
 }))

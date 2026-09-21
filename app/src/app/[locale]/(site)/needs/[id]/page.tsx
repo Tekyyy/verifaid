@@ -10,6 +10,7 @@ import { DonationList } from '@/components/DonationList'
 import { ExpireButton } from '@/components/ExpireButton'
 import { ExplorerLink } from '@/components/ExplorerLink'
 import { GiveFiatPanel } from '@/components/GiveFiatPanel'
+import { NeedBadgeRow } from '@/components/NeedBadgeRow'
 import { IndexerNotice, Notice } from '@/components/Notice'
 import { PaymentPlanPanel } from '@/components/PaymentPlanPanel'
 import { ProgressBar } from '@/components/ProgressBar'
@@ -19,6 +20,7 @@ import { NeedStatusBadge } from '@/components/StatusBadge'
 import { TermsPanel } from '@/components/TermsPanel'
 import { Timeline } from '@/components/Timeline'
 import { TrancheBar } from '@/components/TrancheBar'
+import { WorkPhotos } from '@/components/WorkPhotos'
 import { conversionsEnabled } from '@/lib/config'
 import { amount, percent, timestamp } from '@/lib/format'
 import { getNeed, getTimeline, needFeedPath } from '@/lib/indexer'
@@ -96,6 +98,7 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
         <div className="flex flex-wrap items-center gap-2">
           <CustodyBadge mode={data.custodyMode} />
           <NeedStatusBadge status={data.status} />
+          <NeedBadgeRow badges={data.badges} className="w-full" />
         </div>
       </header>
 
@@ -166,6 +169,8 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
           <TermsPanel need={data} />
 
           <PaymentPlanPanel need={data} />
+
+          <WorkPhotos photos={data.photos} />
 
           <section className="card" aria-labelledby="tranches">
             <h2 id="tranches" className="section-title">

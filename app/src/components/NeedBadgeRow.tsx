@@ -1,0 +1,43 @@
+import type { NeedBadges } from '@poa/shared'
+import { useTranslations } from 'next-intl'
+import { bpsPercent } from '@/lib/format'
+
+/**
+ * What the chain can say about the organisation behind a need. Both badges are facts recomputed from events,
+ * not a score anyone awards or can buy:
+ *
+ * - **photos of the work** — the need's own NGO published images of what it delivered (a `WorkPhotos`
+ *   attestation it signed; nobody else's counts),
+ * - **payout record** — the share of everything this NGO ever released that actually reached the payees its
+ *   plans named. Below 100% means money is still held because a token refused a transfer.
+ */
+export function NeedBadgeRow({ badges, className = '' }: { badges: NeedBadges; className?: string }) {
+  const t = useTranslations('badges')
+  const clean = badges.payoutAccuracyBps !== null && badges.payoutAccuracyBps >= 10_000
+
+  if (badges.workPhotos === 0 && badges.payoutAccuracyBps === null) return null
+
+  return (
+    <ul className={`flex flex-wrap gap-1.5 ${className}`}>
+      {badges.workPhotos > 0 ? (
+        <li className="badge bg-sky-100 text-sky-900" title={t('photosHint')}>
+          <span aria-hidden="true">📷</span> {t('photos')}
+        </li>
+      ) : null}
+      {badges.payoutAccuracyBps !== null ? (
+        <li
+          className={`badge ${clean ? 'bg-emerald-100 text-emerald-900' : 'bg-amber-100 text-amber-900'}`}
+          title={clean ? t('payoutsHint') : t('payoutsPartialHint')}
+        >
+          <span aria-hidden="true">{clean ? '✅' : '⏳'}</span>{' '}
+          {clean ? t('payouts') : t('payoutsPartial', { percent: bpsPercent(badges.payoutAccuracyBps) })}
+        </li>
+      ) : null}
+      {badges.needsCompleted > 0 ? (
+        <li className="badge bg-slate-100 text-slate-700" title={t('deliveredHint')}>
+          {t('delivered', { completed: badges.needsCompleted, total: badges.needsTotal })}
+        </li>
+      ) : null}
+    </ul>
+  )
+}
