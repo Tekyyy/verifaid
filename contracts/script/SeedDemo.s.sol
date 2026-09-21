@@ -183,7 +183,7 @@ contract SeedDemo is Script, DeploymentIO {
         try MockEURC(token).mint(a.donor1, 50_000e6) {
             MockEURC(token).mint(a.donor2, 50_000e6);
             MockEURC(token).mint(a.bankPartner, 50_000e6);
-            console2.log("  minted demo mEURC to donors and the bank partner");
+            console2.log("  minted the vault currency to the donors and the bank partner");
         } catch {
             console2.log("  token is not mintable, fund the donors from a faucet:", token);
         }

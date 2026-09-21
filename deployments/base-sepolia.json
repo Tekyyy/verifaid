@@ -2,31 +2,32 @@
   "admin": "0x7642C9178a738Dd623Aac1F943bAFB81589E9050",
   "chainId": 84532,
   "contracts": {
-    "AidVaultFactory": "0xAD1582aFfedbddf96252bfe02BbE5F0F183FdFEf",
-    "AidVaultImplementation": "0x4C8D9B7CA98a2556d9e2A35c254e99c1a67f2690",
-    "BeneficiaryGroups": "0x7B8fb05147dff265842CC804C6326cc5699F598a",
-    "ConversionRouter": "0x227D3Cee9C2eA43d447cdb496C625b30439ED8BD",
-    "DeliveryManager": "0xBE7d731b59C0E3A8ad66f604a1Ad0e3260e04DAf",
-    "DonationForwarderFactory": "0x8048f5A99fBDd59BB41DC99BB467915E39ddcd21",
-    "DonationForwarderImplementation": "0x7631C17C9D4f4EA7032852B1735AD581CD816d9D",
-    "DonationReceipt": "0x47EC520CCAb71665dDFACD14f5387E106bfaC4df",
-    "NeedsRegistry": "0x2476F8CEfe3143a76D1995Cf01A9d66ffeFA00CE",
-    "NonCustodialLedgerImplementation": "0x547754f79cD5009a176fBF453071D403C350f282",
-    "ProofOfAidResolver": "0x1A5F05AC4aE7DDE22a5CA869509D8e849E5349da",
-    "RoleRegistry": "0x1e858a0dae31a20815aa85D27Ffb2ec18898ee7F"
+    "AidVaultFactory": "0x2f04b2EB4c558BBA05c33Bb1Da93040FB0522591",
+    "AidVaultImplementation": "0x5fdbC83de9f191516176D83c7ec3ea68223C6C61",
+    "BeneficiaryGroups": "0xC1569f1441504585BEbbbc49d8eBE087B66D89eD",
+    "ConversionRouter": "0xD70f4d3024Bb3c7961e32B638387F0E3684A3aa0",
+    "DeliveryManager": "0x0FA3B64b660BB8db95292bC693efc8b0c93634Cb",
+    "DonationForwarderFactory": "0x4BD8e8f5A9F15ae68B4F613A8605290403F934C8",
+    "DonationForwarderImplementation": "0x6395BbDd2E9d30cea074e4ed4f51cBD2C55A8f6E",
+    "DonationReceipt": "0x04753c5fB617fA363b509Cd4829871ab94Aa4807",
+    "NeedsRegistry": "0xEEf080a0B6aFa229a306eb944a0F798aF67A7C23",
+    "NonCustodialLedgerImplementation": "0x083f384176C85Bb434e9B4A0E57b461C5Dea9eB2",
+    "ProofOfAidResolver": "0xB2cC754EbC7279e4e80607A350C9D82B323040C4",
+    "RoleRegistry": "0x69B25DEDdec17F6113438bD05CCE83D477CE9676"
   },
   "deployer": "0x7642C9178a738Dd623Aac1F943bAFB81589E9050",
   "external": {
     "EAS": "0x4200000000000000000000000000000000000021",
+    "EURC": "0x4B3e836e7Cc24A238d607e0F330278737Db70086",
     "EthUsdFeed": "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
-    "EurUsdFeed": "0x88F3eF98F6a815F886cccbd9901354Bcd7A568dB",
+    "EurUsdFeed": "0xF9605D3fe31a30a5D4B21f2095EDa05618941F2c",
     "SchemaRegistry": "0x4200000000000000000000000000000000000020",
     "Semaphore": "0x8A1fd199516489B0Fb7153EB5f075cDAC83c693D",
     "SemaphoreVerifier": "0x0000000000000000000000000000000000000000",
     "SequencerUptimeFeed": "0x0000000000000000000000000000000000000000",
     "SwapRouter": "0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4",
-    "Token": "0x979EfA4EAfAF168E33642875779e7ab42D74dDB7",
-    "USDC": "0xc42Aae28D9e4fF0E70aFB73B7135CD25d1645693",
+    "Token": "0x705B54814eb2688a246296d20987986e00DE51b8",
+    "USDC": "0x705B54814eb2688a246296d20987986e00DE51b8",
     "UsdcUsdFeed": "0xd30e2101a97dcbAeBCBC04F14C3f624E67A35165",
     "WETH": "0x4200000000000000000000000000000000000006"
   },
@@ -44,13 +45,13 @@
     "usdcPoolFee": 100
   },
   "schemas": {
-    "DeliveryEvidence": "0x23d12dde68804f2f2559f69f3907bb02c2f89503c50da9c371d6a9eefabe33e7",
-    "DeliveryVerified": "0x6e08015aa8a353c13af20cbec988974bc814b22755e4a70ff64337cc9266ab3b",
-    "FundingRecorded": "0xf3768fdc18c227d077e2b9fe568b83829dd378cdd46ea433d933f5ff8dc884e3",
-    "ImpactReport": "0x475a95ec3d590bcab2bdf921c85abaa1b191a740984995981322ac13a2fb488a",
-    "NeedVerified": "0x7bc2a51e4469c4783baa2db44aaa852a8cb15a2f1aa9e0e44e1cc64f86e7c284",
-    "Settlement": "0x71c889f0703eac1d02e74fa47dc1f105ae0f73e0f2afb6bc4ab539b87a5a093f"
+    "DeliveryEvidence": "0xb491f2bfdfb99caf47bea80f67a562f8a45d1a52322e870c96e12494a74d2dc9",
+    "DeliveryVerified": "0x49c3d529cfc63e1e0b4fa47ecbbed02b7d49cd7d3231b6291e3e134970d5bcea",
+    "FundingRecorded": "0x227b9d627976943698393b7a547eae66639a28bd5fd3840caa1c497a9e78dbbe",
+    "ImpactReport": "0x0de1b8de20bd88fb3e6585e27d618b157dac153a55f3b1d7559f7fd06acd8eb4",
+    "NeedVerified": "0x658e2a1524c20d83650fa4bc20365ad32f0a992984216bdade5a9cdb6da71b93",
+    "Settlement": "0x1d36c8b06f4a77902e5cb04bc2d275e7430b851eb13c3fafc0098206dada39a1"
   },
-  "startBlock": 46939576,
-  "version": 3
+  "startBlock": 47092347,
+  "version": 4
 }
