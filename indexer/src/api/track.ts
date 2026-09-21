@@ -1,6 +1,7 @@
 import {
   type NeedBadges,
   type NeedPresentationView,
+  type OrgTaxStatusView,
   type DepositAddressView,
   type DonationOutcome,
   type DonationTrack,
@@ -12,6 +13,7 @@ import {
 import type { Hex } from 'viem'
 import {
   type DeliveryRow,
+  type AcknowledgmentRow,
   type DonationRow,
   type ImpactReportRow,
   liveReport,
@@ -26,6 +28,7 @@ import {
   toDonationView,
   toDonorTrancheSlice,
   toImpactReportView,
+  toAcknowledgmentView,
   toNeedSummary,
   toPayeeView,
   toSettlementView,
@@ -58,6 +61,9 @@ export interface TrackInputs {
   badges: NeedBadges
   /** How the NGO presents the need, or null when it published nothing. */
   presentation: NeedPresentationView | null
+  /** The organisation's tax standing, and the donee's acknowledgment of this donation. */
+  taxStatus: OrgTaxStatusView | null
+  acknowledgment: AcknowledgmentRow | null
   /** v4 payment plan and the vault's payments to it (empty for off-chain custody). */
   payees: PayeeRow[]
   payments: PayeePaymentRow[]
@@ -221,7 +227,13 @@ export const buildDonationTrack = (inputs: TrackInputs): DonationTrack => {
     ref: inputs.ref,
     refKind: inputs.refKind,
     donation: toDonationView(donation),
-    need: { ...toNeedSummary(need), badges: inputs.badges, presentation: inputs.presentation },
+    need: {
+      ...toNeedSummary(need),
+      badges: inputs.badges,
+      presentation: inputs.presentation,
+      taxStatus: inputs.taxStatus,
+    },
+    acknowledgment: inputs.acknowledgment ? toAcknowledgmentView(inputs.acknowledgment) : null,
     shareBps: funding === 0n ? 0 : Number((donation.amount * 10_000n) / funding),
     stages,
     currentStage,

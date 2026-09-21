@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { type Address, type Hex, keccak256, toHex } from 'viem'
 import { useReadContract } from 'wagmi'
+import { AcknowledgeDonationsPanel } from '@/components/AcknowledgeDonationsPanel'
 import { CreateNeedPanel } from '@/components/CreateNeedPanel'
 import { Advanced, FormError, Panel, TextArea, TextField } from '@/components/form'
 import { NeedPresentationPanel } from '@/components/NeedPresentationPanel'
@@ -14,6 +15,7 @@ import { ProposePayeeChangePanel } from '@/components/PayeeChangePanel'
 import { ProgramPicker } from '@/components/ProgramPicker'
 import { PublishPhotosPanel } from '@/components/PublishPhotosPanel'
 import { SettlementPanel } from '@/components/SettlementPanel'
+import { TaxStatusPanel } from '@/components/TaxStatusPanel'
 import { TxStatus } from '@/components/TxStatus'
 import { deployment } from '@/lib/config'
 import { attestationRequest, schemaRecipient } from '@/lib/eas'
@@ -34,6 +36,8 @@ export function NgoConsole() {
       <ProposePayeeChangePanel />
       <SettlementPanel />
       <PublishPhotosPanel />
+      <TaxStatusPanel />
+      <AcknowledgeDonationsPanel />
       <PublishImpactReport />
     </div>
   )

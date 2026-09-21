@@ -31,6 +31,7 @@ import {
   trackingRefKind,
   type NeedBadges,
   type NeedPresentationView,
+  type OrgTaxStatusView,
   payeeChangeApprovalsRequired,
   type ProgramView,
   type SupplierApplicationView,
@@ -56,7 +57,9 @@ import {
   toPayeeChangeView,
   toPayeePaymentView,
   toPayeeView,
+  toAcknowledgmentView,
   toNeedPresentationView,
+  toOrgTaxStatusView,
   toSupplierApplicationView,
   toWorkPhotoView,
   toSettlementView,
@@ -173,15 +176,31 @@ app.get('/needs', async (c) => {
   if (c.req.query('open') === 'true') rows = rows.filter((row) => isOpenForFunding(row, now))
   if (sort) rows = sortNeeds(rows, sort, now)
 
-  const [badges, presentations] = await Promise.all([badgesFor(rows), presentationsFor(rows)])
+  const [badges, presentations, taxStatus] = await Promise.all([
+    badgesFor(rows),
+    presentationsFor(rows),
+    taxStatusFor(rows),
+  ])
   return c.json(
     rows.map((row) => ({
       ...toNeedSummary(row),
       badges: badges.get(row.id) ?? EMPTY_BADGES,
       presentation: presentations.get(row.id) ?? null,
+      taxStatus: taxStatus.get(row.ngo.toLowerCase()) ?? null,
     })) satisfies NeedSummary[],
   )
 })
+
+/** The tax standing of every organisation behind these needs, keyed by its address. */
+const taxStatusFor = async (rows: NeedRow[]): Promise<Map<string, OrgTaxStatusView>> => {
+  if (rows.length === 0) return new Map()
+  const orgs = [...new Set(rows.map((row) => row.ngo.toLowerCase() as Address))]
+  const found = await db
+    .select()
+    .from(schema.orgTaxStatus)
+    .where(and(inArray(schema.orgTaxStatus.org, orgs), eq(schema.orgTaxStatus.revoked, false)))
+  return new Map(found.map((row) => [row.org.toLowerCase(), toOrgTaxStatusView(row)]))
+}
 
 /** How each of these needs is presented, when its NGO has published anything. */
 const presentationsFor = async (rows: NeedRow[]): Promise<Map<bigint, NeedPresentationView>> => {
@@ -303,12 +322,17 @@ app.get('/needs/:id', async (c) => {
     .from(schema.workPhotos)
     .where(and(eq(schema.workPhotos.needId, id), eq(schema.workPhotos.revoked, false)))
     .orderBy(desc(schema.workPhotos.timestamp))
-  const [badges, presentations] = await Promise.all([badgesFor([row]), presentationsFor([row])])
+  const [badges, presentations, taxStatus] = await Promise.all([
+    badgesFor([row]),
+    presentationsFor([row]),
+    taxStatusFor([row]),
+  ])
 
   return c.json({
     ...toNeedSummary(row),
     badges: badges.get(row.id) ?? EMPTY_BADGES,
     presentation: presentations.get(row.id) ?? null,
+    taxStatus: taxStatus.get(row.ngo.toLowerCase()) ?? null,
     tranches: tranches.map((tranche) => toTrancheView(tranche)),
     deliveries: deliveries.map(toDeliveryView),
     donations: donations.map(toDonationView),
@@ -916,6 +940,15 @@ const loadTrack = async (ref: string, provider: string | undefined): Promise<Loa
       payments,
       badges: (await badgesFor([need])).get(need.id) ?? EMPTY_BADGES,
       presentation: (await presentationsFor([need])).get(need.id) ?? null,
+      taxStatus: (await taxStatusFor([need])).get(need.ngo.toLowerCase()) ?? null,
+      acknowledgment: donation.receiptId
+        ? ((await db
+            .select()
+            .from(schema.donationAcknowledgment)
+            .where(eq(schema.donationAcknowledgment.receiptId, donation.receiptId))
+            .limit(1)
+            .then((rows) => rows[0])) ?? null)
+        : null,
     }),
   }
 }

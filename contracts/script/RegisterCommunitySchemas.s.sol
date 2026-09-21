@@ -16,11 +16,14 @@ import {console2} from "forge-std/console2.sol";
 ///
 ///      forge script script/RegisterCommunitySchemas.s.sol --rpc-url base_sepolia --broadcast
 contract RegisterCommunitySchemas is Script, DeploymentIO {
-    string[3] internal NAMES = ["WorkPhotos", "SupplierApplication", "NeedPresentation"];
-    string[3] internal SCHEMAS = [
+    string[5] internal NAMES =
+        ["WorkPhotos", "SupplierApplication", "NeedPresentation", "OrgTaxStatus", "DonationAcknowledged"];
+    string[5] internal SCHEMAS = [
         "uint256 needId,string[] photos,string note",
         "address supplier,string name,string services,string uri,bytes32 credentialHash",
-        "uint256 needId,string coverImage,string[] gallery,string summary,string[] tags"
+        "uint256 needId,string coverImage,string[] gallery,string summary,string[] tags",
+        "address org,string jurisdiction,string taxId,string legalName,string source",
+        "uint256 receiptId,uint256 needId,bytes32 documentHash,string statement"
     ];
 
     function run() external {
@@ -31,7 +34,7 @@ contract RegisterCommunitySchemas is Script, DeploymentIO {
         if (deployerKey != 0) vm.startBroadcast(deployerKey);
         else vm.startBroadcast();
 
-        bytes32[3] memory uids;
+        bytes32[5] memory uids;
         for (uint256 i; i < NAMES.length; ++i) {
             uids[i] = _register(registry, SCHEMAS[i]);
         }

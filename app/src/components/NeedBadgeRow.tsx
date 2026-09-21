@@ -1,4 +1,4 @@
-import type { NeedBadges } from '@poa/shared'
+import type { NeedBadges, OrgTaxStatusView } from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import { bpsPercent } from '@/lib/format'
 
@@ -11,11 +11,19 @@ import { bpsPercent } from '@/lib/format'
  * - **payout record** — the share of everything this NGO ever released that actually reached the payees its
  *   plans named. Below 100% means money is still held because a token refused a transfer.
  */
-export function NeedBadgeRow({ badges, className = '' }: { badges: NeedBadges; className?: string }) {
+export function NeedBadgeRow({
+  badges,
+  taxStatus = null,
+  className = '',
+}: {
+  badges: NeedBadges
+  taxStatus?: OrgTaxStatusView | null
+  className?: string
+}) {
   const t = useTranslations('badges')
   const clean = badges.payoutAccuracyBps !== null && badges.payoutAccuracyBps >= 10_000
 
-  if (badges.workPhotos === 0 && badges.payoutAccuracyBps === null) return null
+  if (badges.workPhotos === 0 && badges.payoutAccuracyBps === null && !taxStatus) return null
 
   return (
     <ul className={`flex flex-wrap gap-1.5 ${className}`}>
@@ -31,6 +39,16 @@ export function NeedBadgeRow({ badges, className = '' }: { badges: NeedBadges; c
         >
           <span aria-hidden="true">{clean ? '✅' : '⏳'}</span>{' '}
           {clean ? t('payouts') : t('payoutsPartial', { percent: bpsPercent(badges.payoutAccuracyBps) })}
+        </li>
+      ) : null}
+      {taxStatus ? (
+        <li
+          className={`badge ${taxStatus.verified ? 'bg-indigo-100 text-indigo-900' : 'bg-slate-100 text-slate-600'}`}
+          title={taxStatus.verified ? t('taxVerifiedHint') : t('taxClaimedHint')}
+        >
+          {taxStatus.verified
+            ? t('tax', { jurisdiction: taxStatus.jurisdiction, id: taxStatus.taxId })
+            : `${t('tax', { jurisdiction: taxStatus.jurisdiction, id: taxStatus.taxId })} ${t('taxUnchecked')}`}
         </li>
       ) : null}
       {badges.needsCompleted > 0 ? (

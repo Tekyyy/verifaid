@@ -15,6 +15,7 @@ import { OutcomeBanner } from '@/components/OutcomeBanner'
 import { SettlementList } from '@/components/SettlementList'
 import { StageStepper } from '@/components/StageStepper'
 import { NeedStatusBadge } from '@/components/StatusBadge'
+import { TaxReceiptPanel } from '@/components/TaxReceiptPanel'
 import { TrancheBar } from '@/components/TrancheBar'
 import { Link } from '@/i18n/navigation'
 import { amount, bpsPercent, shorten, timestamp } from '@/lib/format'
@@ -193,6 +194,8 @@ export function DonationTrackView({ track }: { track: DonationTrack }) {
               </ul>
             </section>
           ) : null}
+
+          <TaxReceiptPanel track={track} unit={unit} />
 
           <section className="card" aria-labelledby="settlements">
             <h2 id="settlements" className="section-title">

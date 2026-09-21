@@ -1,6 +1,7 @@
 import type {
   DeliveryView,
   DepositAddressView,
+  DonationAcknowledgmentView,
   DonationTrack,
   DonationView,
   DonorStage,
@@ -12,6 +13,7 @@ import type {
   NeedDetail,
   NeedPresentationView,
   NeedSummary,
+  OrgTaxStatusView,
   PayeePaymentView,
   PayeeView,
   ProgramMembersResponse,
@@ -105,6 +107,34 @@ const PRESENTATION_1: NeedPresentationView = {
   timestamp: 1_757_005_000,
 }
 
+/** The demo NGO states a US standing, and the platform checked it. */
+const TAX_STATUS: OrgTaxStatusView = {
+  org: NGO,
+  jurisdiction: 'US',
+  taxId: '12-3456789',
+  legalName: 'Aurora Relief Foundation Inc.',
+  source: 'https://example.org/501c3-determination-letter.pdf',
+  claimedAt: 1_756_000_000,
+  verified: true,
+  verifiedBy: getAddress('0x7642c9178a738dd623aac1f943bafb81589e9050'),
+  verifiedSource: 'IRS Tax Exempt Organization Search, checked 2026-09-21',
+  verifiedAt: 1_756_100_000,
+}
+
+const ACKNOWLEDGMENT: DonationAcknowledgmentView = {
+  receiptId: '1',
+  needId: '1',
+  ngo: NGO,
+  documentHash: uid(92),
+  statement:
+    'Aurora Relief Foundation Inc. acknowledges receiving a contribution of 9,000.00 USDC on 2025-09-04, ' +
+    'transferred on-chain. No goods or services were provided in exchange for this contribution. ' +
+    'Tax identification number: 12-3456789.',
+  uid: uid(93),
+  timestamp: 1_757_020_000,
+  txHash: tx(199),
+}
+
 const BADGES: NeedBadges = { workPhotos: 0, payoutAccuracyBps: 10_000, needsCompleted: 1, needsTotal: 3 }
 
 /** Photos of the work, as need #1's NGO published them. */
@@ -152,6 +182,7 @@ const summary = (
   return {
     badges: BADGES,
     presentation: id === '1' ? PRESENTATION_1 : null,
+    taxStatus: TAX_STATUS,
     id,
     ngo: NGO,
     ngoName: 'Aurora Relief',
@@ -1102,6 +1133,7 @@ const TRACKS: Record<string, DonationTrack> = {
     settlements: SETTLEMENTS_1,
     impactReport: null,
     deposit: null,
+    acknowledgment: ACKNOWLEDGMENT,
     payees: PAYEES_1,
     updatedAt: 1_757_400_000,
   },
@@ -1130,6 +1162,7 @@ const TRACKS: Record<string, DonationTrack> = {
     settlements: [],
     impactReport: null,
     deposit: null,
+    acknowledgment: null,
     payees: [],
     updatedAt: 1_758_200_000,
   },
@@ -1149,6 +1182,7 @@ const TRACKS: Record<string, DonationTrack> = {
     settlements: [],
     impactReport: null,
     deposit: null,
+    acknowledgment: null,
     payees: [],
     updatedAt: 1_760_010_000,
   },
@@ -1168,6 +1202,7 @@ const TRACKS: Record<string, DonationTrack> = {
     settlements: [],
     impactReport: null,
     deposit: DEPOSITS[FIXTURE_DEPOSIT_ADDRESS.toLowerCase()] ?? null,
+    acknowledgment: null,
     payees: [],
     updatedAt: 1_770_250_000,
   },

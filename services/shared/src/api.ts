@@ -49,6 +49,8 @@ export interface NeedSummary {
   badges: NeedBadges
   /** What the NGO published to present it, or null while it has published nothing. */
   presentation: NeedPresentationView | null
+  /** The tax standing of the organisation behind it, as claimed and (maybe) checked. */
+  taxStatus: OrgTaxStatusView | null
 }
 
 /** Ways to order the needs list. `urgency` = soonest funding deadline first, then the largest funding gap. */
@@ -216,6 +218,38 @@ export interface SupplierDetail extends SupplierView {
   payments: PayeePaymentView[]
 }
 
+/**
+ * An organisation's tax standing. `verified` means the platform admin signed an attestation saying they
+ * checked the claim against the register named in `verifiedSource` — never that this system can tell whether a
+ * donation is deductible, which depends on the donor as much as on the organisation.
+ */
+export interface OrgTaxStatusView {
+  org: Address
+  /** ISO 3166-1 alpha-2 of the tax authority, e.g. "US". */
+  jurisdiction: string
+  /** The organisation's public registration number (an EIN for a US 501(c)(3)). Never a donor's. */
+  taxId: string
+  legalName: string
+  source: string
+  claimedAt: number
+  verified: boolean
+  verifiedBy: Address | null
+  verifiedSource: string | null
+  verifiedAt: number | null
+}
+
+/** The donee's signed acknowledgment of one donation, which a donor's receipt document cites. */
+export interface DonationAcknowledgmentView {
+  receiptId: string
+  needId: string
+  ngo: Address
+  documentHash: Hex
+  statement: string
+  uid: Hex
+  timestamp: number
+  txHash: Hex
+}
+
 /** How an NGO chose to present a need: a cover image, more images, a summary and a few tags. */
 export interface NeedPresentationView {
   coverImage: string
@@ -343,6 +377,7 @@ export type TimelineEventType =
   | 'PayeeChangeCancelled'
   | 'WorkPhotosPublished'
   | 'NeedPresentationPublished'
+  | 'DonationAcknowledged'
   | 'DonationWithdrawn'
 
 export interface TimelineEvent {
@@ -521,6 +556,8 @@ export interface DonationTrack {
   deposit: DepositAddressView | null
   /** Who the vault pays and what each has received; this donation's part of each is `paid × shareBps / 10 000`. */
   payees: PayeeView[]
+  /** The donee's signed acknowledgment of this donation, once it has made one. */
+  acknowledgment: DonationAcknowledgmentView | null
   updatedAt: number
 }
 

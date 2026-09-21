@@ -73,7 +73,7 @@ export function NeedCard({ need }: { need: NeedSummary }) {
           </p>
         </div>
 
-        <NeedBadgeRow badges={need.badges} />
+        <NeedBadgeRow badges={need.badges} taxStatus={need.taxStatus} />
 
         {tags.length > 0 ? (
           <ul className="flex flex-wrap gap-1.5">

@@ -267,6 +267,19 @@ gets stuck between the two.*
   minimum, which locks both sides at once. And a withdrawal is public — it shows up on the need's timeline and
   on the donation, so a coordinated pull-out is visible rather than silent.
 
+### 3.17 Tax receipts (v5 app)
+
+*A donor's identity leaks through the paperwork, or an organisation claims a standing it does not have.*
+
+- **Mitigation.** The receipt document is rendered in the donor's own browser; their name and address are never
+  transmitted or stored, and the on-chain acknowledgment deliberately commits nothing about the donor — it is a
+  statement about the donation. An organisation's tax claim is separated from its verification by *who signed
+  it*: a claim is the organisation's own attestation, a verification is the platform admin's, recorded with the
+  register they checked and the date.
+- **Residual risk.** A verification is only as good as the admin's diligence, and a donor could still be
+  identified by correlating a public donation with an off-chain disclosure they make themselves. Nothing here
+  establishes that a contribution is deductible, and the UI is written so that no reader could think it does.
+
 ### 3.10 GDPR versus immutability
 
 - **Mitigation.** Personal data is only ever in the PII vault, encrypted with a per-record data key. Erasure is

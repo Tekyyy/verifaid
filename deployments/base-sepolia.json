@@ -4,7 +4,9 @@
   "communitySchemas": {
     "SupplierApplication": "0x5132ffaa7311d63e5cbfeea90075c4ecdaeb061bbce301ea9c81097ed6c8bb9c",
     "WorkPhotos": "0x7f9f55f9579e964ddb61a70457b3bd3cee16bda465bda02204c9579a7ef1c46a",
-    "NeedPresentation": "0x811fda6dea28935a49127774da6f617589c306c99049c68617c8e62418f2df84"
+    "NeedPresentation": "0x811fda6dea28935a49127774da6f617589c306c99049c68617c8e62418f2df84",
+    "OrgTaxStatus": "0x270388d26307fe2438309f7019a0b3e0380d10245b4e3b3d4c0dac0e40042e02",
+    "DonationAcknowledged": "0xb0238f10b1e25f1f1ea1b9e3fe3836e7e1b74821619156274f541a40a2fbecb1"
   },
   "contracts": {
     "AidVaultFactory": "0xBf66e08aC948A11adA37636bdAb9b904882dA19a",

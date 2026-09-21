@@ -573,3 +573,52 @@ mean something is the indexer, which applies the rules the chain deliberately do
 
 A deployment that predates these schemas simply has no `communitySchemas` entry, and every panel that would
 write one hides itself.
+
+## 18. Receipts a donor can file (US, phase 1)
+
+A soulbound receipt already proved that a donation happened. What a US donor actually needs at tax time is
+narrower and stricter, so this release makes the receipt carry it — without pretending the chain can decide
+anything it cannot.
+
+**What the law asks for, and who can answer it**
+
+| Requirement | Who satisfies it |
+|---|---|
+| The donee is a qualified organisation under §170(c) | the organisation, off-chain; a register says so |
+| A contemporaneous written acknowledgment for $250+ | the **donee**, in writing, stating amount, date and whether anything was given in return |
+| Non-cash reporting: Form 8283 above $500, a qualified appraisal above $5,000 | the donor, with the donee signing Section B |
+
+Crypto is **property**, not cash, so every donation here is a non-cash contribution and those thresholds apply.
+Nothing in this system can make a contribution deductible; what it can do is make the evidence complete and
+checkable.
+
+**Two more resolver-less schemas** (§17 explains the pattern):
+
+- `OrgTaxStatus(org, jurisdiction, taxId, legalName, source)` — the organisation states its standing. When the
+  **platform admin** signs the same schema for that organisation, the indexer marks it verified and records
+  *where* they checked, because a chain cannot read a tax register but it can record who says they read it. A
+  restated claim clears the previous check: what was checked was the old text. The number published is the
+  organisation's public registration number (an EIN for a US 501(c)(3)) — a donor's tax number is never asked
+  for anywhere in this system.
+- `DonationAcknowledged(receiptId, needId, documentHash, statement)` — the donee signing for one donation,
+  kept only when the need's own NGO signed it. The statement is the acknowledgment sentence itself and the hash
+  is its keccak256, so a document downloaded months later can be checked against what was signed.
+
+**The document is built in the donor's browser.** Their legal name and address are typed into the page and used
+only to render the PDF: no server sees them, nothing is stored, and nothing about the donor goes on chain. The
+document states the amount, date, transaction, the need, the receipt token, the donee's signed acknowledgment
+and its attestation, the organisation's standing and whether anyone checked it — and then says plainly that it
+is not tax advice and that deductibility depends on the donor's own circumstances.
+
+**Deliberately not claimed.** The app never says "tax-deductible". A need shows the organisation's registration
+number and whether it was checked; a donor decides with their accountant. An unverified claim renders as the
+organisation's own statement, in grey, next to the words *(unverified)*.
+
+**Still to come** (phase 2 and 3, §16 has the contract cadence): recording USD fair market value and the
+Chainlink round at donation time rather than reconstructing it, a Form 8283 prefill with the appraisal warning
+above $5,000, a Form 8282 disposition export built from the payment events (a vault that pays suppliers is
+disposing of donated property within three years, which the organisation must report), and a fiscal-sponsor
+mode where the recipient of record is a US 501(c)(3) and the field NGO is a payee in the plan.
+
+The wording of the acknowledgment and of the receipt has **not** been reviewed by a US tax professional. That
+review is a release gate before this is offered to a real donor.

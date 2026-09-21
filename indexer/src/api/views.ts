@@ -20,7 +20,9 @@ import {
   regionLabel,
   resolveNetwork,
   type SettlementView,
+  type DonationAcknowledgmentView,
   type NeedPresentationView,
+  type OrgTaxStatusView,
   type SupplierApplicationView,
   type SupplierView,
   type TimelineEvent,
@@ -53,6 +55,8 @@ export type SupplierRow = typeof schema.supplier.$inferSelect
 export type DepositRefundRow = typeof schema.depositRefund.$inferSelect
 export type WorkPhotosRow = typeof schema.workPhotos.$inferSelect
 export type NeedPresentationRow = typeof schema.needPresentation.$inferSelect
+export type OrgTaxStatusRow = typeof schema.orgTaxStatus.$inferSelect
+export type AcknowledgmentRow = typeof schema.donationAcknowledgment.$inferSelect
 export type SupplierApplicationRow = typeof schema.supplierApplication.$inferSelect
 
 const deployment = getDeployment(resolveNetwork(process.env.PONDER_NETWORK ?? 'anvil'))
@@ -61,7 +65,9 @@ const deployment = getDeployment(resolveNetwork(process.env.PONDER_NETWORK ?? 'a
 export const fundingGapOf = (row: NeedRow): bigint =>
   row.status === 'Funding' && row.targetAmount > row.totalDonated ? row.targetAmount - row.totalDonated : 0n
 
-export const toNeedSummary = (row: NeedRow): Omit<NeedSummary, 'badges' | 'presentation'> => ({
+export const toNeedSummary = (
+  row: NeedRow,
+): Omit<NeedSummary, 'badges' | 'presentation' | 'taxStatus'> => ({
   id: row.id.toString(),
   ngo: row.ngo as Address,
   // The NGO's display name lives in the off-chain profile JSON at metadataURI; only the URI is on-chain.
@@ -94,6 +100,30 @@ export const toNeedSummary = (row: NeedRow): Omit<NeedSummary, 'badges' | 'prese
   settlementFees: row.settlementFees.toString(),
   createdAt: row.createdAt,
   expiredAt: row.expiredAt,
+})
+
+export const toOrgTaxStatusView = (row: OrgTaxStatusRow): OrgTaxStatusView => ({
+  org: row.org as Address,
+  jurisdiction: row.jurisdiction,
+  taxId: row.taxId,
+  legalName: row.legalName,
+  source: row.source,
+  claimedAt: row.claimedAt,
+  verified: row.verifiedAt !== null,
+  verifiedBy: (row.verifiedBy as Address | null) ?? null,
+  verifiedSource: row.verifiedSource ?? null,
+  verifiedAt: row.verifiedAt ?? null,
+})
+
+export const toAcknowledgmentView = (row: AcknowledgmentRow): DonationAcknowledgmentView => ({
+  receiptId: row.receiptId.toString(),
+  needId: row.needId.toString(),
+  ngo: row.ngo as Address,
+  documentHash: row.documentHash as Hex,
+  statement: row.statement,
+  uid: row.uid as Hex,
+  timestamp: row.timestamp,
+  txHash: row.txHash as Hex,
 })
 
 export const toNeedPresentationView = (row: NeedPresentationRow): NeedPresentationView => ({

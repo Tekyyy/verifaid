@@ -1,10 +1,14 @@
 import {
   type CommunitySchemaName,
+  type DonationAcknowledgedData,
   decodeCommunityData,
   type NeedPresentationData,
+  type OrgTaxStatusData,
   type SupplierApplicationData,
   type WorkPhotosData,
 } from '@poa/shared'
+import { getDeployment, resolveNetwork } from '@poa/shared'
+import { eq } from 'ponder'
 import schema from 'ponder:schema'
 import type { Address, Hex } from 'viem'
 
@@ -25,6 +29,8 @@ const MAX_URL = 500
 const MAX_TEXT = 500
 const MAX_TAGS = 5
 const MAX_TAG = 40
+/** An acknowledgment is a paragraph, not a document: the document is what the donor downloads. */
+const MAX_STATEMENT = 2000
 
 const trim = (value: string, max: number): string => (value.length > max ? value.slice(0, max) : value)
 
@@ -34,6 +40,12 @@ const usablePhotos = (photos: readonly string[]): string[] =>
     .filter((url) => /^(https:\/\/|ipfs:\/\/)/i.test(url.trim()) && url.trim().length <= MAX_URL)
     .slice(0, MAX_PHOTOS)
     .map((url) => url.trim())
+
+/**
+ * Who the platform admin is, for this deployment. An `OrgTaxStatus` attestation signed by that address is what
+ * turns a claim into a verification — the chain cannot check an EIN, but it can record who says they did.
+ */
+const ADMIN = getDeployment(resolveNetwork(process.env.PONDER_NETWORK ?? 'anvil')).admin.toLowerCase()
 
 interface AttestationContext {
   uid: Hex
@@ -95,6 +107,70 @@ export const recordCommunityAttestation = async (
     return needId
   }
 
+  if (name === 'OrgTaxStatus') {
+    const [org, jurisdiction, taxId, legalName, source] = decodeCommunityData<OrgTaxStatusData>(
+      'OrgTaxStatus',
+      ctx.data,
+    )
+    const isOrg = org.toLowerCase() === ctx.attester.toLowerCase()
+    const isAdmin = ctx.attester.toLowerCase() === ADMIN
+    // An organisation states its own standing; only the admin's signature marks it as checked.
+    if (!isOrg && !isAdmin) return null
+
+    const existing = await ctx.db.find(schema.orgTaxStatus, { org })
+    if (isOrg) {
+      const claim = {
+        jurisdiction: trim(jurisdiction, MAX_TAG),
+        taxId: trim(taxId, MAX_TAG),
+        legalName: trim(legalName, MAX_TEXT),
+        source: trim(source, MAX_URL),
+        claimedAt: ctx.timestamp,
+        claimUid: ctx.uid,
+        revoked: false,
+        // A restated claim is a new claim: whatever was checked before was checked against the old text.
+        verifiedBy: null,
+        verifiedSource: null,
+        verifiedAt: null,
+        verifiedUid: null,
+      }
+      await ctx.db.insert(schema.orgTaxStatus).values({ org, ...claim }).onConflictDoUpdate(claim)
+      return null
+    }
+    // The admin can only confirm a claim the organisation actually made.
+    if (!existing) return null
+    await ctx.db.update(schema.orgTaxStatus, { org }).set({
+      verifiedBy: ctx.attester,
+      verifiedSource: trim(source, MAX_URL),
+      verifiedAt: ctx.timestamp,
+      verifiedUid: ctx.uid,
+    })
+    return null
+  }
+
+  if (name === 'DonationAcknowledged') {
+    const [receiptId, needId, documentHash, statement] = decodeCommunityData<DonationAcknowledgedData>(
+      'DonationAcknowledged',
+      ctx.data,
+    )
+    const need = await ctx.db.find(schema.need, { id: needId })
+    // Only the donee can acknowledge a donation to itself.
+    if (!need || need.ngo.toLowerCase() !== ctx.attester.toLowerCase()) return null
+    const receipt = await ctx.db.find(schema.receipt, { id: receiptId })
+    if (!receipt || receipt.needId !== needId) return null
+
+    const row = {
+      needId,
+      ngo: ctx.attester,
+      documentHash,
+      statement: trim(statement, MAX_STATEMENT),
+      uid: ctx.uid,
+      timestamp: ctx.timestamp,
+      txHash: ctx.txHash,
+    }
+    await ctx.db.insert(schema.donationAcknowledgment).values({ receiptId, ...row }).onConflictDoUpdate(row)
+    return needId
+  }
+
   const [supplier, label, services, uri, credentialHash] = decodeCommunityData<SupplierApplicationData>(
     'SupplierApplication',
     ctx.data,
@@ -125,6 +201,16 @@ export const revokeCommunityAttestation = async (
 ): Promise<void> => {
   // A presentation is replaced, not revoked: the row keeps whatever the NGO published last.
   if (name === 'NeedPresentation') return
+  if (name === 'OrgTaxStatus') {
+    const row = await db.sql
+      .select()
+      .from(schema.orgTaxStatus)
+      .where(eq(schema.orgTaxStatus.claimUid, uid))
+      .limit(1)
+    if (row[0]) await db.update(schema.orgTaxStatus, { org: row[0].org }).set({ revoked: true })
+    return
+  }
+  if (name === 'DonationAcknowledged') return
   const table = name === 'WorkPhotos' ? schema.workPhotos : schema.supplierApplication
   const row = await db.find(table, { uid })
   if (row) await db.update(table, { uid }).set({ revoked: true })

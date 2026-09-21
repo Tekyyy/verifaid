@@ -610,6 +610,39 @@ export const needPresentation = onchainTable('need_presentation', (t) => ({
   timestamp: t.integer().notNull(),
 }))
 
+/**
+ * What an organisation says about its tax standing, and whether the platform admin checked it. One row per
+ * organisation: the organisation's own attestation fills the claim, the admin's fills the verification.
+ */
+export const orgTaxStatus = onchainTable('org_tax_status', (t) => ({
+  org: t.hex().primaryKey(),
+  jurisdiction: t.text().notNull(),
+  taxId: t.text().notNull(),
+  legalName: t.text().notNull(),
+  /** Where the claim points: a determination letter, a register entry. */
+  source: t.text().notNull(),
+  claimedAt: t.integer().notNull(),
+  claimUid: t.hex().notNull(),
+  /** Set only by an attestation from the platform admin, which is what "verified" means here. */
+  verifiedBy: t.hex(),
+  verifiedSource: t.text(),
+  verifiedAt: t.integer(),
+  verifiedUid: t.hex(),
+  revoked: t.boolean().notNull(),
+}))
+
+/** The donee acknowledging one donation: what a US donor needs to hold for a contribution of $250 or more. */
+export const donationAcknowledgment = onchainTable('donation_acknowledgment', (t) => ({
+  receiptId: t.bigint().primaryKey(),
+  needId: t.bigint().notNull(),
+  ngo: t.hex().notNull(),
+  documentHash: t.hex().notNull(),
+  statement: t.text().notNull(),
+  uid: t.hex().notNull(),
+  timestamp: t.integer().notNull(),
+  txHash: t.hex().notNull(),
+}))
+
 /** A supplier asking an admin to register it (resolver-less `SupplierApplication` schema). A request, not a role. */
 export const supplierApplication = onchainTable(
   'supplier_application',

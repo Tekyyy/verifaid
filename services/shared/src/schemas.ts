@@ -83,6 +83,16 @@ export const COMMUNITY_SCHEMAS = {
     schema: 'uint256 needId,string coverImage,string[] gallery,string summary,string[] tags',
     revocable: true,
   },
+  OrgTaxStatus: {
+    name: 'OrgTaxStatus' as const,
+    schema: 'address org,string jurisdiction,string taxId,string legalName,string source',
+    revocable: true,
+  },
+  DonationAcknowledged: {
+    name: 'DonationAcknowledged' as const,
+    schema: 'uint256 receiptId,uint256 needId,bytes32 documentHash,string statement',
+    revocable: true,
+  },
   SupplierApplication: {
     name: 'SupplierApplication' as const,
     schema: 'address supplier,string name,string services,string uri,bytes32 credentialHash',
@@ -112,6 +122,36 @@ export type NeedPresentationData = readonly [
   gallery: readonly string[],
   summary: string,
   tags: readonly string[],
+]
+
+/**
+ * What an organisation says about its own tax standing — and, when the platform admin signs the same schema for
+ * that organisation, that somebody checked it. The attester is what separates a claim from a verification, so
+ * one schema carries both: `source` is the determination letter when the org signs it, and where and when it
+ * was checked when the admin does.
+ *
+ * A tax id of a registered charity is public information (the IRS publishes EINs); a donor's is not, and never
+ * appears anywhere in this system.
+ */
+export type OrgTaxStatusData = readonly [
+  org: Address,
+  jurisdiction: string,
+  taxId: string,
+  legalName: string,
+  source: string,
+]
+
+/**
+ * The donee acknowledging one donation, which is what a US donor needs to hold for a contribution of $250 or
+ * more. `statement` is the acknowledgment text itself and `documentHash` is its keccak256, so a PDF a donor
+ * downloads later can be checked against what the organisation actually signed. No donor name is committed:
+ * the acknowledgment is about the donation, and the donor adds their own details to the document.
+ */
+export type DonationAcknowledgedData = readonly [
+  receiptId: bigint,
+  needId: bigint,
+  documentHash: Hex,
+  statement: string,
 ]
 
 /** A supplier asking to be registered. An admin still has to grant the role; this is the public request. */

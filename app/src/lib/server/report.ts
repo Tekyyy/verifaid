@@ -2,7 +2,7 @@ import { type NeedDetail, type TimelineEvent, vaultCurrency } from '@poa/shared'
 import { chain, deployment, network } from '../config'
 import { amount, bpsOf, bpsPercent, timestamp } from '../format'
 import { isZeroUid } from '../links'
-import { PdfReport } from './pdf'
+import { PdfReport } from '../pdf'
 
 /**
  * The donor / funder / audit report for one need (gap plan C2). It is a rendering of indexer data that is

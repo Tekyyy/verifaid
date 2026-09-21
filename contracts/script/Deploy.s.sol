@@ -186,6 +186,8 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         string memory community = "communitySchemas";
         community.serialize("WorkPhotos", bytes32(0));
         community.serialize("NeedPresentation", bytes32(0));
+        community.serialize("OrgTaxStatus", bytes32(0));
+        community.serialize("DonationAcknowledged", bytes32(0));
         return community.serialize("SupplierApplication", bytes32(0));
     }
 }
