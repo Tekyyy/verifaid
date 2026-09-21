@@ -24,6 +24,7 @@ import { donationFeedPath } from '@/lib/indexer'
 export function DonationTrackView({ track }: { track: DonationTrack }) {
   const t = useTranslations('track')
   const tNeed = useTranslations('need')
+  const tPlan = useTranslations('plan')
   const tCommon = useTranslations('common')
   const { donation, need } = track
   const unit = tCommon('amountUnit')
@@ -156,6 +157,40 @@ export function DonationTrackView({ track }: { track: DonationTrack }) {
               <div className="mt-3">
                 <TrancheBar tranches={track.tranches} />
               </div>
+            </section>
+          ) : null}
+
+          {track.payees.length > 0 ? (
+            <section className="card" aria-labelledby="track-payees">
+              <h2 id="track-payees" className="section-title">
+                {tPlan('title')}
+              </h2>
+              <p className="mt-1 text-sm text-slate-700">{t('payeesNote')}</p>
+              <ul className="mt-3 space-y-2 text-sm">
+                {track.payees.map((payee) => (
+                  <li key={payee.index} className="flex flex-wrap items-baseline justify-between gap-x-3">
+                    <span className="min-w-0">
+                      <span className="block font-medium text-slate-900">
+                        {payee.label || tPlan('unnamed')}
+                      </span>
+                      {payee.account ? (
+                        <Link className="link mono text-xs" href={`/suppliers/${payee.account}`}>
+                          {shorten(payee.account)}
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-slate-600">{tPlan('ngoShare')}</span>
+                      )}
+                    </span>
+                    <span className="tabular-nums text-slate-800">
+                      {t('payeeShare', {
+                        share: bpsPercent(payee.needShareBps),
+                        amount: amount((BigInt(payee.paid) * BigInt(track.shareBps)) / 10_000n),
+                        unit,
+                      })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </section>
           ) : null}
 

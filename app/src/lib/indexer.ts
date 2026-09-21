@@ -10,6 +10,8 @@ import type {
   NeedSummary,
   ProgramMembersResponse,
   ProviderView,
+  SupplierDetail,
+  SupplierView,
   TimelineEvent,
 } from '@poa/shared'
 import { indexerUrl, useFixtures } from './config'
@@ -127,6 +129,13 @@ export const getDepositAddress = async (address: string): Promise<Result<Deposit
 
 export const getProviders = async (): Promise<Result<ProviderView[]>> =>
   useFixtures ? { ok: true, data: fixtures.providers } : get<ProviderView[]>('/providers')
+
+/** Registered suppliers (SUPPLIER_ROLE): the vetted providers a vault may pay directly. */
+export const getSuppliers = async (): Promise<Result<SupplierView[]>> =>
+  useFixtures ? { ok: true, data: fixtures.suppliers } : get<SupplierView[]>('/suppliers')
+
+export const getSupplier = async (address: string): Promise<Result<SupplierDetail>> =>
+  useFixtures ? fixtures.supplier(address) : get<SupplierDetail>(`/suppliers/${encodeURIComponent(address)}`)
 
 /** Same-origin RSS feeds (proxied), so a reader subscribes to this site rather than to the indexer's port. */
 export const needFeedPath = (id: string): string => `/api/indexer/needs/${encodeURIComponent(id)}/feed.rss`

@@ -8,8 +8,8 @@ import { EmptyState, IndexerNotice, Notice } from '@/components/Notice'
 import { TrancheBar } from '@/components/TrancheBar'
 import { Link } from '@/i18n/navigation'
 import { amount } from '@/lib/format'
-import { useMounted } from '@/lib/mounted'
 import { getDonorTrace } from '@/lib/indexer'
+import { useMounted } from '@/lib/mounted'
 
 /** "Follow my money": the receipts this wallet holds and what each one paid for. */
 export function DonorTracePanel() {

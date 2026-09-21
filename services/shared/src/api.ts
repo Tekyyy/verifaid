@@ -208,6 +208,13 @@ export interface SupplierDetail extends SupplierView {
   payments: PayeePaymentView[]
 }
 
+/** `NeedsRegistry.MIN_PAYEE_CHANGE_APPROVALS`: moving an escrow to another supplier always takes two verifiers. */
+export const MIN_PAYEE_CHANGE_APPROVALS = 2
+
+/** Mirrors `NeedsRegistry.payeeChangeApprovalsRequired`: the need's own threshold, but never fewer than two. */
+export const payeeChangeApprovalsRequired = (verificationsRequired: number): number =>
+  Math.max(verificationsRequired, MIN_PAYEE_CHANGE_APPROVALS)
+
 export type PayeeChangeStatus = 'PENDING' | 'APPLIED' | 'CANCELLED'
 
 /** A supplier replacement: proposed by the NGO, applied after enough independent verifiers approve it. */

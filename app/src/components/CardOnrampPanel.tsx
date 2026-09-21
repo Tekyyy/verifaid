@@ -107,7 +107,9 @@ export function CardOnrampPanel({
   const factory = deployment?.contracts.DonationForwarderFactory
   // On a USD deployment the on-ramp delivers the vault's own currency, so the donation is a straight transfer:
   // there is no price to quote and nothing to lose on the way in.
-  const passThrough = Boolean(usdc && deployment && usdc.toLowerCase() === deployment.external.Token.toLowerCase())
+  const passThrough = Boolean(
+    usdc && deployment && usdc.toLowerCase() === deployment.external.Token.toLowerCase(),
+  )
 
   useEffect(() => {
     setPurchase(readStored(storageKey(needId), isStoredPurchase))

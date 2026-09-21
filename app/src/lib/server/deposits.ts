@@ -1,8 +1,8 @@
 import {
   type Deployment,
+  type DonationTokenSymbol,
   donationForwarderFactoryAbi,
   donationTokens,
-  type DonationTokenSymbol,
   type ForwarderIntent,
   NATIVE_TOKEN,
   vaultCurrency,

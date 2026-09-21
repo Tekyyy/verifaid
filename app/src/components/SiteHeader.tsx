@@ -7,6 +7,7 @@ import { chain } from '@/lib/config'
 const ROUTES = [
   { href: '/needs', key: 'needs' },
   { href: '/impact', key: 'impact' },
+  { href: '/suppliers', key: 'suppliers' },
   { href: '/track', key: 'track' },
   { href: '/donor', key: 'donor' },
   { href: '/ngo', key: 'ngo' },

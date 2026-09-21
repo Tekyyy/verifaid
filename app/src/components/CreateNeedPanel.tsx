@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { type Address, type Hex, isAddress, keccak256, stringToHex, zeroAddress } from 'viem'
 import { CustodianPicker } from '@/components/CustodianPicker'
 import { DateField, FormError, Panel, SelectField, TextArea, TextField } from '@/components/form'
+import { checkPlan, emptyRow, PaymentPlanEditor, type PlanRow } from '@/components/PaymentPlanEditor'
 import { TxStatus } from '@/components/TxStatus'
 import { deployment } from '@/lib/config'
 import {
@@ -54,6 +55,7 @@ export function CreateNeedPanel() {
   const [dossierText, setDossierText] = useState('')
   const [dossierHash, setDossierHash] = useState('')
   const [custodyMode, setCustodyMode] = useState<CustodyMode>('OnChain')
+  const [plan, setPlan] = useState<PlanRow[]>([emptyRow(3)])
   const [custodian, setCustodian] = useState('')
   const [fundingDate, setFundingDate] = useState('')
   const [executionDate, setExecutionDate] = useState('')
@@ -70,6 +72,14 @@ export function CreateNeedPanel() {
     .filter(Boolean)
   const sum = parts.reduce((total, part) => total + (Number(part) || 0), 0)
 
+  // Percent in the form, basis points on chain; the last tranche absorbs the rounding drift.
+  const trancheBps = parts.map((part) => Math.round(Number(part) * 100))
+  const drift = 10_000 - trancheBps.reduce((total, value) => total + value, 0)
+  if (drift !== 0 && trancheBps.length > 0)
+    trancheBps[trancheBps.length - 1] = (trancheBps.at(-1) as number) + drift
+  const onChain = custodyMode === 'OnChain'
+  const planCheck = checkPlan(plan, trancheBps)
+
   const parsedTarget = parseAmount(target)
   const fundingDeadline = dateInputToUnix(fundingDate)
   const executionDeadline = dateInputToUnix(executionDate)
@@ -78,6 +88,13 @@ export function CreateNeedPanel() {
   const outcomeHash = hashText(outcome)
   const disclosureHash = costBps ? hashText(costDisclosure) : ZERO_BYTES32
   const today = new Date().toISOString().slice(0, 10)
+
+  /** The plan always has one share per tranche: changing the tranche plan reshapes it, keeping what was typed. */
+  const fitPlan = (rows: PlanRow[]): PlanRow[] =>
+    rows.map((row) => ({
+      ...row,
+      shares: Array.from({ length: trancheBps.length }, (_, index) => row.shares[index] ?? ''),
+    }))
 
   const store = async () => {
     setServiceError(null)
@@ -103,6 +120,8 @@ export function CreateNeedPanel() {
       return t('errorCustodian')
     }
     if (fundingDeadline === null || executionDeadline === null) return t('errorDate')
+    // Money escrowed on-chain always has a delivery horizon, so donors always have a way back (expire).
+    if (onChain && executionDeadline === 0) return t('errorExecutionRequired')
     if (fundingDeadline !== 0 && fundingDeadline <= now) return t('errorFundingDeadline')
     if (executionDeadline !== 0 && (executionDeadline <= now || executionDeadline <= fundingDeadline)) {
       return t('errorExecutionDeadline')
@@ -111,6 +130,7 @@ export function CreateNeedPanel() {
     if (costBps === null) return t('errorCostCap', { max: bpsPercent(MAX_COST_BPS) })
     if (costBps > 0 && !costDisclosure.trim()) return t('errorDisclosure')
     if (!outcome.trim()) return t('errorOutcome')
+    if (onChain && planCheck.problem) return t(planCheck.problem)
     return null
   }
 
@@ -118,11 +138,6 @@ export function CreateNeedPanel() {
     const problem = validate()
     if (problem) return setError(problem)
     setError(null)
-
-    // Percent in the form, basis points on chain.
-    const bps = parts.map((part) => Math.round(Number(part) * 100))
-    const drift = 10_000 - bps.reduce((total, value) => total + value, 0)
-    if (drift !== 0 && bps.length > 0) bps[bps.length - 1] = (bps.at(-1) as number) + drift
 
     await tx.run({
       address: deployment?.contracts.NeedsRegistry as Address,
@@ -137,7 +152,7 @@ export function CreateNeedPanel() {
           dossierHash: dossierHash as Hex,
           metadataURI: metadataUri,
           verificationsRequired: Number(verifications),
-          trancheBps: bps,
+          trancheBps,
           custodyMode: CUSTODY_MODE.indexOf(custodyMode),
           custodian: custodyMode === 'OffChain' ? (custodian as Address) : zeroAddress,
           fundingDeadline: BigInt(fundingDeadline ?? 0),
@@ -146,7 +161,8 @@ export function CreateNeedPanel() {
           thirdPartyCostBps: costBps as number,
           expectedOutcomeHash: outcomeHash,
           costDisclosureHash: disclosureHash,
-          payees: [],
+          // Off-chain needs are paid by their custodian, so only on-chain needs carry a plan.
+          payees: onChain ? (planCheck.payees ?? []) : [],
         },
       ],
     })
@@ -235,7 +251,16 @@ export function CreateNeedPanel() {
           </div>
         </div>
 
-        {custodyMode === 'OffChain' ? <CustodianPicker value={custodian} onChange={setCustodian} /> : null}
+        {onChain ? (
+          <PaymentPlanEditor
+            rows={fitPlan(plan)}
+            onChange={setPlan}
+            trancheBps={trancheBps}
+            check={planCheck}
+          />
+        ) : (
+          <CustodianPicker value={custodian} onChange={setCustodian} />
+        )}
 
         <div className="grid gap-3 sm:grid-cols-2">
           <DateField

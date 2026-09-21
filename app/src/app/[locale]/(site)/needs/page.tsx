@@ -4,7 +4,7 @@ import { getTranslations } from 'next-intl/server'
 import { NeedCard } from '@/components/NeedCard'
 import { NeedFilters } from '@/components/NeedFilters'
 import { EmptyState, IndexerNotice } from '@/components/Notice'
-import { getNeeds, type NeedFilters as Filters } from '@/lib/indexer'
+import { type NeedFilters as Filters, getNeeds } from '@/lib/indexer'
 
 export const dynamic = 'force-dynamic'
 

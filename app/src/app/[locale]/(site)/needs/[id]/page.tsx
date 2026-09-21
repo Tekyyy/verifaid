@@ -11,6 +11,7 @@ import { ExpireButton } from '@/components/ExpireButton'
 import { ExplorerLink } from '@/components/ExplorerLink'
 import { GiveFiatPanel } from '@/components/GiveFiatPanel'
 import { IndexerNotice, Notice } from '@/components/Notice'
+import { PaymentPlanPanel } from '@/components/PaymentPlanPanel'
 import { ProgressBar } from '@/components/ProgressBar'
 import { RefundPanel } from '@/components/RefundPanel'
 import { SettlementList } from '@/components/SettlementList'
@@ -163,6 +164,8 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
           </section>
 
           <TermsPanel need={data} />
+
+          <PaymentPlanPanel need={data} />
 
           <section className="card" aria-labelledby="tranches">
             <h2 id="tranches" className="section-title">

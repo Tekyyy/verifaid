@@ -10,9 +10,13 @@ import type {
   ImpactSummary,
   NeedDetail,
   NeedSummary,
+  PayeePaymentView,
+  PayeeView,
   ProgramMembersResponse,
   ProviderView,
   SettlementView,
+  SupplierDetail,
+  SupplierView,
   TimelineEvent,
   TrancheView,
 } from '@poa/shared'
@@ -41,6 +45,8 @@ const FIELD_AGENT = '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC' as Address
 const VERIFIER = '0x90F79bf6EB2c4f870365E785982E1f101E93b906' as Address
 const DONOR = '0x976EA74026E726554dB657fA54763abd0C3a0aa9' as Address
 const PROVIDER = '0x14dC79964da2C08b23698B3D3cc7Ca32193d9955' as Address
+/** The NGO's payout Safe: where its own disclosed share of a tranche goes. */
+const NGO_PAYOUT = '0xBcd4042DE499D14e55001CcbB24a551F3b954096' as Address
 const PROVIDER_RETIRED = '0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f' as Address
 const VAULT_1 = '0x5FC8d32690cc91D4c39d9d3abcBD16989F875707' as Address
 const VAULT_2 = '0xa513E6E4b8f2a923D98304ec87F64353C4D5C853' as Address
@@ -187,7 +193,7 @@ const NEEDS: NeedSummary[] = [
     minFundingBps: 7000,
     thirdPartyCostBps: 100,
     // The two conversion costs below, counted against the 1% cap.
-    fundingFees: '698887',
+    fundingFees: '810000',
   }),
 ]
 
@@ -407,6 +413,82 @@ const DEPOSITS: Record<string, DepositAddressView> = {
   },
 }
 
+/** Two vetted suppliers (SUPPLIER_ROLE) and one that was removed: what a vault may be told to pay. */
+export const SUPPLIER_FOOD: Address = getAddress('0x9d4454b023096f34b160d6b654540c56a1f81688')
+export const SUPPLIER_TRANSPORT: Address = getAddress('0x2b5ad5c4795c026514f8317c7a215e218dccd6cf')
+const SUPPLIER_REMOVED: Address = getAddress('0x6813eb9362372eef6200f3b1dbc3f819671cba69')
+
+/** Need #1's plan: food from one supplier, transport from another, and 10% of the pre-financing for the NGO. */
+const PAYEES_1: PayeeView[] = [
+  {
+    index: 0,
+    account: SUPPLIER_FOOD,
+    label: 'Food parcels (Cooperativa La Vega)',
+    refHash: uid(84),
+    shareBps: [7000, 6000, 10_000],
+    needShareBps: 7500,
+    paid: '2520000000',
+    held: '0',
+  },
+  {
+    index: 1,
+    account: SUPPLIER_TRANSPORT,
+    label: 'Cold-chain transport (Transportes Aljarafe)',
+    refHash: uid(85),
+    shareBps: [2000, 4000, 0],
+    needShareBps: 2200,
+    paid: '720000000',
+    held: '0',
+  },
+  {
+    index: 2,
+    account: null,
+    label: 'Field team and logistics (the NGO itself)',
+    refHash: uid(86),
+    shareBps: [1000, 0, 0],
+    needShareBps: 300,
+    paid: '360000000',
+    held: '0',
+  },
+]
+
+/** The pre-financing tranche, split by that plan the moment it was released. */
+const PAYMENTS_1: PayeePaymentView[] = [
+  {
+    needId: '1',
+    trancheIndex: 0,
+    payee: SUPPLIER_FOOD,
+    payeeIndex: 0,
+    toNgo: false,
+    amount: '2520000000',
+    held: false,
+    txHash: tx(184),
+    timestamp: 1_757_030_000,
+  },
+  {
+    needId: '1',
+    trancheIndex: 0,
+    payee: SUPPLIER_TRANSPORT,
+    payeeIndex: 1,
+    toNgo: false,
+    amount: '720000000',
+    held: false,
+    txHash: tx(184),
+    timestamp: 1_757_030_000,
+  },
+  {
+    needId: '1',
+    trancheIndex: 0,
+    payee: NGO_PAYOUT,
+    payeeIndex: 2,
+    toNgo: true,
+    amount: '360000000',
+    held: false,
+    txHash: tx(184),
+    timestamp: 1_757_030_000,
+  },
+]
+
 const detail = (index: number, rest: Partial<NeedDetail>): NeedDetail => ({
   ...needAt(index),
   payees: [],
@@ -422,6 +504,8 @@ const detail = (index: number, rest: Partial<NeedDetail>): NeedDetail => ({
 
 const DETAILS: Record<string, NeedDetail> = {
   '1': detail(0, {
+    payees: PAYEES_1,
+    payments: PAYMENTS_1,
     tranches: [
       tranche(0, 3000, '3600000000', 'Released', null),
       tranche(1, 4000, '4800000000', 'Releasable', '1'),
@@ -856,6 +940,45 @@ export const programMembers = (programId: string): Result<ProgramMembersResponse
   data: { programId, groupId: '0', memberCount: MEMBERS.length, members: MEMBERS, merkleTreeDepth: 3 },
 })
 
+export const suppliers: SupplierView[] = [
+  {
+    address: SUPPLIER_FOOD,
+    credentialHash: uid(81),
+    metadataURI: 'ipfs://bafybeidemosupplierfood',
+    active: true,
+    registeredAt: 1_756_100_000,
+    totalPaid: '2520000000',
+    needIds: ['1'],
+  },
+  {
+    address: SUPPLIER_TRANSPORT,
+    credentialHash: uid(82),
+    metadataURI: 'ipfs://bafybeidemosuppliertransport',
+    active: true,
+    registeredAt: 1_756_200_000,
+    totalPaid: '720000000',
+    needIds: ['1'],
+  },
+  {
+    address: SUPPLIER_REMOVED,
+    credentialHash: uid(83),
+    metadataURI: 'ipfs://bafybeidemosupplierremoved',
+    active: false,
+    registeredAt: 1_755_000_000,
+    totalPaid: '0',
+    needIds: [],
+  },
+]
+
+export const supplier = (address: string): Result<SupplierDetail> => {
+  const row = suppliers.find((item) => item.address.toLowerCase() === address.toLowerCase())
+  if (!row) return notFound
+  return {
+    ok: true,
+    data: { ...row, payments: PAYMENTS_1.filter((payment) => payment.payee === row.address) },
+  }
+}
+
 export const providers: ProviderView[] = [
   { address: PROVIDER, active: true, registeredAt: 1_756_000_000 },
   { address: PROVIDER_RETIRED, active: false, registeredAt: 1_755_000_000 },
@@ -911,7 +1034,7 @@ const TRACKS: Record<string, DonationTrack> = {
     settlements: SETTLEMENTS_1,
     impactReport: null,
     deposit: null,
-    payees: [],
+    payees: PAYEES_1,
     updatedAt: 1_757_400_000,
   },
   [FIXTURE_PAYMENT_REF.toLowerCase()]: {

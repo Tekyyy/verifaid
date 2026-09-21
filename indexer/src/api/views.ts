@@ -236,7 +236,7 @@ export const toPayeePaymentView = (row: PayeePaymentRow): PayeePaymentView => ({
   timestamp: row.timestamp,
 })
 
-/** `approvalsRequired` is the need's own verification threshold: a replacement takes as much as the need took. */
+/** Independent approvals a change needs: the need's own verification threshold, but never fewer than two. */
 export const toPayeeChangeView = (row: PayeeChangeRow, approvalsRequired: number): PayeeChangeView => ({
   changeId: row.changeId.toString(),
   index: row.index,

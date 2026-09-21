@@ -1,9 +1,9 @@
 import {
   type PDFDocument as Doc,
-  type PDFFont,
-  type PDFPage,
   PageSizes,
   PDFDocument,
+  type PDFFont,
+  type PDFPage,
   rgb,
   StandardFonts,
 } from 'pdf-lib'

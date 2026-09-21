@@ -29,6 +29,7 @@ import {
   type TimelineEvent,
   type TimelinePage,
   trackingRefKind,
+  payeeChangeApprovalsRequired,
 } from '@poa/shared'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
@@ -213,7 +214,7 @@ app.get('/needs/:id', async (c) => {
     impactReport: live ? toImpactReportView(live) : null,
     payees: payees.map(toPayeeView),
     payments: payments.map(toPayeePaymentView),
-    payeeChanges: changes.map((change) => toPayeeChangeView(change, row.verificationsRequired)),
+    payeeChanges: changes.map((change) => toPayeeChangeView(change, payeeChangeApprovalsRequired(row.verificationsRequired))),
   } satisfies NeedDetail)
 })
 
