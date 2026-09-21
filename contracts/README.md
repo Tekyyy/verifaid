@@ -5,7 +5,7 @@ Solidity 0.8.24, Foundry, OpenZeppelin v5. Dependencies come from npm (`pnpm ins
 ```bash
 pnpm install                # installs OpenZeppelin, EAS, Semaphore, forge-std
 forge build
-forge test                  # 322 tests: unit, fuzz, invariant, end-to-end, real Semaphore, review regressions
+forge test                  # 354 tests: unit, fuzz, invariant, end-to-end, real Semaphore, review regressions
 BASE_MAINNET_RPC_URL=https://mainnet.base.org forge test --match-path test/fork/*   # conversions on real Base
 forge coverage --report summary --no-match-coverage "(script|test|mocks)"
 ```
@@ -14,10 +14,10 @@ forge coverage --report summary --no-match-coverage "(script|test|mocks)"
 
 | Contract | Responsibility |
 |---|---|
-| `access/RoleRegistry` | Who is an NGO, a verifier, a field agent, a payment provider (`BANK_PARTNER_ROLE`), and the global pause. One address holds at most one operational role, which is what makes "independent verifier" checkable on-chain. |
+| `access/RoleRegistry` | Who is an NGO, a verifier, a field agent, a payment provider (`BANK_PARTNER_ROLE`), a supplier (`SUPPLIER_ROLE`), and the global pause. One address holds at most one operational role, and never held another one before, which is what makes "independent verifier" and "independent supplier" checkable on-chain. |
 | `needs/NeedsRegistry` | The need (the proposal's *NeedClaim*): its terms, lifecycle and state machine. Records verifications forwarded by the resolver, clones the need's ledger when the threshold is reached, and applies deadlines through the permissionless `expire`. |
 | `funds/TrancheLedger` | Funding and tranche rules shared by both custody modes: the minimum threshold, the tranche split of what was actually raised, releases in order, and the delivery gate. |
-| `funds/AidVault` | On-chain custody (Model B). Escrow for stablecoin donations from wallets and payment providers; releases tranches to the NGO's payout Safe; refunds pro-rata if the need is cancelled or expires. **No admin withdrawal path exists.** |
+| `funds/AidVault` | On-chain custody (Model B). Escrow for stablecoin donations from wallets and payment providers; pays each released tranche straight to the need's payment plan (registered suppliers, and the NGO only for its disclosed share); refunds pro-rata if the need is cancelled or expires. **No admin withdrawal path exists.** |
 | `funds/NonCustodialLedger` | Off-chain custody (Model A). No token ever touches it: the need's named custodian records funding and tranche payouts by attestation, under the same rules. |
 | `funds/AidVaultFactory` | Clones one ledger per verified need, with the need id baked into the clone's code; also the system-wide registry of payment references, scoped per provider. |
 | `funds/DonationReceipt` | Soulbound (ERC-5192) ERC-721 receipt with fully on-chain metadata. Evidence, not an asset, so it cannot be transferred or sold. |
@@ -40,14 +40,15 @@ Everything an NGO commits to at creation, and what enforces it:
 | Execution deadline | After it (plus a 14-day grace period for work already in flight) anyone can expire the need and the unreleased balance is refundable |
 | Third-party cost cap + disclosure hash | Funding, conversion and settlement fees together stay within the cap of what donors paid |
 | Tranche plan, target, region, dossier hash | As in v1; the region is checked against delivery evidence and the dossier against verifications |
+| Payment plan (on-chain custody) | Every tranche is paid to these payees in these shares. Only registered suppliers, plus the NGO itself for a share capped at 25% of the need; replacing one takes the NGO and at least two independent verifiers |
 | Category, metadata URI, expected outcome hash | Committed in the `NeedCreated` event (nothing on-chain reads them, so they are not stored) |
 
 ## How money moves
 
 ```
 verified need ──► ledger cloned ──► funding ──────────────────────────► funding closes ──► tranches fixed
-                    │                 on-chain: wallet donations (EURC,    (target reached, or the NGO closes
-                    │                   or USDC/ETH converted on the way     at/above its minimum, or the
+                    │                 on-chain: wallet donations (USDC,    (target reached, or the NGO closes
+                    │                   or EURC/ETH converted on the way      at/above its minimum, or the
                     │                   in) and provider deposits
                     │                 off-chain: the custodian's            deadline passes at/above it)
                     │                   FundingRecorded attestations               │
@@ -64,15 +65,18 @@ verified need ──► ledger cloned ──► funding ────────
                     │          │  then a challenge window passes without a dispute         │
                     │          └─────────────────────────┬─────────────────────────────────┘
                     │                                    ▼
-                    │                  tranche released (and a Settlement reconciles it)
+                    │                  tranche released and paid to the plan's suppliers
+                    │                    (a Settlement attestation reconciles it)
                     │                                    │
                     │                 last tranche ──► need Completed ──► impact report
                     ▼
      below the minimum at the deadline, cancelled, or past the execution deadline ──► refunds (on-chain custody)
 ```
 
-The invariant `balance + released + refunded == donated` is checked by fuzz tests and by a stateful invariant
-test over 12,800 random call sequences that include the passage of time, partial execution and expiry.
+The invariant `balance + released + refunded == donated + held` is checked by fuzz tests and by a stateful
+invariant test over 12,800 random call sequences that include the passage of time, partial execution, expiry and
+a stablecoin issuer freezing a payee (`held` is a payment the token refused, still owed to that payee). A second
+invariant checks that every released unit reached the payment plan, in the plan's proportions.
 
 ## Why a beneficiary never appears on-chain
 
@@ -96,7 +100,7 @@ Six EAS schemas, one resolver, in the order a donor experiences them:
 | `FundingRecorded` | payment provider | on-chain custody: vouches for a deposit already in the vault; off-chain: *is* the funding record |
 | `DeliveryEvidence` | the NGO's field agent | links encrypted evidence (hash + CID) to a delivery in the need's region |
 | `DeliveryVerified` | independent verifier | sign-off that must reference the evidence it reviewed |
-| `Settlement` | NGO (on-chain) / custodian (off-chain) | reconciles one tranche payout: gross, fee, net, supplier and FX references |
+| `Settlement` | NGO (on-chain) / custodian (off-chain) | reconciles one tranche payout: gross, fee, net, supplier and FX references. On-chain the payments themselves are vault events (`PayeePaid`), so this adds the off-chain detail, not the fact |
 | `ImpactReport` | NGO | outcomes of a completed need, referencing the last verified delivery; revocable to correct |
 
 The resolver derives every UID it accepts from its own address, exactly as the SchemaRegistry does, and rejects

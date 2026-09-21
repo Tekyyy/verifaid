@@ -36,8 +36,9 @@ pnpm deploy:sepolia    # deploy + verify, register the six schemas, seed, create
                        # archives the previous release first
 ```
 
-If donations in USDC start reverting on testnet, someone moved the test pool (the mock tokens are freely
-mintable): `pnpm deploy:sepolia liquidity` swaps it back to the oracle price.
+Donations in USDC never touch a pool — the vaults hold USDC — so they cannot fail on a price. If a **euro**
+donation starts reverting on testnet, someone moved the test pool (the mock tokens are freely mintable):
+`pnpm deploy:sepolia liquidity` swaps it back to the oracle price.
 
 Use a **60-second challenge period** for the demo deployment. The default of 600s is realistic but makes a live
 walkthrough painful; say out loud that production would use 72 hours.
@@ -55,8 +56,10 @@ This runs four needs unattended and prints an explorer link for every step: an *
 card donors, settlements after every release), an **off-chain** need (the payment provider records every payment
 and payout by attestation, no token moves), a need whose **funding deadline passes below its minimum**, so it
 expires and the donor is refunded, and a need funded in **full blockchain mode**: USDC bought by card (mocked on
-testnets, where Coinbase Onramp does not deliver) donated from the donor's own wallet and swapped on Uniswap under
-the Chainlink bound, and an exchange withdrawal to a deposit address that the keeper sweeps. Run it once before the demo so the Semaphore proving keys are cached, the
+testnets, where Coinbase Onramp does not deliver) donated from the donor's own wallet as it is — the vaults hold
+USDC, so there is nothing to swap — a euro donation and an ETH donation that *are* swapped on Uniswap under the
+Chainlink bound, and an exchange withdrawal to a deposit address that the keeper sweeps. Every on-chain need pays
+its tranches straight to the suppliers in its payment plan. Run it once before the demo so the Semaphore proving keys are cached, the
 dashboard has data, and you have the tracking links it prints at the end. Pass scenario names to run a subset:
 `pnpm demo:run base-sepolia onchain conversion`.
 
@@ -156,10 +159,11 @@ Open the off-chain need from the demo run, then the expired one.
 **If you have 30 more seconds — full blockchain mode.** Open the converted need from the demo run.
 
 > "This donor paid by card. Coinbase Onramp put USDC in their own passkey wallet — never ours — and one tap donated
-> it. The contract swapped it on Uniswap and refused anything below the Chainlink price minus 1%: fair value
-> 1,851.69, donated 1,851.50, and those 19 cents are on the donation and count against the cost cap the NGO
-> published. This one came from an exchange to a deposit address that commits to this need: only what the need
-> could take was converted, and the rest went back in USDC."
+> it. The vaults hold USDC, so every cent reached the need: no pool, no price, no cost. This donor gave euros
+> instead: the contract swapped them on Uniswap and refused anything below the Chainlink price minus 1%, and what
+> the swap cost is recorded on the donation and counted against the cost cap the NGO published. And this one came
+> from an exchange to a deposit address that commits to this need: only what the need could still take was donated,
+> the rest went straight back."
 
 ### 4:15 — Where it can still go wrong (30s)
 
@@ -188,7 +192,17 @@ Open the off-chain need from the demo run, then the expired one.
 | A role wallet is out of gas on testnet | Re-run `pnpm deploy:sepolia seed`; it tops the role wallets up |
 | Tracking page says "not found" | The indexer has not reached that block yet; the widget refreshes every minute on its own |
 | Card checkout fails | The bank connector is not running (`pnpm services:up`) or the need is not open for funding any more |
-| A USDC or ETH donation reverts | `FeeExceedsDisclosure`: the need allows no intermediary costs, give EURC. `InsufficientOutput` / "Too little received": the pool is off the oracle price, run `pnpm deploy:sepolia liquidity`. `StalePrice`: a Chainlink feed has not updated within its heartbeat |
+| A euro or ETH donation reverts | `FeeExceedsDisclosure`: the need allows no intermediary costs, give EURC. `InsufficientOutput` / "Too little received": the pool is off the oracle price, run `pnpm deploy:sepolia liquidity`. `StalePrice`: a Chainlink feed has not updated within its heartbeat |
+
+### 3:45 — Who actually got the money (20s)
+
+Open the need page and scroll to **"Who the vault pays"**.
+
+> "The NGO does not receive this money. When the need was registered it named who would be paid and what share of
+> every tranche each of them gets — vetted suppliers the admin registered, and itself only for the share it
+> disclosed, capped at a quarter of the need. Verified on chain with the rest of the need. Releasing a tranche pays
+> them directly, in the same transaction, and each payment is an event with its own link. Replacing a supplier
+> takes the NGO plus two independent verifiers, and a tranche someone has already earned cannot be redirected."
 
 ## Questions judges actually ask
 

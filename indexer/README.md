@@ -58,12 +58,14 @@ open, since every byte served is already public on-chain.
 | Route | Returns | What it is |
 |---|---|---|
 | `GET /needs?status=&category=&region=` | `NeedSummary[]` | The public needs list. `status` is a `NeedStatus` name (`Funding`, `InDelivery`, …); `category` and `region` accept either the label (`FOOD`, `ES-CM`) or the raw bytes32. |
-| `GET /needs/:id` | `NeedDetail` | A need plus its tranches, deliveries, donations and live impact report. |
+| `GET /needs/:id` | `NeedDetail` | A need plus its tranches, deliveries, donations, payment plan (payees, the payments the vault made to them, and proposed supplier replacements) and live impact report. |
 | `GET /needs/:id/timeline` | `TimelineEvent[]` | The full lifecycle of one need, ordered by block number then log index — one row per state change, from `NeedCreated` to `ImpactReportPublished`. |
 | `GET /donors/:address/trace` | `DonorTrace` | "Follow my money": per receipt, the need, the donor's share of its funding in bps, their pro-rata slice of every tranche, and the deliveries behind the releases. |
 | `GET /impact/summary` | `ImpactSummary` | Totals plus buckets by category and by region. `beneficiariesServed` counts live (non-revoked) `ImpactReport` attestations only. |
 | `GET /programs/:id/members` | `ProgramMembersResponse` | Identity commitments in insertion order, so `/confirm/[deliveryId]` can rebuild the Semaphore group and produce a proof with the right root. |
 | `GET /deliveries?status=` | `DeliveryView[]` | The verifier queue. `?status=Open` is what needs a sign-off, `?status=Challengeable` what can still be disputed. |
+| `GET /suppliers` | `SupplierView[]` | Registered suppliers (`SUPPLIER_ROLE`), with what vaults have paid each one and the needs whose plan names it. |
+| `GET /suppliers/:address` | `SupplierDetail` | One supplier and every payment a vault made to it. |
 | `/graphql` | — | The generated GraphQL API over every table, with the relations declared in `ponder.schema.ts`. |
 
 Two details worth knowing:
@@ -89,6 +91,7 @@ Two details worth knowing:
 | `program`, `program_member`, `semaphore_group` | `BeneficiaryGroups`, `Semaphore` | Programs, their Semaphore group and every leaf in insertion order |
 | `need`, `tranche` | `NeedsRegistry`, `AidVaultFactory`, `AidVault` | The need record and its tranche plan, with running totals |
 | `donation`, `receipt`, `refund` | `AidVault`, `DonationReceipt` | Direct and fiat donations, soulbound receipts, pro-rata refunds |
+| `supplier`, `payee`, `payee_payment`, `payee_change` | `RoleRegistry`, `NeedsRegistry`, `AidVault` | Registered suppliers, each need's payment plan, every payment (or held payment) out of a vault, and supplier replacements with their approvals |
 | `delivery`, `confirmation`, `challenge` | `DeliveryManager` | Deliveries, anonymous confirmations (nullifier + count), disputes |
 | `attestation`, `impact_report` | `EAS` | The five schemas, decoded, linked to their need or delivery |
 | `timeline_event` | all of the above | One denormalized row per state change — what `/needs/:id/timeline` reads |

@@ -235,6 +235,25 @@ Stated plainly, because most of the security rests on them:
   anyone can mint the mocks and move that pool, which makes donations revert until it is rebalanced. That is a
   testnet liveness issue, not a mainnet one: on mainnet the pools are Circle's tokens and Uniswap's deep markets.
 
+### 3.15 Payment plans and suppliers (v4)
+
+*The NGO pays itself, or pays a "supplier" it controls; or a supplier is paid for work it did not do; or money
+gets stuck between the two.*
+
+- **Mitigation.** An on-chain need's money leaves its vault only to the payees fixed in its plan at creation and
+  verified with the need. Payees are addresses the admin registered as suppliers; the NGO can only appear as the
+  plan's explicit sentinel, capped at 25% of the need. `RoleRegistry` refuses any address that holds — or ever
+  held — another operational role, so an NGO's own field agent or payout Safe cannot be re-introduced as a
+  supplier. Replacing a payee takes the NGO plus at least two independent verifiers, cannot redirect a tranche
+  that is already releasable, and is public (`PayeeChangeProposed` / `PayeeChanged`).
+- **Stuck money.** A transfer the stablecoin refuses is held for its payee and can be delivered by anyone later,
+  or moved to an approved replacement; a need that still owes one is not reported Completed. On-chain custody
+  always has an execution deadline, so `expire` and pro-rata refunds are always reachable without an admin.
+- **Residual risk.** "Independent supplier" is an admin judgement made off-chain against a credential hash; the
+  chain enforces separation of addresses, not of interests. A change takes effect as soon as the approvals are
+  in, with no window for donors to leave first. And a plan can still be changed while the need is Pending, so an
+  integrator must follow `PayeeChanged` rather than read the plan out of `NeedCreated` alone.
+
 ### 3.10 GDPR versus immutability
 
 - **Mitigation.** Personal data is only ever in the PII vault, encrypted with a per-record data key. Erasure is
@@ -294,3 +313,6 @@ nullifiers are scoped per delivery, so two confirmations by the same person are 
 6. Floor rounding leaves at most a few base units of dust in a vault after refunds.
 8. Conversions trust Chainlink's feeds and the admin's choice of routes, and inherit Circle's issuer powers over
    USDC and EURC (§3.14). Coinbase Onramp is the only card path wired for mainnet; on test networks it is mocked.
+9. A payment plan is only as independent as the admin's vetting of the suppliers in it (§3.15), and the fiat
+   checkout settles a euro payment one-for-one in the vault's currency: it simulates a provider that has already
+   converted, not an FX engine.

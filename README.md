@@ -24,7 +24,7 @@ it lives in the code.
 | Requirement | Where it lives |
 |---|---|
 | R1 — register previously verified needs, with their terms | `NeedsRegistry` (deadlines, minimum funding, cost cap, expected outcome) + `NeedVerified` attestations |
-| R2 — track the path of donations | `AidVault` or `NonCustodialLedger`, soulbound `DonationReceipt`, `FundingRecorded` and `Settlement` attestations, on-chain conversions (`ConversionRouter`, `DonationForwarderFactory`), public tracking links |
+| R2 — track the path of donations | `AidVault` or `NonCustodialLedger`, soulbound `DonationReceipt`, `FundingRecorded` and `Settlement` attestations, on-chain conversions (`ConversionRouter`, `DonationForwarderFactory`), vaults that pay the need's registered suppliers directly, public tracking links |
 | R3 — evidence of aid delivery | `DeliveryManager`, `DeliveryEvidence` + `DeliveryVerified` attestations, Semaphore receipt proofs |
 | R4 — protect beneficiaries' data | off-chain PII vault, Semaphore identities, encrypted evidence |
 | R5 — verifiable impact | `ImpactReport` attestations, Ponder indexer, public dashboard, PDF audit reports |
@@ -35,23 +35,30 @@ it lives in the code.
 NGO registers a need and its terms ─► independent verifier attests it ─► ledger cloned, funding opens
       │                                                                           │
       │          donors give by wallet, card or bank ◄────────────────────────────┘
-      │          (on-chain custody: into the vault, USDC and ETH converted on the way in under a
+      │          (on-chain custody: into the vault, euros and ETH converted on the way in under a
       │           Chainlink bound; off-chain: recorded by the payment provider)
       │                                        │
       │          funding closes at the target, or at the deadline if the minimum was met
       │          (below it the need expires and every donor is refunded)
       │                                        │
-      ▼                         tranche 0 released as pre-financing ─► Settlement report
+      ▼                tranche 0 paid to the need's suppliers as pre-financing ─► Settlement report
 field agent delivers aid, files encrypted evidence ─► beneficiaries confirm anonymously (Semaphore)
       │                                                                           │
       └──► independent verifier signs off ─► challenge window ─► next tranche ─► Settlement ─► impact report
 ```
 
-**Full blockchain mode.** A donor can give the vault's stablecoin directly, or USDC or ETH from any wallet: the
-contracts swap it on Uniswap v3 in the same transaction and refuse any result below the Chainlink fair value minus
-1%. Card donors buy USDC through Coinbase Onramp into their own passkey wallet and donate it in one tap. Money
-withdrawn from an exchange goes to a deposit address that commits to the need and to where refunds go. Every
-conversion's cost is recorded on the donation and counted against the cost cap the NGO disclosed.
+**Full blockchain mode.** The vaults hold USDC, so a donation in USDC — from a wallet, a card or an exchange —
+reaches a need untouched: no pool, no price, no cost. Euros (EURC) and ETH are swapped on Uniswap v3 in the same
+transaction, and any result below the Chainlink fair value minus 1% is refused. Card donors buy USDC through
+Coinbase Onramp into their own passkey wallet and donate it in one tap. Money withdrawn from an exchange goes to
+a deposit address that commits to the need and to where refunds go. Every conversion's cost is recorded on the
+donation and counted against the cost cap the NGO disclosed.
+
+**The vault pays the suppliers.** An on-chain need names its payment plan when it is registered — vetted
+suppliers the admin registered, each with a share of every tranche, and the NGO itself only for a share it
+discloses, capped at a quarter of the need. It is verified with the rest of the need, and releasing a tranche
+pays those suppliers directly in the same transaction. Replacing one takes the NGO plus two independent
+verifiers, and a tranche someone has already earned cannot be redirected.
 
 Money only moves forward when three independent signals agree: field evidence, anonymous beneficiary
 confirmations above a threshold, and an approving verifier who is provably unrelated to the NGO. A donor follows
@@ -63,7 +70,7 @@ that needs no account.
 v3 is deployed and all 15 contracts are source-verified on Basescan; its six schemas are registered in the real EAS
 SchemaRegistry. Conversions run on Uniswap v3's own Base Sepolia deployment and Chainlink's USDC/USD feed there;
 because Base Sepolia has no EUR/USD feed and no liquid pool for the test tokens, those two are mocked and the
-MockUSDC/MockEURC pool is created by the deploy at the oracle price. `pnpm demo:run base-sepolia` runs four needs
+mock EURC / USDC pool is created by the deploy at the oracle price (USDC donations need no pool: the vaults hold USDC). `pnpm demo:run base-sepolia` runs four needs
 on it: on-chain custody (wallet and card donors, settlement after every release), off-chain custody (every payment
 and payout attested by the payment provider), a need that expires below its minimum and refunds its donor, and a
 need funded in full blockchain mode (card-bought USDC from the donor's own wallet, and an exchange withdrawal to a

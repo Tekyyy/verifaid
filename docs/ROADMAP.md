@@ -68,7 +68,9 @@ The public proposal marks these as later phases; v2 does not build them (`docs/G
 
 - **OfferBook.** Suppliers publish offers against open needs (price, delivery date, conditions) and the NGO picks
   one, so the `Settlement` attestation's supplier reference points at an on-chain offer instead of an invoice
-  hash. Needs a supplier role in `RoleRegistry` and a dispute path for undelivered offers.
+  hash. v4 built the half this rests on — `SUPPLIER_ROLE` and vaults that pay registered suppliers directly, by a
+  plan fixed at creation — so what is left is the offers themselves and a dispute path for undelivered ones.
+  A plan change also has no cooling-off period today; an offer with a deadline is the natural place to add one.
 - **ProtocolTreasury.** A transparent fee or donation stream that funds verifiers and relayers, with its own
   tranche-like release rules. Blocked on deciding who governs it; without that it is just an admin wallet.
 - **Multichain.** Needs funded on several chains with one registry of record. The clean shape is one home chain

@@ -64,6 +64,18 @@ run('Deploy.s.sol')
 run('RegisterSchemas.s.sol')
 run('SeedDemo.s.sol')
 
+// Addresses on a fresh anvil are deterministic, so a stale bundle does not fail loudly — it silently points the
+// demo and the app at the *previous* deployment's token wiring. Rebuild it here, where the deployment just changed.
+const sync = spawnSync(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['--filter', '@poa/shared', 'build'], {
+  cwd: root,
+  stdio: 'inherit',
+  shell: process.platform === 'win32',
+})
+if (sync.status !== 0) {
+  console.error('\nCould not rebuild @poa/shared with the new addresses. Run: pnpm --filter @poa/shared build')
+  process.exit(sync.status ?? 1)
+}
+
 const deployment = join(root, 'deployments', 'anvil.json')
 if (existsSync(deployment)) {
   const { contracts: addresses, schemas, startBlock } = JSON.parse(readFileSync(deployment, 'utf8'))

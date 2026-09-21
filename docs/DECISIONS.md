@@ -419,3 +419,84 @@ Accepted, documented in `THREAT_MODEL.md` §3.14: oracle error adds to the bound
 feeds move only past their deviation threshold); vault refunds are paid in EURC; anyone can create a deposit address
 that credits a receipt to someone else's wallet (a public link between a wallet and a need, with no rights
 attached).
+
+## 15. Contracts v4: the vault pays the suppliers, and it holds dollars
+
+Until v3 a released tranche went to the NGO's payout Safe, and what happened next was a `Settlement`
+attestation the NGO itself wrote. A donor could prove the money left the vault and that someone said it reached
+a supplier — not that it did. v4 moves that step on-chain: **an on-chain need carries a payment plan, and its
+vault pays the plan directly**.
+
+### The plan
+
+- **A plan is one to five payees, each with a share of every tranche in basis points**, fixed when the need is
+  created and verified with the rest of it (`NeedsRegistry.CreateNeedParams.payees`). Every tranche's shares
+  must sum to exactly 10,000, and a payee that never receives anything is refused: a plan is complete by
+  construction, and "who gets this money" is answerable before a single donation arrives.
+- **Payees are registered suppliers** (`SUPPLIER_ROLE`, granted by the admin against a credential hash and a
+  public profile URI), with one exception: **the zero address means the NGO itself**, resolved at payment time to
+  its registered payout Safe. An NGO must therefore disclose what it keeps, and that share is capped at
+  `MAX_NGO_SHARE_BPS` = 25% of the need (Σ trancheBps × share, so partial funding scales it but never changes
+  the ratio). The cap is on the sentinel only — the protection against an NGO paying itself through a "supplier"
+  is the role separation below, not arithmetic.
+- **One address, one role, for the address's whole history.** `RoleRegistry` refuses to register a supplier that
+  is an NGO, a payout Safe, a verifier, a payment provider or a field agent — and, since the v4 review, one that
+  *ever was* (`everHeldRole`). Removing a field agent and re-registering it as an "independent" supplier was the
+  way around the NGO cap. Re-granting the same role after a removal is still allowed.
+- **Off-chain needs (Model A) have no plan and must not carry one.** Their custodian holds the money and attests
+  what it paid; the plan is a property of on-chain custody.
+
+### Paying it
+
+- `releaseTranche` releases the tranche as before (the three independent signals of §3.2 are unchanged), then
+  splits it by the plan and transfers each share. Rounding dust goes to the last payee, so a tranche is paid out
+  to the unit.
+- **A transfer the token refuses does not block the others.** Stablecoin issuers can freeze an address; a refused
+  transfer is *held* for that payee (`heldPaymentOf`, `totalHeld`) and `claimHeldPayment` — permissionless,
+  and it only ever pays the payee — delivers it when the address can receive again. The accounting identity
+  carries the term: `balance + totalReleased + totalRefunded == totalDonated + totalHeld`.
+- **A need that still owes a held payment is not Completed.** Completed is terminal, and reporting it would close
+  the refund, expiry and payee-change paths on money that never left the vault. The need finishes when the last
+  held payment is delivered, or when verifiers move it to a replacement payee.
+- **Replacing a supplier takes the NGO plus independent verifiers.** The NGO proposes (`proposePayeeChange`),
+  and the change applies on the approval that reaches `payeeChangeApprovalsRequired`: the need's own
+  verification threshold, but never fewer than two. A tranche that is already releasable cannot be redirected —
+  releasing it is permissionless, so a supplier that did the work is paid first — unless the current payee has
+  lost its role, which is exactly the case a replacement exists to unblock. Held money follows the replacement.
+- **On-chain custody must name a delivery deadline.** Without one, a plan that cannot be paid (a removed
+  supplier) could never be expired, and donors had no permissionless way back at all.
+
+### The vault currency is USD
+
+v3 held EURC and converted everything into it, including USDC bought with a card. Base's own stablecoin is USDC,
+so that meant the most common donation was the one that paid a swap.
+
+- **A deployment holds one currency, and by default it is the chain's USDC.** The deployer requires a price feed
+  for whatever the vault holds (USDC/USD or EUR/USD) and sets a route only for the *other* stablecoin. A donation
+  in the vault's own currency is a pass-through: no pool, no price, no cost, and a need that allows no
+  intermediary costs can accept it.
+- **Euros and ETH still convert** under the same Chainlink bound (§14), and ETH now needs one hop instead of two.
+  A euro-denominated deployment is still supported and is what the contract fixtures and the Base mainnet fork
+  test exercise.
+- **Every published figure is in the vault currency**, and the app derives each token's symbol from the
+  deployment (`vaultCurrency`, `donationTokens`) rather than assuming one.
+
+### Adversarial review of v4
+
+A second independent review (payment plans only) wrote a passing PoC per finding; none broke the vault identity,
+allowed reentrancy, or exceeded the NGO cap through the plan, the change flow or rounding. Each fix is replayed
+by `test/regression/V4ReviewFindings.t.sol`.
+
+| Finding | Fix |
+|---|---|
+| **F-1** (Medium) A tranche a supplier had already earned could be redirected: after the delivery was confirmed and before the permissionless `releaseTranche`, the NGO and one verifier could swap the payee and pay someone else. | The deciding approval reverts (`ReleasePending`) while a tranche of a payee that can still be paid is releasable. A payee that lost its role is exempt, so a blocked need can still be unblocked. |
+| **F-2** (Medium) "One address, one role" was checked against live state only, so an NGO's former field agent could be registered as an independent supplier and take what the 25% cap bounds. | `everHeldRole` remembers, in both directions; the same role can still be re-granted. |
+| **F-3** (Medium) With no execution deadline, removing a supplier froze the vault forever: `releaseTranche` reverted on the plan and `expire` reverted `DeadlineNotReached`, leaving only an admin cancellation. | On-chain custody must name an execution deadline, so expiry — and with it refunds — is always reachable without an admin. |
+| **F-4** (Low) A held payment on the final tranche was stranded: the need went Completed in the same call, and Completed closed cancellation, expiry, refunds and payee changes. | Completion waits until nothing is held, and an approved replacement inherits the held payment. |
+| **D-1** (Design) Any independent verifier could apply a change alone on a need that took one verification. | Two independent approvals always, even on a single-verifier need. |
+| **D-4** (Design) `_payPlan` had no `payee != address(this)` guard, unreachable today but load-bearing for the identity. | Refused with `InvalidPaymentPlan`. |
+| **D-5** (Coverage) The invariant run never produced a held payment, so the `totalHeld` term and `claimHeldPayment` were never fuzzed. | The invariant's token can be frozen by an issuer action, and the handler freezes and unfreezes payees; entitlement (paid + held) is what the proportion invariants check. |
+
+Accepted and documented in `THREAT_MODEL.md` §3.15: the admin's vetting is what makes a supplier independent;
+a change has no cooling-off period for donors (unlike `ConversionRouter`'s two days); and a plan may be changed
+while a need is still Pending, so consumers must replay `PayeeChanged` rather than trust `NeedCreated`.
