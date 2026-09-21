@@ -124,7 +124,14 @@
     "PartialFundingAccepted": "Plazo aplicado: financiación parcial aceptada",
     "FundingRecorded": "Pago registrado por el custodio",
     "SettlementRecorded": "Pago del tramo liquidado",
-    "DonatedConverted": "Donación convertida en cadena y recibida"
+    "DonatedConverted": "Donación convertida en cadena y recibida",
+    "PayeePaid": "Parte del tramo pagada a un proveedor",
+    "PaymentHeld": "Pago retenido: el token lo rechazó",
+    "HeldPaymentClaimed": "Pago retenido entregado",
+    "PayeeChangeProposed": "Sustitución de proveedor propuesta",
+    "PayeeChangeApproved": "Un verificador aprobó la sustitución",
+    "PayeeChanged": "Proveedor sustituido en el plan de pagos",
+    "PayeeChangeCancelled": "Sustitución de proveedor retirada"
   },
   "home": {
     "title": "Ayuda auditable, personas no identificables",

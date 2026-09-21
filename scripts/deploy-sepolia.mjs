@@ -34,11 +34,13 @@ const parseEnvFile = (path) => {
 const fileEnv = parseEnvFile(join(root, '.env'))
 
 /**
- * The v3 conversion path on Base Sepolia: Uniswap v3's own SwapRouter02, WETH and Chainlink's USDC/USD and ETH/USD
+ * The conversion path on Base Sepolia: Uniswap v3's own SwapRouter02, WETH and Chainlink's USDC/USD and ETH/USD
  * feeds. What Base Sepolia lacks is mocked by Deploy.s.sol: EUR/USD (no feed there, so a fixed mock whose answer
- * must not go stale — hence the one-year heartbeat), MockUSDC (the mock on-ramp mints it) and the MockUSDC/MockEURC
- * pool, which SeedLiquidity.s.sol creates on Uniswap at the oracle price. No sequencer uptime feed exists on
- * testnets, and ETH donations stay off: there is no WETH liquidity against our mocks.
+ * must not go stale — hence the one-year heartbeat), a MockUSDC for the vaults to hold (the mock on-ramp mints it),
+ * a MockEURC for donations that have to be converted, and their pool, which SeedLiquidity.s.sol creates on Uniswap
+ * at the oracle price. USDC donations need no pool at all: the vaults hold USDC, so nothing is swapped. No
+ * sequencer uptime feed exists on testnets, and ETH donations stay off: there is no WETH liquidity against our
+ * mocks.
  * Anything set in .env or the shell wins over these.
  */
 const BASE_SEPOLIA_CONVERSION = {

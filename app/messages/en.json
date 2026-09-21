@@ -124,7 +124,14 @@
     "PartialFundingAccepted": "Deadline applied: partial funding accepted",
     "FundingRecorded": "Payment recorded by the custodian",
     "SettlementRecorded": "Tranche payout settled",
-    "DonatedConverted": "Donation converted on-chain and received"
+    "DonatedConverted": "Donation converted on-chain and received",
+    "PayeePaid": "Tranche share paid to a supplier",
+    "PaymentHeld": "Payment held: the token refused it",
+    "HeldPaymentClaimed": "Held payment delivered",
+    "PayeeChangeProposed": "Supplier replacement proposed",
+    "PayeeChangeApproved": "Verifier approved the replacement",
+    "PayeeChanged": "Supplier replaced in the payment plan",
+    "PayeeChangeCancelled": "Supplier replacement withdrawn"
   },
   "home": {
     "title": "Aid you can audit, beneficiaries you cannot identify",
