@@ -30,6 +30,7 @@ import {
   type TimelinePage,
   trackingRefKind,
   payeeChangeApprovalsRequired,
+  type ProgramView,
 } from '@poa/shared'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
@@ -382,6 +383,33 @@ app.get('/suppliers/:address', async (c) => {
 })
 
 // ─── providers ───────────────────────────────────────────────────────────────
+
+/**
+ * The programmes an NGO owns: the console needs them to fill "which programme" for it, and a donor page uses
+ * the member count to explain what a delivery's recipient ceiling is.
+ */
+app.get('/programs', async (c) => {
+  const ngo = c.req.query('ngo')?.toLowerCase()
+  if (ngo !== undefined && !/^0x[0-9a-f]{40}$/.test(ngo)) return c.json({ error: 'invalid ngo' }, 400)
+  const rows = await db
+    .select()
+    .from(schema.program)
+    .where(ngo ? eq(schema.program.ngo, ngo as Address) : undefined)
+    .orderBy(asc(schema.program.id))
+
+  return c.json(
+    rows.map((row) => ({
+      id: row.id.toString(),
+      ngo: row.ngo as Address,
+      groupId: row.groupId.toString(),
+      enrollmentPolicyHash: row.enrollmentPolicyHash as Hex,
+      metadataURI: row.metadataURI,
+      memberCount: row.memberCount,
+      active: row.active,
+      createdAt: row.createdAt,
+    })) satisfies ProgramView[],
+  )
+})
 
 /** Registered payment providers: who can deposit card and bank payments or hold off-chain custody. */
 app.get('/providers', async (c) => {

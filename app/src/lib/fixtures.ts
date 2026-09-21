@@ -13,6 +13,7 @@ import type {
   PayeePaymentView,
   PayeeView,
   ProgramMembersResponse,
+  ProgramView,
   ProviderView,
   SettlementView,
   SupplierDetail,
@@ -978,6 +979,20 @@ export const supplier = (address: string): Result<SupplierDetail> => {
     data: { ...row, payments: PAYMENTS_1.filter((payment) => payment.payee === row.address) },
   }
 }
+
+/** One programme, so the console's picker has something to show without an indexer. */
+export const programs = (ngo: string): ProgramView[] => [
+  {
+    id: '1',
+    ngo: getAddress(ngo) as Address,
+    groupId: '42',
+    enrollmentPolicyHash: uid(87),
+    metadataURI: 'ipfs://bafybeidemoprogram',
+    memberCount: 120,
+    active: true,
+    createdAt: 1_755_000_000,
+  },
+]
 
 export const providers: ProviderView[] = [
   { address: PROVIDER, active: true, registeredAt: 1_756_000_000 },

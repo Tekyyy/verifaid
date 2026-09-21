@@ -1,14 +1,16 @@
 'use client'
 
 import { aidVaultAbi, beneficiaryGroupsAbi, CUSTODY_MODE, easAbi, needsRegistryAbi } from '@poa/shared'
+import { useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { type Address, type Hex, keccak256, toHex } from 'viem'
 import { useReadContract } from 'wagmi'
 import { CreateNeedPanel } from '@/components/CreateNeedPanel'
-import { FormError, Panel, TextArea, TextField } from '@/components/form'
+import { Advanced, FormError, Panel, TextArea, TextField } from '@/components/form'
 import { MissingDeployment, Notice } from '@/components/Notice'
 import { ProposePayeeChangePanel } from '@/components/PayeeChangePanel'
+import { ProgramPicker } from '@/components/ProgramPicker'
 import { SettlementPanel } from '@/components/SettlementPanel'
 import { TxStatus } from '@/components/TxStatus'
 import { deployment } from '@/lib/config'
@@ -36,29 +38,51 @@ export function NgoConsole() {
 function CreateProgram() {
   const t = useTranslations('ngo')
   const tx = useTx()
+  const queryClient = useQueryClient()
   const [policy, setPolicy] = useState('')
   const [uri, setUri] = useState('')
-  const hash = policy ? keccak256(toHex(policy)) : ZERO_BYTES32
+  const hash = policy.trim() ? keccak256(toHex(policy)) : ZERO_BYTES32
+
+  const create = async () => {
+    const result = await tx.run({
+      address: deployment?.contracts.BeneficiaryGroups as Address,
+      abi: beneficiaryGroupsAbi,
+      functionName: 'createProgram',
+      args: [hash, uri],
+    })
+    // The need form picks its programme from this list, so it must not need a reload to see a new one.
+    if (result) await queryClient.invalidateQueries({ queryKey: ['programs'] })
+  }
 
   return (
     <Panel title={t('programTitle')} description={t('programBody')}>
-      <TextArea label={t('policyText')} value={policy} onChange={setPolicy} rows={3} />
-      <p className="hint">
-        {t('policyHash')}: <span className="mono">{hash}</span>
-      </p>
-      <TextField label={t('metadataUri')} value={uri} onChange={setUri} placeholder="ipfs://…" />
+      <TextArea
+        label={t('policySimple')}
+        value={policy}
+        onChange={setPolicy}
+        rows={3}
+        placeholder={t('policyPlaceholder')}
+        hint={t('policySimpleHint')}
+      />
+
+      <Advanced title={t('programAdvanced')} hint={t('programAdvancedHint')}>
+        <TextField
+          label={t('metadataUri')}
+          value={uri}
+          onChange={setUri}
+          placeholder="ipfs://…"
+          hint={t('metadataUriHint')}
+        />
+        <p className="hint">
+          {t('policyHash')}: <span className="mono">{hash}</span>
+        </p>
+      </Advanced>
+
       <button
         type="button"
         className="btn-primary"
-        disabled={tx.phase === 'signing' || tx.phase === 'pending'}
-        onClick={() =>
-          tx.run({
-            address: deployment?.contracts.BeneficiaryGroups as Address,
-            abi: beneficiaryGroupsAbi,
-            functionName: 'createProgram',
-            args: [hash, uri],
-          })
-        }
+        disabled={!policy.trim() || tx.phase === 'signing' || tx.phase === 'pending'}
+        onClick={create}
       >
         {t('createProgram')}
       </button>
@@ -95,7 +119,7 @@ function AddMembers() {
 
   return (
     <Panel title={t('membersTitle')} description={t('membersBody')}>
-      <TextField label={t('programId')} value={programId} onChange={setProgramId} inputMode="numeric" />
+      <ProgramPicker value={programId} onChange={setProgramId} />
       <TextArea label={t('commitments')} value={raw} onChange={setRaw} rows={5} />
       <FormError message={error} />
       <button

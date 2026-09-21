@@ -9,6 +9,7 @@ import type {
   NeedSort,
   NeedSummary,
   ProgramMembersResponse,
+  ProgramView,
   ProviderView,
   SupplierDetail,
   SupplierView,
@@ -129,6 +130,12 @@ export const getDepositAddress = async (address: string): Promise<Result<Deposit
 
 export const getProviders = async (): Promise<Result<ProviderView[]>> =>
   useFixtures ? { ok: true, data: fixtures.providers } : get<ProviderView[]>('/providers')
+
+/** The programmes one NGO owns, for the console's "which programme" picker. */
+export const getPrograms = async (ngo: string): Promise<Result<ProgramView[]>> =>
+  useFixtures
+    ? { ok: true, data: fixtures.programs(ngo) }
+    : get<ProgramView[]>(`/programs?ngo=${encodeURIComponent(ngo)}`)
 
 /** Registered suppliers (SUPPLIER_ROLE): the vetted providers a vault may pay directly. */
 export const getSuppliers = async (): Promise<Result<SupplierView[]>> =>

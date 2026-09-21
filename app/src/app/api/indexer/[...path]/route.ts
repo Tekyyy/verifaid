@@ -19,7 +19,10 @@ const ALLOWED = [
   /^donors\/0x[a-fA-F0-9]{40}\/trace$/,
   /^impact\/summary$/,
   /^programs\/[^/]+\/members$/,
+  /^programs$/,
   /^providers$/,
+  /^suppliers$/,
+  /^suppliers\/0x[a-fA-F0-9]{40}$/,
   /^deliveries$/,
 ]
 

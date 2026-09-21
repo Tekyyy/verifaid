@@ -208,6 +208,19 @@ export interface SupplierDetail extends SupplierView {
   payments: PayeePaymentView[]
 }
 
+/** One NGO programme: a Semaphore group, the hash of its published eligibility rules and who is enrolled. */
+export interface ProgramView {
+  id: string
+  ngo: Address
+  groupId: string
+  enrollmentPolicyHash: Hex
+  metadataURI: string
+  /** Beneficiaries currently enrolled: the ceiling on a delivery's expected recipients. */
+  memberCount: number
+  active: boolean
+  createdAt: number
+}
+
 /** `NeedsRegistry.MIN_PAYEE_CHANGE_APPROVALS`: moving an escrow to another supplier always takes two verifiers. */
 export const MIN_PAYEE_CHANGE_APPROVALS = 2
 

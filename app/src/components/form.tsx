@@ -137,3 +137,18 @@ export function FormError({ message }: { message: string | null }) {
     </p>
   )
 }
+
+/**
+ * Everything an NGO does not have to decide to ask for money: the defaults above it are what most needs use,
+ * and this holds the exact on-chain values for the ones that need to change them. Closed by default, and a
+ * plain `<details>` so it works without JavaScript and is announced as a disclosure by screen readers.
+ */
+export function Advanced({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
+  return (
+    <details className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+      <summary className="cursor-pointer text-sm font-semibold text-slate-900">{title}</summary>
+      {hint ? <p className="mt-1 text-xs text-slate-600">{hint}</p> : null}
+      <div className="mt-3 space-y-3">{children}</div>
+    </details>
+  )
+}
