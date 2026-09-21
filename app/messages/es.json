@@ -133,7 +133,8 @@
     "PayeeChanged": "Proveedor sustituido en el plan de pagos",
     "PayeeChangeCancelled": "Sustitución de proveedor retirada",
     "WorkPhotosPublished": "Fotos del trabajo publicadas",
-    "DonationWithdrawn": "Donación recuperada por quien donó"
+    "DonationWithdrawn": "Donación recuperada por quien donó",
+    "NeedPresentationPublished": "Presentación publicada por la ONG"
   },
   "home": {
     "title": "Ayuda auditable, personas no identificables",
@@ -187,7 +188,8 @@
     "sort_gap": "Mayor importe pendiente",
     "sort_newest": "Más recientes",
     "gap": "Falta",
-    "withdrawnNote": "({amount} recuperados)"
+    "withdrawnNote": "({amount} recuperados)",
+    "ofTarget": "de {target} recaudado · {percent}%"
   },
   "need": {
     "title": "Necesidad n.º {id}",
@@ -270,7 +272,9 @@
     "withdrawLocked": "Demasiado cerca de la fecha límite de financiación: las retiradas se cierran 2 días antes, para que la ONG decida si sigue adelante con una cifra ya asentada.",
     "withdrawAmount": "Importe a recuperar",
     "withdrawButton": "Recuperarla",
-    "withdrawReceipt": "Recibo n.º {id} · {date}"
+    "withdrawReceipt": "Recibo n.º {id} · {date}",
+    "presentationTitle": "Sobre esta necesidad",
+    "presentationBy": "Publicado por la ONG que registró esta necesidad"
   },
   "donor": {
     "title": "Mis donaciones",
@@ -482,7 +486,21 @@
     "photosErrorCount": "Como mucho {max} fotos por atestación.",
     "timeline_custom": "Elegir las fechas",
     "timelineCustomHint": "Tú eliges las dos fechas límite",
-    "timelineDates": "Financiación hasta {funding}, entrega antes del {delivery}"
+    "timelineDates": "Financiación hasta {funding}, entrega antes del {delivery}",
+    "presentationTitle": "Cómo ve esta necesidad quien dona",
+    "presentationBody": "Una imagen de portada, una frase y algunas etiquetas, como una página de crowdfunding. Publica de nuevo cuando quieras para reemplazarla. Nunca cambia los términos de la necesidad: el objetivo, los tramos y el plan de pagos quedaron fijados y verificados al crearla.",
+    "presentationCover": "Enlace de la imagen de portada",
+    "presentationCoverHint": "https:// o ipfs://. Se ve en la tarjeta de la necesidad y arriba en su página.",
+    "presentationSummary": "Una o dos frases que quien dona leerá primero",
+    "presentationSummaryHint": "Lenguaje claro. Qué compra el dinero y para quién.",
+    "presentationTags": "Etiquetas, separadas por comas",
+    "presentationTagsPlaceholder": "Inundaciones, Lotes de comida, Cuenca",
+    "presentationTagsHint": "Como mucho {max}; se muestran como chips en la tarjeta.",
+    "presentationGallery": "Más imágenes, un enlace por línea",
+    "presentationGalleryHint": "Opcional. Fotos del plan, del lugar o de los bienes, nunca de personas.",
+    "presentationPublish": "Publicar la presentación",
+    "presentationReplaces": "Publicar de nuevo reemplaza lo que ve quien dona; cada versión queda en cadena como una atestación que firmaste.",
+    "presentationErrorTags": "Como mucho {max} etiquetas."
   },
   "verifier": {
     "title": "Cola del verificador",

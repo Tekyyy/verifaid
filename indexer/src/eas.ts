@@ -89,7 +89,7 @@ ponder.on('EAS:Attested', async ({ event, context }) => {
     if (needId !== null) {
       await appendTimeline(context, event, {
         needId,
-        type: 'WorkPhotosPublished',
+        type: communityName === 'NeedPresentation' ? 'NeedPresentationPublished' : 'WorkPhotosPublished',
         data: { attester: event.args.attester, uid: event.args.uid },
         attestationUID: event.args.uid,
       })

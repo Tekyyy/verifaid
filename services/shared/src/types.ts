@@ -65,7 +65,7 @@ export interface Deployment {
   }
   schemas: Record<SchemaName, Hex>
   /** Resolver-less schemas: work photos and supplier applications. Absent on deployments that predate them. */
-  communitySchemas?: Record<'WorkPhotos' | 'SupplierApplication', Hex>
+  communitySchemas?: Partial<Record<'WorkPhotos' | 'SupplierApplication' | 'NeedPresentation', Hex>>
 }
 
 /** The six EAS schemas of the system, in the order a donor experiences them. */

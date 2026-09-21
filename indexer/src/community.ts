@@ -1,6 +1,7 @@
 import {
   type CommunitySchemaName,
   decodeCommunityData,
+  type NeedPresentationData,
   type SupplierApplicationData,
   type WorkPhotosData,
 } from '@poa/shared'
@@ -22,6 +23,8 @@ import type { Address, Hex } from 'viem'
 const MAX_PHOTOS = 12
 const MAX_URL = 500
 const MAX_TEXT = 500
+const MAX_TAGS = 5
+const MAX_TAG = 40
 
 const trim = (value: string, max: number): string => (value.length > max ? value.slice(0, max) : value)
 
@@ -68,6 +71,30 @@ export const recordCommunityAttestation = async (
     return needId
   }
 
+  if (name === 'NeedPresentation') {
+    const [needId, coverImage, gallery, summary, tags] = decodeCommunityData<NeedPresentationData>(
+      'NeedPresentation',
+      ctx.data,
+    )
+    const need = await ctx.db.find(schema.need, { id: needId })
+    // Only the NGO that owns the need decides how it is presented.
+    if (!need || need.ngo.toLowerCase() !== ctx.attester.toLowerCase()) return null
+
+    const cover = usablePhotos([coverImage])[0] ?? ''
+    const row = {
+      uid: ctx.uid,
+      ngo: ctx.attester,
+      coverImage: cover,
+      gallery: usablePhotos(gallery),
+      summary: trim(summary, MAX_TEXT),
+      tags: tags.slice(0, MAX_TAGS).map((tag) => trim(tag, MAX_TAG)),
+      timestamp: ctx.timestamp,
+    }
+    // Publishing again replaces what donors see; the attestations remain as the history of what changed.
+    await ctx.db.insert(schema.needPresentation).values({ needId, ...row }).onConflictDoUpdate(row)
+    return needId
+  }
+
   const [supplier, label, services, uri, credentialHash] = decodeCommunityData<SupplierApplicationData>(
     'SupplierApplication',
     ctx.data,
@@ -96,6 +123,8 @@ export const revokeCommunityAttestation = async (
   db: any,
   uid: Hex,
 ): Promise<void> => {
+  // A presentation is replaced, not revoked: the row keeps whatever the NGO published last.
+  if (name === 'NeedPresentation') return
   const table = name === 'WorkPhotos' ? schema.workPhotos : schema.supplierApplication
   const row = await db.find(table, { uid })
   if (row) await db.update(table, { uid }).set({ revoked: true })

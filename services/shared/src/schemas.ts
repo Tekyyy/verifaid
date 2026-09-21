@@ -78,6 +78,11 @@ export const COMMUNITY_SCHEMAS = {
     schema: 'uint256 needId,string[] photos,string note',
     revocable: true,
   },
+  NeedPresentation: {
+    name: 'NeedPresentation' as const,
+    schema: 'uint256 needId,string coverImage,string[] gallery,string summary,string[] tags',
+    revocable: true,
+  },
   SupplierApplication: {
     name: 'SupplierApplication' as const,
     schema: 'address supplier,string name,string services,string uri,bytes32 credentialHash',
@@ -95,6 +100,19 @@ export const decodeCommunityData = <T extends readonly unknown[]>(name: Communit
 
 /** Photos of finished work, published by the NGO that ran the need. Never people: goods, sites, deliveries. */
 export type WorkPhotosData = readonly [needId: bigint, photos: readonly string[], note: string]
+
+/**
+ * How an NGO presents a need to donors: a cover image, more images, a short summary and a few tags. Nothing
+ * on-chain reads it, and the terms it sits next to — target, tranches, payment plan — cannot be dressed up by
+ * it. Publishing again replaces it, so a presentation can be corrected without touching the need itself.
+ */
+export type NeedPresentationData = readonly [
+  needId: bigint,
+  coverImage: string,
+  gallery: readonly string[],
+  summary: string,
+  tags: readonly string[],
+]
 
 /** A supplier asking to be registered. An admin still has to grant the role; this is the public request. */
 export type SupplierApplicationData = readonly [

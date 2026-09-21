@@ -544,3 +544,32 @@ than deleting a row and erasing a fact.
   tranches, the delivery gate, the execution deadline and pro-rata refunds are for.
 - **A donor-initiated dispute** that freezes releases mid-delivery. It is the honest answer to "something went
   wrong later", it reuses the existing challenge machinery, and it is a separate feature.
+
+## 17. What an NGO may say, and what the chain says back
+
+Three schemas are registered with **no resolver** (`RegisterCommunitySchemas.s.sol`). Nothing on-chain reads
+them and no money depends on them, so they are open by construction: anyone can attest one. What makes them
+mean something is the indexer, which applies the rules the chain deliberately does not.
+
+| Schema | Who may write it | What it is |
+|---|---|---|
+| `NeedPresentation` | kept only from the need's own NGO | cover image, gallery, summary, tags — the crowdfunding-style face of a need |
+| `WorkPhotos` | kept only from the need's own NGO | images of finished work, published against a need |
+| `SupplierApplication` | kept only when the applicant signs for itself | a public request to be registered; grants nothing |
+
+- **Presentation never overrides terms.** It renders *above* the terms panel, never inside it. The target,
+  tranche plan, deadlines, cost cap and payment plan were fixed and verified at creation; a picture and a
+  sentence cannot move them, and publishing a new presentation replaces only itself.
+- **Links, not uploads.** The images stay wherever the NGO hosts them; the attestation carries the URLs and the
+  signature. The indexer keeps only `https://` and `ipfs://` links, caps how many it stores, and the app renders
+  them with `referrerpolicy=no-referrer`. Photos are of goods, sites and deliveries — this system never puts a
+  beneficiary in a picture.
+- **Two badges on every need card**, recomputed from events rather than awarded: "photos of the work", and the
+  share of everything that NGO ever released that reached the payees its plans named (below 100% means a payment
+  is still held because a token refused it). Nobody can buy either one, and neither can be revoked by us.
+- **Applications are a queue, not a role.** `SUPPLIER_ROLE` remains an admin decision, because "independent of
+  the NGO" is a judgement the chain cannot make (§15, THREAT_MODEL §3.15). What the chain adds is that the
+  request, and who signed it, are public and dated.
+
+A deployment that predates these schemas simply has no `communitySchemas` entry, and every panel that would
+write one hides itself.

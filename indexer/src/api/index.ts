@@ -30,6 +30,7 @@ import {
   type TimelinePage,
   trackingRefKind,
   type NeedBadges,
+  type NeedPresentationView,
   payeeChangeApprovalsRequired,
   type ProgramView,
   type SupplierApplicationView,
@@ -55,6 +56,7 @@ import {
   toPayeeChangeView,
   toPayeePaymentView,
   toPayeeView,
+  toNeedPresentationView,
   toSupplierApplicationView,
   toWorkPhotoView,
   toSettlementView,
@@ -171,14 +173,25 @@ app.get('/needs', async (c) => {
   if (c.req.query('open') === 'true') rows = rows.filter((row) => isOpenForFunding(row, now))
   if (sort) rows = sortNeeds(rows, sort, now)
 
-  const badges = await badgesFor(rows)
+  const [badges, presentations] = await Promise.all([badgesFor(rows), presentationsFor(rows)])
   return c.json(
     rows.map((row) => ({
       ...toNeedSummary(row),
       badges: badges.get(row.id) ?? EMPTY_BADGES,
+      presentation: presentations.get(row.id) ?? null,
     })) satisfies NeedSummary[],
   )
 })
+
+/** How each of these needs is presented, when its NGO has published anything. */
+const presentationsFor = async (rows: NeedRow[]): Promise<Map<bigint, NeedPresentationView>> => {
+  if (rows.length === 0) return new Map()
+  const found = await db
+    .select()
+    .from(schema.needPresentation)
+    .where(inArray(schema.needPresentation.needId, rows.map((row) => row.id)))
+  return new Map(found.map((row) => [row.needId, toNeedPresentationView(row)]))
+}
 
 /** Zero history: an NGO that has never released anything gets no payout record, not a bad one. */
 const EMPTY_BADGES: NeedBadges = {
@@ -290,11 +303,12 @@ app.get('/needs/:id', async (c) => {
     .from(schema.workPhotos)
     .where(and(eq(schema.workPhotos.needId, id), eq(schema.workPhotos.revoked, false)))
     .orderBy(desc(schema.workPhotos.timestamp))
-  const badges = await badgesFor([row])
+  const [badges, presentations] = await Promise.all([badgesFor([row]), presentationsFor([row])])
 
   return c.json({
     ...toNeedSummary(row),
     badges: badges.get(row.id) ?? EMPTY_BADGES,
+    presentation: presentations.get(row.id) ?? null,
     tranches: tranches.map((tranche) => toTrancheView(tranche)),
     deliveries: deliveries.map(toDeliveryView),
     donations: donations.map(toDonationView),
@@ -901,6 +915,7 @@ const loadTrack = async (ref: string, provider: string | undefined): Promise<Loa
       payees,
       payments,
       badges: (await badgesFor([need])).get(need.id) ?? EMPTY_BADGES,
+      presentation: (await presentationsFor([need])).get(need.id) ?? null,
     }),
   }
 }

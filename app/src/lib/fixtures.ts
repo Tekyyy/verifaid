@@ -10,6 +10,7 @@ import type {
   ImpactSummary,
   NeedBadges,
   NeedDetail,
+  NeedPresentationView,
   NeedSummary,
   PayeePaymentView,
   PayeeView,
@@ -93,6 +94,17 @@ interface Terms {
 const OPEN_STATUSES: NeedSummary['status'][] = ['Pending', 'Verified', 'Funding']
 
 /** A record with nothing wrong in it: what most demo needs show on their card. */
+/** Need #1 is presented the way an NGO would: a cover, a sentence, a couple of tags. */
+const PRESENTATION_1: NeedPresentationView = {
+  coverImage: 'https://images.unsplash.com/photo-1593113598332-cd288d649433?w=1200',
+  gallery: ['https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=640'],
+  summary:
+    'Food kits for 120 households in Cuenca after the September floods, delivered through the parish hall over two weekends.',
+  tags: ['Floods', 'Food kits', 'Cuenca'],
+  uid: uid(91),
+  timestamp: 1_757_005_000,
+}
+
 const BADGES: NeedBadges = { workPhotos: 0, payoutAccuracyBps: 10_000, needsCompleted: 1, needsTotal: 3 }
 
 /** Photos of the work, as need #1's NGO published them. */
@@ -139,6 +151,7 @@ const summary = (
   const costBps = terms.thirdPartyCostBps ?? 0
   return {
     badges: BADGES,
+    presentation: id === '1' ? PRESENTATION_1 : null,
     id,
     ngo: NGO,
     ngoName: 'Aurora Relief',

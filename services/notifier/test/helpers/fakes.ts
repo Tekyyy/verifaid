@@ -172,6 +172,9 @@ export const needFixture = (id: string, overrides: Partial<NeedDetail> = {}): Ne
   payees: [],
   payments: [],
   payeeChanges: [],
+  photos: [],
+  presentation: null,
+  badges: { workPhotos: 0, payoutAccuracyBps: null, needsCompleted: 0, needsTotal: 1 },
   ...overrides,
 })
 
@@ -187,6 +190,7 @@ export const trackFixture = (
     id: `donation-${ref}`,
     needId: need.id,
     kind: 'DIRECT',
+    withdrawn: '0',
     donor: '0x00000000000000000000000000000000000000c3',
     donorRefHash: null,
     paymentRefHash: null,

@@ -20,6 +20,7 @@ import {
   regionLabel,
   resolveNetwork,
   type SettlementView,
+  type NeedPresentationView,
   type SupplierApplicationView,
   type SupplierView,
   type TimelineEvent,
@@ -51,6 +52,7 @@ export type PayeeChangeRow = typeof schema.payeeChange.$inferSelect
 export type SupplierRow = typeof schema.supplier.$inferSelect
 export type DepositRefundRow = typeof schema.depositRefund.$inferSelect
 export type WorkPhotosRow = typeof schema.workPhotos.$inferSelect
+export type NeedPresentationRow = typeof schema.needPresentation.$inferSelect
 export type SupplierApplicationRow = typeof schema.supplierApplication.$inferSelect
 
 const deployment = getDeployment(resolveNetwork(process.env.PONDER_NETWORK ?? 'anvil'))
@@ -59,7 +61,7 @@ const deployment = getDeployment(resolveNetwork(process.env.PONDER_NETWORK ?? 'a
 export const fundingGapOf = (row: NeedRow): bigint =>
   row.status === 'Funding' && row.targetAmount > row.totalDonated ? row.targetAmount - row.totalDonated : 0n
 
-export const toNeedSummary = (row: NeedRow): Omit<NeedSummary, 'badges'> => ({
+export const toNeedSummary = (row: NeedRow): Omit<NeedSummary, 'badges' | 'presentation'> => ({
   id: row.id.toString(),
   ngo: row.ngo as Address,
   // The NGO's display name lives in the off-chain profile JSON at metadataURI; only the URI is on-chain.
@@ -92,6 +94,15 @@ export const toNeedSummary = (row: NeedRow): Omit<NeedSummary, 'badges'> => ({
   settlementFees: row.settlementFees.toString(),
   createdAt: row.createdAt,
   expiredAt: row.expiredAt,
+})
+
+export const toNeedPresentationView = (row: NeedPresentationRow): NeedPresentationView => ({
+  coverImage: row.coverImage,
+  gallery: (row.gallery as string[]) ?? [],
+  summary: row.summary,
+  tags: (row.tags as string[]) ?? [],
+  uid: row.uid as Hex,
+  timestamp: row.timestamp,
 })
 
 export const toWorkPhotoView = (row: WorkPhotosRow): WorkPhotoView => ({

@@ -1,48 +1,37 @@
 import { useTranslations } from 'next-intl'
 import { ConnectButton } from '@/components/ConnectButton'
 import { LocaleSwitcher } from '@/components/LocaleSwitcher'
+import { SiteNav } from '@/components/SiteNav'
 import { Link } from '@/i18n/navigation'
 import { chain } from '@/lib/config'
 
-const ROUTES = [
-  { href: '/needs', key: 'needs' },
-  { href: '/impact', key: 'impact' },
-  { href: '/suppliers', key: 'suppliers' },
-  { href: '/track', key: 'track' },
-  { href: '/donor', key: 'donor' },
-  { href: '/ngo', key: 'ngo' },
-  { href: '/verifier', key: 'verifier' },
-  { href: '/field', key: 'field' },
-] as const
-
+/**
+ * Sticky, quiet, and out of the way: the page below it is the product. The network is stated because every
+ * figure on this site comes from that chain and a testnet must never be mistaken for the real one.
+ */
 export function SiteHeader() {
-  const t = useTranslations('nav')
   const tCommon = useTranslations('common')
 
   return (
-    <header className="border-b border-slate-200 bg-white">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3">
-        <Link href="/" className="text-base font-bold text-slate-900 no-underline">
+    <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
+        <Link
+          href="/"
+          className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-slate-900 no-underline"
+        >
+          <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-indigo-700" />
           {tCommon('appName')}
         </Link>
 
-        <nav aria-label={tCommon('mainNavigation')} className="order-3 w-full sm:order-none sm:w-auto">
-          <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-            {ROUTES.map((route) => (
-              <li key={route.href}>
-                <Link
-                  className="text-slate-700 no-underline hover:text-indigo-800 hover:underline"
-                  href={route.href}
-                >
-                  {t(route.key)}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
+        <div className="order-3 w-full sm:order-none sm:w-auto">
+          <SiteNav />
+        </div>
 
-        <div className="ml-auto flex flex-wrap items-center gap-3">
-          <span className="badge bg-slate-100 text-slate-700" title={tCommon('network')}>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <span
+            className="hidden rounded-full border border-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-600 sm:inline-flex"
+            title={tCommon('network')}
+          >
             {chain.name}
           </span>
           <LocaleSwitcher />

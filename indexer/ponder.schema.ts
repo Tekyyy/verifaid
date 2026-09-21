@@ -593,6 +593,23 @@ export const workPhotos = onchainTable(
   (table) => ({ needIdx: index().on(table.needId) }),
 )
 
+/**
+ * How an NGO presents a need to donors (resolver-less `NeedPresentation` schema): a cover image, a gallery, a
+ * summary and tags. One row per need — publishing again replaces it, so a presentation can be corrected.
+ */
+export const needPresentation = onchainTable('need_presentation', (t) => ({
+  needId: t.bigint().primaryKey(),
+  uid: t.hex().notNull(),
+  ngo: t.hex().notNull(),
+  coverImage: t.text().notNull(),
+  /** string[]: further images. */
+  gallery: t.json().notNull(),
+  summary: t.text().notNull(),
+  /** string[]: short labels an NGO chose, shown on the need's card. */
+  tags: t.json().notNull(),
+  timestamp: t.integer().notNull(),
+}))
+
 /** A supplier asking an admin to register it (resolver-less `SupplierApplication` schema). A request, not a role. */
 export const supplierApplication = onchainTable(
   'supplier_application',

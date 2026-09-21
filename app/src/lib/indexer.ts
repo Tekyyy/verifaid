@@ -36,6 +36,13 @@ export interface IndexerError {
 const TIMEOUT_MS = 6_000
 
 /**
+ * Server reads are cached for a few seconds: chain data moves in blocks, not in milliseconds, and a page that
+ * refetched everything on every navigation felt slow for no gain. The browser always reads fresh, because a
+ * donor who just signed a transaction should see it.
+ */
+const SERVER_REVALIDATE_SECONDS = 5
+
+/**
  * From the browser the calls go through `/api/indexer/*` on this origin, so the dashboard does not depend on
  * the indexer sending CORS headers; on the server they go straight to it.
  */
@@ -45,7 +52,9 @@ const get = async <T>(path: string): Promise<Result<T>> => {
   const url = `${baseUrl()}${path}`
   try {
     const response = await fetch(url, {
-      cache: 'no-store',
+      ...(typeof window === 'undefined'
+        ? { next: { revalidate: SERVER_REVALIDATE_SECONDS } }
+        : { cache: 'no-store' as const }),
       headers: { accept: 'application/json' },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     })

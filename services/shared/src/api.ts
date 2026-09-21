@@ -47,6 +47,8 @@ export interface NeedSummary {
   expiredAt: number | null
   /** Public record of the organisation behind it; see `NeedBadges`. */
   badges: NeedBadges
+  /** What the NGO published to present it, or null while it has published nothing. */
+  presentation: NeedPresentationView | null
 }
 
 /** Ways to order the needs list. `urgency` = soonest funding deadline first, then the largest funding gap. */
@@ -214,6 +216,16 @@ export interface SupplierDetail extends SupplierView {
   payments: PayeePaymentView[]
 }
 
+/** How an NGO chose to present a need: a cover image, more images, a summary and a few tags. */
+export interface NeedPresentationView {
+  coverImage: string
+  gallery: string[]
+  summary: string
+  tags: string[]
+  uid: Hex
+  timestamp: number
+}
+
 /** Photos of finished work an NGO published for one of its needs. */
 export interface WorkPhotoView {
   uid: Hex
@@ -330,6 +342,7 @@ export type TimelineEventType =
   | 'PayeeChanged'
   | 'PayeeChangeCancelled'
   | 'WorkPhotosPublished'
+  | 'NeedPresentationPublished'
   | 'DonationWithdrawn'
 
 export interface TimelineEvent {

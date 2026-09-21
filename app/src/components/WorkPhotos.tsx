@@ -1,13 +1,7 @@
 import type { WorkPhotoView } from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import { ExplorerLink } from '@/components/ExplorerLink'
-import { timestamp } from '@/lib/format'
-
-/** ipfs:// is not a browser scheme; a public gateway is how a page shows one. */
-const IPFS_GATEWAY = 'https://ipfs.io/ipfs/'
-
-const src = (url: string): string =>
-  url.startsWith('ipfs://') ? `${IPFS_GATEWAY}${url.slice('ipfs://'.length)}` : url
+import { imageSrc, timestamp } from '@/lib/format'
 
 /**
  * Photos of the finished work, published by the NGO that ran the need and signed as an attestation, so a donor
@@ -34,7 +28,7 @@ export function WorkPhotos({ photos }: { photos: WorkPhotoView[] }) {
                 // biome-ignore lint/performance/noImgElement: images live on the NGO's own host, not ours to optimize
                 <img
                   key={url}
-                  src={src(url)}
+                  src={imageSrc(url)}
                   alt=""
                   loading="lazy"
                   referrerPolicy="no-referrer"

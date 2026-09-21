@@ -11,6 +11,7 @@ import { ExpireButton } from '@/components/ExpireButton'
 import { ExplorerLink } from '@/components/ExplorerLink'
 import { GiveFiatPanel } from '@/components/GiveFiatPanel'
 import { NeedBadgeRow } from '@/components/NeedBadgeRow'
+import { NeedPresentation } from '@/components/NeedPresentation'
 import { IndexerNotice, Notice } from '@/components/Notice'
 import { PaymentPlanPanel } from '@/components/PaymentPlanPanel'
 import { ProgressBar } from '@/components/ProgressBar'
@@ -166,6 +167,8 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
               </div>
             </dl>
           </section>
+
+          <NeedPresentation presentation={data.presentation} />
 
           <TermsPanel need={data} />
 

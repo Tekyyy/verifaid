@@ -48,6 +48,12 @@ export const timestamp = (seconds: number | null | undefined): string => {
   )
 }
 
+/** ipfs:// is not a browser scheme, so a public gateway is how a page shows one. */
+const IPFS_GATEWAY = 'https://ipfs.io/ipfs/'
+
+export const imageSrc = (url: string): string =>
+  url.startsWith('ipfs://') ? `${IPFS_GATEWAY}${url.slice('ipfs://'.length)}` : url
+
 export const shorten = (value: string, head = 6, tail = 4): string =>
   value.length <= head + tail + 1 ? value : `${value.slice(0, head)}…${value.slice(-tail)}`
 

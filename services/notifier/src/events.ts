@@ -39,6 +39,9 @@ export const TIMELINE_EVENT_TYPES = [
   'PayeeChangeApproved',
   'PayeeChanged',
   'PayeeChangeCancelled',
+  'DonationWithdrawn',
+  'NeedPresentationPublished',
+  'WorkPhotosPublished',
 ] as const satisfies readonly TimelineEventType[]
 
 type MissingEventTypes = Exclude<TimelineEventType, (typeof TIMELINE_EVENT_TYPES)[number]>

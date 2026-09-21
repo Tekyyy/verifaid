@@ -8,6 +8,7 @@ import { type Address, type Hex, keccak256, toHex } from 'viem'
 import { useReadContract } from 'wagmi'
 import { CreateNeedPanel } from '@/components/CreateNeedPanel'
 import { Advanced, FormError, Panel, TextArea, TextField } from '@/components/form'
+import { NeedPresentationPanel } from '@/components/NeedPresentationPanel'
 import { MissingDeployment, Notice } from '@/components/Notice'
 import { ProposePayeeChangePanel } from '@/components/PayeeChangePanel'
 import { ProgramPicker } from '@/components/ProgramPicker'
@@ -27,6 +28,7 @@ export function NgoConsole() {
       <CreateProgram />
       <AddMembers />
       <CreateNeedPanel />
+      <NeedPresentationPanel />
       <CloseFunding />
       <ReleaseTranche />
       <ProposePayeeChangePanel />

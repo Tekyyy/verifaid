@@ -185,6 +185,7 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
     function _communityPlaceholders() internal returns (string memory) {
         string memory community = "communitySchemas";
         community.serialize("WorkPhotos", bytes32(0));
+        community.serialize("NeedPresentation", bytes32(0));
         return community.serialize("SupplierApplication", bytes32(0));
     }
 }
