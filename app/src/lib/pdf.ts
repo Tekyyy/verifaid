@@ -4,6 +4,7 @@ import {
   PDFDocument,
   type PDFFont,
   type PDFPage,
+  PDFString,
   rgb,
   StandardFonts,
 } from 'pdf-lib'
@@ -25,6 +26,7 @@ const MUTED = rgb(0.35, 0.39, 0.45)
 const RULE = rgb(0.8, 0.83, 0.87)
 const ACCENT = rgb(0.19, 0.18, 0.51)
 const ZEBRA = rgb(0.96, 0.97, 0.98)
+const LINK = rgb(0.11, 0.31, 0.72)
 
 const REPLACEMENTS: [RegExp, string][] = [
   [/[‘’‚′]/g, "'"],
@@ -126,6 +128,25 @@ export class PdfReport {
     this.page.drawText(text, { x, y: this.y - size, size, font, color })
   }
 
+  /** A clickable region over text already drawn on this line, so a reviewer on a screen can just follow it. */
+  private annotate(url: string, x: number, width: number, size: number): void {
+    const annotation = this.doc.context.register(
+      this.doc.context.obj({
+        Type: 'Annot',
+        Subtype: 'Link',
+        Rect: [x, this.y - size - 1, x + width, this.y + 1],
+        Border: [0, 0, 0],
+        A: { Type: 'Action', S: 'URI', URI: PDFString.of(url) },
+      }),
+    )
+    this.page.node.addAnnot(annotation)
+  }
+
+  /** True for a value this document should render as a link rather than as text. */
+  private static isUrl(value: string): boolean {
+    return value.startsWith('https://') || value.startsWith('http://')
+  }
+
   spacer(points = 8): void {
     this.y -= points
   }
@@ -171,13 +192,15 @@ export class PdfReport {
     const valueWidth = CONTENT_WIDTH - labelWidth
     for (const [label, raw] of rows) {
       const value = raw === null || raw === undefined || raw === '' ? '-' : String(raw)
-      const mono = /^0x[0-9a-fA-F]{8,}$/.test(value)
+      const url = PdfReport.isUrl(value)
+      const mono = !url && /^0x[0-9a-fA-F]{8,}$/.test(value)
       const font = mono ? this.fonts.mono : this.fonts.regular
       const lines = this.wrap(value, font, size, valueWidth)
       this.ensure(lines.length * size * LINE_GAP)
       this.draw(ascii(label), MARGIN, size, this.fonts.bold, MUTED)
       for (const line of lines) {
-        this.draw(line, MARGIN + labelWidth, size, font)
+        this.draw(line, MARGIN + labelWidth, size, font, url ? LINK : INK)
+        if (url) this.annotate(value, MARGIN + labelWidth, font.widthOfTextAtSize(line, size), size)
         this.y -= size * LINE_GAP
       }
       this.spacer(2)

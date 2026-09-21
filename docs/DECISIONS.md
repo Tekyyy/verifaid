@@ -610,6 +610,17 @@ document states the amount, date, transaction, the need, the receipt token, the 
 and its attestation, the organisation's standing and whether anyone checked it — and then says plainly that it
 is not tax advice and that deductibility depends on the donor's own circumstances.
 
+**The reviewer never has to trust this document.** Every figure in the receipt is restated as a link to a
+block explorer, which is a third party with no stake in the claim. The first of them opens the receipt token
+itself: the explorer names the wallet holding it, renders the metadata the token carries on chain — the need,
+the amount, the date — and lists the mint. Because the token is soulbound (ERC-5192; every transfer but the
+mint reverts) the holder cannot have bought it, so *whoever holds it is the wallet that paid*. The rest of the
+links open the "Read Contract" tab of the receipt and of the vault, where `ownerOf`, `receiptOf`, `locked`,
+`donatedBy` and `totalDonated` can be called by anyone without a wallet or an account. The document says
+plainly that an explorer's rendering of token metadata is a cache and that `receiptOf` is the figure of
+record — which matters after a withdrawal, since the receipt is reduced rather than burned and the reduced
+amount is the deductible one.
+
 **Deliberately not claimed.** The app never says "tax-deductible". A need shows the organisation's registration
 number and whether it was checked; a donor decides with their accountant. An unverified claim renders as the
 organisation's own statement, in grey, next to the words *(unverified)*.

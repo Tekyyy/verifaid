@@ -37,6 +37,14 @@ export interface TaxReceiptInput {
   trackingUrl: string
   explorerTxUrl: string
   explorerAttestationUrl: string | null
+  /**
+   * The block explorer's own pages. A reviewer who trusts none of this document can start at `explorerNftUrl`:
+   * it names the wallet holding the receipt token and renders the token's own on-chain metadata.
+   */
+  receiptContract: string | null
+  explorerNftUrl: string | null
+  explorerReceiptReadUrl: string | null
+  explorerVaultReadUrl: string | null
 }
 
 export const renderTaxReceipt = async (input: TaxReceiptInput): Promise<Uint8Array> => {
@@ -45,6 +53,7 @@ export const renderTaxReceipt = async (input: TaxReceiptInput): Promise<Uint8Arr
   const ack = track.acknowledgment
   const donation = track.donation
   const date = timestamp(donation.timestamp)
+  const receiptId = donation.receiptId ?? track.ref
 
   const report = await PdfReport.create({
     title: `Donation receipt - ${track.ref}`,
@@ -62,6 +71,7 @@ export const renderTaxReceipt = async (input: TaxReceiptInput): Promise<Uint8Arr
     ['Date of contribution', date],
     ['Amount', `${amount(donation.amount)} ${unit}`],
     ['Form of contribution', `${unit} (a digital asset), transferred on-chain`],
+    ['Donor wallet (holds the receipt)', donation.donor ?? '-'],
     ['Transferred to', track.need.vault ?? '-'],
     ['Transaction', donation.txHash],
     ['Need', `#${track.need.id} - ${track.need.categoryLabel}, ${track.need.regionLabel}`],
@@ -121,14 +131,59 @@ export const renderTaxReceipt = async (input: TaxReceiptInput): Promise<Uint8Arr
   report.heading('How to verify every figure above')
   report.paragraph(
     'Every number in this document comes from public blockchain events, not from this organisation or from ' +
-      'the platform. The transaction, the receipt token and the acknowledgment attestation can each be opened ' +
-      'in a block explorer, and the donation can be followed to the suppliers it paid at the tracking link ' +
-      'below.',
+      'the platform. Nothing below has to be taken on trust: a block explorer is an independent third party, ' +
+      'and the links open the records themselves.',
   )
+  if (input.explorerNftUrl) {
+    report.paragraph(
+      `The receipt is token #${receiptId} of the contract at ${input.receiptContract}. Opening it in the ` +
+        'explorer shows the wallet that holds it, the transaction that minted it, and the metadata the ' +
+        'token carries itself, which states the need it belongs to and the amount: ' +
+        `${amount(donation.amount)} ${unit}. ` +
+        'The token is soulbound - it implements ERC-5192, and every transfer other than the mint reverts - so ' +
+        'the holder cannot have bought it from anyone. The wallet holding it is the wallet that paid.',
+    )
+  }
   report.keyValues([
+    ['Receipt token, in the explorer', input.explorerNftUrl],
     ['Tracking page', input.trackingUrl],
     ['Transaction', input.explorerTxUrl],
   ])
+  if (input.explorerReceiptReadUrl || input.explorerVaultReadUrl) {
+    report.paragraph(
+      'An explorer renders token metadata from a cached copy, so read the contracts directly for the figure ' +
+        'of record. On the "Read Contract" tab of each address below, anyone can call these without a wallet, ' +
+        'an account or any permission:',
+    )
+    report.keyValues([
+      ...(input.explorerReceiptReadUrl
+        ? ([
+            ['Receipt contract', input.explorerReceiptReadUrl],
+            ['  ownerOf(' + receiptId + ')', 'the wallet holding this receipt today'],
+            [
+              '  receiptOf(' + receiptId + ')',
+              'the need id, the amount still standing behind this receipt, and the donor',
+            ],
+            ['  locked(' + receiptId + ')', 'true - the token cannot be transferred or sold'],
+          ] as [string, string][])
+        : []),
+      ...(input.explorerVaultReadUrl
+        ? ([
+            ['Vault holding the money', input.explorerVaultReadUrl],
+            [
+              '  donatedBy(' + (donation.donor ?? 'wallet') + ')',
+              'everything this wallet has given to this need, net of anything it took back',
+            ],
+            ['  totalDonated()', 'what the need has raised in total, which this contribution is part of'],
+          ] as [string, string][])
+        : []),
+    ])
+    report.paragraph(
+      'Amounts are in base units: divide by 1,000,000 to read them, because this token has six decimals. If ' +
+        'part of the contribution was taken back before the need closed, the receipt was reduced rather than ' +
+        'burned, and these functions return the reduced figure - which is the deductible one.',
+    )
+  }
 
   report.paragraph(
     'This document is a record of a transaction and of what the donee signed. It is not tax advice, and ' +

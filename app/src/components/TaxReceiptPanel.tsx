@@ -4,7 +4,8 @@ import type { DonationTrack } from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { FormError, TextField } from '@/components/form'
-import { attestationUrl, txUrl } from '@/lib/links'
+import { deployment } from '@/lib/config'
+import { attestationUrl, nftUrl, readContractUrl, txUrl } from '@/lib/links'
 import { renderTaxReceipt } from '@/lib/taxReceipt'
 
 /**
@@ -22,6 +23,11 @@ export function TaxReceiptPanel({ track, unit }: { track: DonationTrack; unit: s
   const tax = track.need.taxStatus
   const acknowledged = track.acknowledgment !== null
 
+  // The explorer is the independent witness this document points at: it names who holds the receipt token.
+  const receiptContract = deployment?.contracts.DonationReceipt ?? null
+  const receiptId = track.donation.receiptId
+  const explorerNft = receiptContract && receiptId ? nftUrl(receiptContract, receiptId) : null
+
   const download = async () => {
     setBusy(true)
     setError(null)
@@ -34,6 +40,10 @@ export function TaxReceiptPanel({ track, unit }: { track: DonationTrack; unit: s
         trackingUrl: typeof window === 'undefined' ? '' : window.location.href,
         explorerTxUrl: txUrl(track.donation.txHash) ?? track.donation.txHash,
         explorerAttestationUrl: track.acknowledgment ? attestationUrl(track.acknowledgment.uid) : null,
+        receiptContract,
+        explorerNftUrl: explorerNft,
+        explorerReceiptReadUrl: receiptContract ? readContractUrl(receiptContract) : null,
+        explorerVaultReadUrl: track.need.vault ? readContractUrl(track.need.vault) : null,
       })
       const blob = new Blob([bytes as BlobPart], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
@@ -71,6 +81,15 @@ export function TaxReceiptPanel({ track, unit }: { track: DonationTrack; unit: s
       </p>
 
       <p className="mt-2 text-xs text-slate-600">{acknowledged ? t('acknowledged') : t('notAcknowledged')}</p>
+
+      {explorerNft ? (
+        <p className="mt-2 text-xs text-slate-600">
+          {t('holderNote', { id: receiptId ?? '' })}{' '}
+          <a className="link" href={explorerNft} target="_blank" rel="noreferrer noopener">
+            {t('holderLink')}
+          </a>
+        </p>
+      ) : null}
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <TextField label={t('donorName')} value={name} onChange={setName} />

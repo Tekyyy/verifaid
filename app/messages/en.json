@@ -1009,6 +1009,8 @@
     "ackReceipt": "receipt #{id} · {donor} · {date}",
     "ackSign": "Sign the acknowledgment",
     "ackHint": "No donor name is published: the acknowledgment is about the donation, and donors add their own details to the document they download.",
-    "errorNoStatus": "Publish your tax standing first: the acknowledgment quotes your legal name and registration number."
+    "errorNoStatus": "Publish your tax standing first: the acknowledgment quotes your legal name and registration number.",
+    "holderNote": "Receipt token #{id} cannot be transferred or sold, so whoever holds it is the wallet that paid. A block explorer will say so independently, along with the amount.",
+    "holderLink": "See the holder on the block explorer →"
   }
 }

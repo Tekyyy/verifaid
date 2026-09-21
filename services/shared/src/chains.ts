@@ -53,6 +53,26 @@ export const explorerAddressUrl = (network: NetworkName, address: string): strin
   return base_ ? `${base_}/address/${address}` : null
 }
 
+/**
+ * The explorer's page for one ERC-721 token: it names the current holder, renders the token's own metadata,
+ * and lists every transfer. For a soulbound receipt that is the whole proof — the holder is the wallet that
+ * paid, because the token could never have been bought from anyone.
+ */
+export const explorerNftUrl = (
+  network: NetworkName,
+  contract: string,
+  tokenId: string | number | bigint,
+): string | null => {
+  const base_ = BLOCK_EXPLORERS[network]
+  return base_ ? `${base_}/nft/${contract}/${tokenId}` : null
+}
+
+/** The explorer's "Read Contract" tab, where anyone can call a view function themselves and see the answer. */
+export const explorerReadContractUrl = (network: NetworkName, address: string): string | null => {
+  const base_ = BLOCK_EXPLORERS[network]
+  return base_ ? `${base_}/address/${address}#readContract` : null
+}
+
 /** EAS explorer link for an attestation, where the evidence chain can be followed through refUIDs. */
 export const easAttestationUrl = (network: NetworkName, uid: Hex): string | null => {
   const base_ = EAS_EXPLORERS[network]

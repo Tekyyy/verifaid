@@ -1009,6 +1009,8 @@
     "ackReceipt": "recibo n.º {id} · {donor} · {date}",
     "ackSign": "Firmar el acuse",
     "ackHint": "No se publica ningún nombre: el acuse es sobre la donación, y quien dona añade sus datos al documento que descarga.",
-    "errorNoStatus": "Publica antes tu situación fiscal: el acuse cita tu denominación legal y tu número de registro."
+    "errorNoStatus": "Publica antes tu situación fiscal: el acuse cita tu denominación legal y tu número de registro.",
+    "holderNote": "El recibo n.º {id} no se puede transferir ni vender, así que quien lo tiene es la cartera que pagó. Un explorador de bloques lo dice por su cuenta, junto con el importe.",
+    "holderLink": "Ver quién lo tiene en el explorador →"
   }
 }
