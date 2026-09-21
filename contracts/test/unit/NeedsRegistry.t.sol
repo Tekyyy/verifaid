@@ -70,7 +70,7 @@ contract NeedsRegistryTest is PoATest {
         assertEq(n.status, INeedsRegistry.NeedStatus.Pending);
         assertEq(uint8(n.custodyMode), uint8(INeedsRegistry.CustodyMode.OnChain));
         assertEq(n.fundingDeadline, 0);
-        assertEq(n.executionDeadline, 0);
+        assertEq(n.executionDeadline, block.timestamp + DEFAULT_EXECUTION_WINDOW);
         assertEq(n.minFundingBps, 1);
         assertEq(n.thirdPartyCostBps, 0);
 

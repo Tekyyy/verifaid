@@ -156,10 +156,23 @@ contract NeedTermsTest is PoATest {
     }
 
     function test_expire_needsADeadline() public {
-        uint256 needId = _createNeed(ngo, programId, TARGET, 1); // open-ended
-        vm.warp(block.timestamp + 3650 days);
+        uint256 needId = _createNeed(ngo, programId, TARGET, 1);
         vm.expectRevert(Errors.DeadlineNotReached.selector);
         registry.expire(needId);
+    }
+
+    /// @dev Money escrowed on-chain always has a horizon, so `expire` can always give it back eventually.
+    function test_createNeed_onChainCustodyMustNameADeliveryHorizon() public {
+        INeedsRegistry.CreateNeedParams memory p = _needParams(programId, TARGET, 1, _threeTrancheBps());
+        p.executionDeadline = 0;
+        vm.prank(ngo);
+        vm.expectRevert(Errors.InvalidParameter.selector);
+        registry.createNeed(p);
+
+        // Off-chain money is held by a named custodian, not by this system, so it may stay open-ended.
+        _asOffChain(p, bankPartner);
+        vm.prank(ngo);
+        registry.createNeed(p);
     }
 
     function test_donationsStopAtTheFundingDeadline() public {

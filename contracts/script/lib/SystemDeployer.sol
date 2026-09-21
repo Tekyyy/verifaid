@@ -51,7 +51,7 @@ abstract contract SystemDeployer is CommonBase {
 
     struct Params {
         address admin;
-        address token; // zero → deploy MockEURC
+        address token; // the vault currency; zero → deploy a MockUSDC (a USD-denominated deployment)
         address eas;
         address semaphore;
         uint256 highValueThreshold;
@@ -66,14 +66,15 @@ abstract contract SystemDeployer is CommonBase {
     struct ConversionParams {
         address swapRouter; // Uniswap SwapRouter02
         address weth;
-        address usdc;
-        address eurUsdFeed; // prices the vault token (EURC ≈ EUR)
+        address usdc; // zero → the vault token itself when that is a mock USDC, otherwise a MockUSDC
+        address eurc; // the euro stablecoin donors may give instead; zero → a mock on test chains, none on mainnet
+        address eurUsdFeed; // prices EURC
         address usdcUsdFeed;
         address ethUsdFeed;
         address sequencerUptimeFeed; // zero → no sequencer check (test networks)
-        uint16 maxSlippageBps; // oracle bound of the USDC route
+        uint16 maxSlippageBps; // oracle bound of the stablecoin route into the vault token
         uint16 ethMaxSlippageBps; // oracle bound of the ETH route, two hops through volatile pools (0 → 1.5%)
-        uint24 usdcToTokenFee; // pool fee tier USDC → vault token (0 → 0.05%, the liquid EURC/USDC pool on Base)
+        uint24 usdcToTokenFee; // pool fee tier stablecoin → vault token (0 → 0.05%, the liquid EURC/USDC pool)
         uint24 wethToUsdcFee; // pool fee tier WETH → USDC (0 → 0.05%)
         bool ethRoute; // configure ETH donations (needs WETH liquidity on the target chain)
         // Maximum answer age per feed. EUR/USD pauses over forex weekends, so its window must span one.
@@ -106,6 +107,7 @@ abstract contract SystemDeployer is CommonBase {
         address swapRouter;
         address weth;
         address usdc;
+        address eurc;
         address eurUsdFeed;
         address usdcUsdFeed;
         address ethUsdFeed;
@@ -120,7 +122,8 @@ abstract contract SystemDeployer is CommonBase {
         _requireRealDependencies(p);
         s.eas = p.eas;
         s.semaphore = p.semaphore;
-        s.token = p.token == address(0) ? address(new MockEURC()) : p.token;
+        // A deployment holds one currency. USD by default: donors give USDC, which needs no conversion at all.
+        s.token = p.token == address(0) ? address(new MockUSDC()) : p.token;
         IRoleRegistry roles = IRoleRegistry(address(s.roles = new RoleRegistry(p.admin)));
 
         s.registry = new NeedsRegistry(roles, p.highValueThreshold);
@@ -169,7 +172,13 @@ abstract contract SystemDeployer is CommonBase {
         Conversion memory out = s.conversion;
         out.mocks = c.swapRouter == address(0);
         out.weth = c.weth == address(0) ? address(new MockWETH9()) : c.weth;
-        out.usdc = c.usdc == address(0) ? address(new MockUSDC()) : c.usdc;
+        // The vault token is the chain's USDC unless the deployment was given a different currency to hold.
+        out.usdc = c.usdc != address(0) ? c.usdc : (p.token == address(0) ? s.token : address(new MockUSDC()));
+        // A vault currency that is not the chain's USDC is its euro stablecoin; otherwise EURC is the token donors
+        // may give instead, mocked on test chains and optional on mainnet.
+        out.eurc = c.eurc != address(0)
+            ? c.eurc
+            : (s.token != out.usdc ? s.token : (_mocksAllowed() ? address(new MockEURC()) : address(0)));
         out.eurUsdFeed = c.eurUsdFeed == address(0) ? _mockFeed(MOCK_EUR_USD, "EUR / USD") : c.eurUsdFeed;
         out.usdcUsdFeed = c.usdcUsdFeed == address(0) ? _mockFeed(MOCK_USDC_USD, "USDC / USD") : c.usdcUsdFeed;
         out.ethUsdFeed = c.ethUsdFeed == address(0) ? _mockFeed(MOCK_ETH_USD, "ETH / USD") : c.ethUsdFeed;
@@ -181,22 +190,27 @@ abstract contract SystemDeployer is CommonBase {
         s.router = new ConversionRouter(
             IRoleRegistry(address(s.roles)), IV3SwapRouter(out.swapRouter), IWETH9(out.weth), hubs
         );
-        s.router.setPriceFeed(s.token, out.eurUsdFeed, c.eurHeartbeat == 0 ? 3 days : c.eurHeartbeat);
         s.router.setPriceFeed(out.usdc, out.usdcUsdFeed, c.usdcHeartbeat == 0 ? 1 days + 1 hours : c.usdcHeartbeat);
+        // EUR/USD pauses over forex weekends, so its window must span one.
+        if (out.eurc != address(0)) {
+            s.router.setPriceFeed(out.eurc, out.eurUsdFeed, c.eurHeartbeat == 0 ? 3 days : c.eurHeartbeat);
+        }
+        require(s.token == out.usdc || s.token == out.eurc, "SystemDeployer: the vault currency needs a price feed");
         s.router.setPriceFeed(s.router.NATIVE(), out.ethUsdFeed, c.ethHeartbeat == 0 ? 1 hours : c.ethHeartbeat);
         if (out.sequencerUptimeFeed != address(0)) s.router.setSequencerUptimeFeed(out.sequencerUptimeFeed);
 
         uint24 usdcFee = c.usdcToTokenFee == 0 ? 500 : c.usdcToTokenFee;
         uint24 wethFee = c.wethToUsdcFee == 0 ? 500 : c.wethToUsdcFee;
-        s.router.setRoute(out.usdc, s.token, abi.encodePacked(out.usdc, usdcFee, s.token), c.maxSlippageBps);
+        // The other stablecoin converts into the vault currency; the vault's own needs no route (it passes through).
+        address other = s.token == out.usdc ? out.eurc : out.usdc;
+        if (other != address(0)) {
+            s.router.setRoute(other, s.token, abi.encodePacked(other, usdcFee, s.token), c.maxSlippageBps);
+        }
         if (c.ethRoute || out.mocks) {
-            s.router
-                .setRoute(
-                    out.weth,
-                    s.token,
-                    abi.encodePacked(out.weth, wethFee, out.usdc, usdcFee, s.token),
-                    c.ethMaxSlippageBps == 0 ? 150 : c.ethMaxSlippageBps
-                );
+            bytes memory ethPath = s.token == out.usdc
+                ? abi.encodePacked(out.weth, wethFee, s.token)
+                : abi.encodePacked(out.weth, wethFee, out.usdc, usdcFee, s.token);
+            s.router.setRoute(out.weth, s.token, ethPath, c.ethMaxSlippageBps == 0 ? 150 : c.ethMaxSlippageBps);
         }
 
         // The factory deploys the forwarder implementation itself, which is how every clone knows its factory.
@@ -209,8 +223,12 @@ abstract contract SystemDeployer is CommonBase {
 
     /// @dev Every unset dependency is replaced by a freely mintable or settable mock. That is the point on anvil and
     ///      on Base Sepolia (which lacks EUR/USD and liquid pools), and a catastrophe anywhere else.
+    function _mocksAllowed() internal view returns (bool) {
+        return block.chainid == 31_337 || block.chainid == 84_532;
+    }
+
     function _requireRealDependencies(Params memory p) internal view {
-        if (block.chainid == 31_337 || block.chainid == 84_532) return;
+        if (_mocksAllowed()) return;
         ConversionParams memory c = p.conversion;
         require(
             p.token != address(0) && c.swapRouter != address(0) && c.weth != address(0) && c.usdc != address(0)
@@ -227,10 +245,14 @@ abstract contract SystemDeployer is CommonBase {
     /// @dev A swap router that fills at the mock oracle rates minus 0.05%, stocked with demo tokens.
     function _mockSwapRouter(address token, Conversion memory c) internal returns (MockSwapRouter router) {
         router = new MockSwapRouter();
-        uint256 usdcToEur = (uint256(MOCK_USDC_USD) * 1e18) / uint256(MOCK_EUR_USD);
-        router.setRate(c.usdc, token, usdcToEur);
-        router.setRate(c.weth, token, (uint256(MOCK_ETH_USD) * 1e18) / uint256(MOCK_EUR_USD));
-        MockEURC(token).mint(address(router), 10_000_000e6);
+        // The vault currency's own USD price: what one unit of another token buys is its price divided by this.
+        uint256 tokenUsd = uint256(token == c.usdc ? MOCK_USDC_USD : MOCK_EUR_USD);
+        if (c.usdc != token) router.setRate(c.usdc, token, (uint256(MOCK_USDC_USD) * 1e18) / tokenUsd);
+        if (c.eurc != address(0) && c.eurc != token) {
+            router.setRate(c.eurc, token, (uint256(MOCK_EUR_USD) * 1e18) / tokenUsd);
+        }
+        router.setRate(c.weth, token, (uint256(MOCK_ETH_USD) * 1e18) / tokenUsd);
+        MockUSDC(token).mint(address(router), 10_000_000e6);
     }
 
     /// @dev Deploys EAS + SchemaRegistry from the published artifacts (local chains only).

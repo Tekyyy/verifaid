@@ -156,7 +156,12 @@ interface INeedsRegistry is IRoleAware {
         returns (uint256 changeId);
 
     /// @notice Approves the pending payee change. Callable by a verifier independent of the need's NGO.
+    /// @dev It takes effect on the approval that reaches `payeeChangeApprovalsRequired`, and only while no tranche
+    ///      of a payee that can still be paid is standing releasable: earned work is paid to whoever did it.
     function approvePayeeChange(uint256 needId, uint256 changeId) external;
+
+    /// @notice Independent approvals a payee change needs: the need's verification threshold, but never below two.
+    function payeeChangeApprovalsRequired(uint256 needId) external view returns (uint8);
 
     /// @notice Withdraws the pending payee change. Only the need's NGO.
     function cancelPayeeChange(uint256 needId, uint256 changeId) external;

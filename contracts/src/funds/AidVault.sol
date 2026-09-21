@@ -163,6 +163,7 @@ contract AidVault is TrancheLedger, IAidVault {
         (address[] memory payees, uint16[] memory shares) = registry.trancheSplitOf(id, index);
         emit TrancheReleased(id, index, amount, address(0));
         _payPlan(id, index, amount, payees, shares);
+        _completeIfSettled(id);
     }
 
     /// @inheritdoc IAidVault
@@ -173,7 +174,23 @@ contract AidVault is TrancheLedger, IAidVault {
         delete heldPaymentOf[payee];
         totalHeld -= amount;
         token.safeTransfer(payee, amount);
-        emit HeldPaymentClaimed(needId(), payee, amount);
+        uint256 id = needId();
+        emit HeldPaymentClaimed(id, payee, amount);
+        // The last thing the need owed: it is only finished now.
+        _completeIfSettled(id);
+    }
+
+    /// @inheritdoc IAidVault
+    /// @dev Called by the registry when independent verifiers approve a replacement for a payee. Money this vault
+    ///      could not hand to the old payee is owed to the new one, otherwise a frozen or blocklisted supplier
+    ///      would strand its share here with nobody able to claim it.
+    function onPayeeChanged(address from, address to) external onlyClone {
+        if (msg.sender != address(registry)) revert Errors.Unauthorized();
+        uint256 amount = heldPaymentOf[from];
+        if (amount == 0) return;
+        delete heldPaymentOf[from];
+        heldPaymentOf[to] += amount;
+        emit HeldPaymentReassigned(needId(), from, to, amount);
     }
 
     // ─── refunds ───────────────────────────────────────────────────────────────
@@ -261,6 +278,9 @@ contract AidVault is TrancheLedger, IAidVault {
             allocated += share;
             if (share == 0) continue;
             address payee = payees[i];
+            // Paying the vault itself would raise totalReleased without moving anything: unreachable today (a
+            // vault address is not known when its plan is fixed), refused anyway because the identity depends on it.
+            if (payee == address(this)) revert Errors.InvalidPaymentPlan();
             if (token.trySafeTransfer(payee, share)) {
                 emit PayeePaid(id, index, payee, share);
             } else {
@@ -269,6 +289,18 @@ contract AidVault is TrancheLedger, IAidVault {
                 emit PaymentHeld(id, index, payee, share);
             }
         }
+    }
+
+    /// @dev A vault completes its need only once every tranche is released *and* nothing is still held for a
+    ///      payee. A need that still owes money is not finished, and Completed is terminal: reporting it would
+    ///      close the refund, expiry and payee-change paths on money that never left.
+    // forge-lint: disable-next-line(empty-block)
+    function _completeFinalRelease(uint256) internal override {}
+
+    function _completeIfSettled(uint256 id) internal {
+        if (totalHeld != 0 || !_allTranchesReleased()) return;
+        if (registry.statusOf(id) != INeedsRegistry.NeedStatus.InDelivery) return;
+        registry.setStatus(id, INeedsRegistry.NeedStatus.Completed);
     }
 
     function _refundAmount(uint256 donated) internal view returns (uint256) {

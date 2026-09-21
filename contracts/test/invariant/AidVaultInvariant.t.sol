@@ -12,6 +12,7 @@ import {MockEURC} from "../../src/mocks/MockEURC.sol";
 import {MockUSDC} from "../../src/mocks/MockUSDC.sol";
 import {MockV3Aggregator} from "../../src/mocks/MockV3Aggregator.sol";
 import {NeedsRegistry} from "../../src/needs/NeedsRegistry.sol";
+import {BlocklistEURC} from "../utils/BlocklistEURC.sol";
 import {PoATest} from "../utils/PoATest.sol";
 import {CommonBase} from "forge-std/Base.sol";
 import {StdCheats} from "forge-std/StdCheats.sol";
@@ -19,7 +20,8 @@ import {StdUtils} from "forge-std/StdUtils.sol";
 
 /// @notice Drives one vault through random but legal sequences of donations (direct, provider, converted from USDC
 ///         and swept from deposit addresses), releases, cancellation, the passage of time (funding and execution
-///         deadlines, partial execution) and refunds (including forwarder-credited ones).
+///         deadlines, partial execution), refunds (including forwarder-credited ones), and an issuer freezing a
+///         payee, so payments the token refuses — and the claims that deliver them later — are fuzzed too.
 contract VaultHandler is CommonBase, StdCheats, StdUtils {
     AidVault public immutable vault;
     MockEURC public immutable token;
@@ -31,6 +33,7 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
     uint256 public immutable needId;
 
     address[3] public donors;
+    address[3] public payees; // the plan: supplier A, supplier B, the NGO's payout Safe
     bytes32[2] public donorRefs;
     uint256 public paymentRefNonce;
 
@@ -44,6 +47,8 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
     uint256 public convertedCalls;
     uint256 public sweepCalls;
     uint256 public forwarderRefundCalls;
+    uint256 public freezeCalls;
+    uint256 public claimHeldCalls;
 
     // ─── conversion path ───────────────────────────────────────────────────────
     DonationForwarderFactory public forwarderFactory;
@@ -72,6 +77,10 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
 
         donors = [makeAddr("invDonor1"), makeAddr("invDonor2"), makeAddr("invDonor3")];
         donorRefs = [keccak256("invRef1"), keccak256("invRef2")];
+    }
+
+    function setPayees(address[3] memory payees_) external {
+        payees = payees_;
     }
 
     function setConversion(
@@ -256,6 +265,21 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
         refundCalls++;
     }
 
+    /// @dev The stablecoin issuer freezes or unfreezes a payee: its share of a release is held instead of paid.
+    function setPayeeFrozen(uint256 seed) external {
+        BlocklistEURC(address(token)).setBlocked(payees[seed % payees.length], seed % 3 != 0);
+        freezeCalls++;
+    }
+
+    /// @dev Delivers a held payment once the payee can receive again. Permissionless, and it only ever pays the payee.
+    function claimHeldPayment(uint256 seed) external {
+        address payee = payees[seed % payees.length];
+        if (vault.heldPaymentOf(payee) == 0) return;
+        try vault.claimHeldPayment(payee) {
+            claimHeldCalls++;
+        } catch {} // still frozen
+    }
+
     function claimRefundByRef(uint256 refSeed) external {
         if (!_refundable()) return;
         bytes32 donorRef = donorRefs[refSeed % donorRefs.length];
@@ -270,6 +294,16 @@ contract AidVaultInvariantTest is PoATest {
     VaultHandler internal handler;
     AidVault internal vault;
     uint256 internal needId;
+    BlocklistEURC internal freezable;
+
+    /// @dev The vault currency is a stablecoin whose issuer can freeze an address, like the real ones.
+    function _beforeDeploy() internal override {
+        freezable = new BlocklistEURC();
+    }
+
+    function _tokenAddress() internal view override returns (address) {
+        return address(freezable);
+    }
 
     function setUp() public override {
         super.setUp();
@@ -293,13 +327,14 @@ contract AidVaultInvariantTest is PoATest {
         vault = AidVault(registry.vaultOf(needId));
 
         handler = new VaultHandler(vault, token, registry, admin, ngo, address(deliveryManager), bankPartner);
+        handler.setPayees([supplierA, supplierB, ngoPayout]);
         vm.prank(admin);
         forwarderFactory.setKeeper(address(handler), true); // the handler sweeps like the platform's relayer
         handler.setConversion(
             forwarderFactory, usdc, [eurUsdFeed, usdcUsdFeed, ethUsdFeed], [MOCK_EUR_USD, MOCK_USDC_USD, MOCK_ETH_USD]
         );
 
-        bytes4[] memory selectors = new bytes4[](12);
+        bytes4[] memory selectors = new bytes4[](14);
         selectors[0] = VaultHandler.donate.selector;
         selectors[1] = VaultHandler.donateOnBehalf.selector;
         selectors[2] = VaultHandler.closeFunding.selector;
@@ -312,6 +347,8 @@ contract AidVaultInvariantTest is PoATest {
         selectors[9] = VaultHandler.donateConverted.selector;
         selectors[10] = VaultHandler.depositAndSweep.selector;
         selectors[11] = VaultHandler.claimForwarderRefund.selector;
+        selectors[12] = VaultHandler.setPayeeFrozen.selector;
+        selectors[13] = VaultHandler.claimHeldPayment.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
         targetContract(address(handler));
     }
@@ -325,15 +362,22 @@ contract AidVaultInvariantTest is PoATest {
         );
     }
 
-    /// @notice Every released unit went to a payee of the plan, and in the plan's proportions.
+    /// @notice Every released unit went to a payee of the plan, and in the plan's proportions. A payment the
+    ///         issuer froze is still that payee's, so what each one is owed counts its held share too.
     function invariant_releasedMoneyReachedOnlyThePlan() public view {
-        uint256 a = token.balanceOf(supplierA);
-        uint256 b = token.balanceOf(supplierB);
-        uint256 ngoShare = token.balanceOf(ngoPayout);
-        assertEq(a + b + ngoShare + vault.totalHeld(), vault.totalReleased(), "released == paid to the plan");
-        // 60 / 30 / 10, each tranche rounded down but for the last payee's dust
-        assertApproxEqAbs(ngoShare * 6, a, 6 * 3, "NGO share stays 10%");
-        assertApproxEqAbs(b * 2, a, 2 * 3, "supplier B stays at half of A");
+        uint256 a = _owedTo(supplierA);
+        uint256 b = _owedTo(supplierB);
+        uint256 ngoShare = _owedTo(ngoPayout);
+        assertEq(a + b + ngoShare, vault.totalReleased(), "released == paid to, or still owed to, the plan");
+        // 60 / 30 / 10 per tranche. A and B are rounded down (losing up to 1 unit each per tranche); the NGO is
+        // last in the plan, so it also takes that dust (up to 2 units per tranche). Over three tranches that is up
+        // to 6 units on the NGO's side, which the x6 comparison magnifies, and 3 on A's.
+        assertApproxEqAbs(ngoShare * 6, a, 6 * 6 + 3, "NGO share stays 10%");
+        assertApproxEqAbs(b * 2, a, 3 * 2 + 3, "supplier B stays at half of A");
+    }
+
+    function _owedTo(address payee) internal view returns (uint256) {
+        return token.balanceOf(payee) + vault.heldPaymentOf(payee);
     }
 
     function invariant_neverPaysOutMoreThanDonated() public view {
@@ -374,7 +418,7 @@ contract AidVaultInvariantTest is PoATest {
         assertTrue(
             handler.donateCalls() + handler.donateOnBehalfCalls() + handler.releaseCalls() + handler.refundCalls()
                     + handler.cancelCalls() + handler.expireCalls() + handler.convertedCalls() + handler.sweepCalls()
-                    + handler.forwarderRefundCalls() >= 0
+                    + handler.forwarderRefundCalls() + handler.freezeCalls() + handler.claimHeldCalls() >= 0
         );
     }
 }

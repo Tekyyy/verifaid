@@ -57,15 +57,15 @@ const hashText = (text: string): Hex => keccak256(stringToHex(text))
 /** The payment reference the sandbox checkout would return for the card donation to need #5. */
 export const FIXTURE_PAYMENT_REF = hashText('fixture-payment-ref-need-5-card')
 
-/** A deposit address that has swept USDC into need #7, and one that is deployed but still waiting for funds. */
+/** A deposit address that has swept euros into need #7, and one that is deployed but still waiting for funds. */
 export const FIXTURE_DEPOSIT_ADDRESS = getAddress('0x5ce1a0de9f7b2c4d6e8f0a1b3c5d7e9f2a4b6c8d')
 export const FIXTURE_WAITING_DEPOSIT_ADDRESS = getAddress('0x7a11ed5a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e')
 const REFUND_SIGNER = getAddress('0x1f2e3d4c5b6a79880a1b2c3d4e5f60718293a4b5')
 
-/** USDC as the bundled deployment knows it, so symbols resolve the way they would against the indexer. */
-const USDC: Address =
-  (hasDeployment(network) ? getDeployment(network).external.USDC : undefined) ??
-  getAddress('0x036cbd53842c5426634e7929541ec2318f3dcf7e')
+/** EURC as the bundled deployment knows it, so symbols resolve the way they would against the indexer. */
+const EURC: Address =
+  (hasDeployment(network) ? getDeployment(network).external.EURC : undefined) ??
+  getAddress('0x808456652fdb597867f38412077a9182bf77359f')
 
 interface Terms {
   custodyMode?: NeedSummary['custodyMode']
@@ -327,8 +327,8 @@ const DONATIONS_6: DonationView[] = [
 ]
 
 /**
- * Need #7: 500 USDC converted from a wallet (fair value 462.96 EURC at EUR/USD 1.08, 0.23 EURC conversion cost),
- * 1,000 USDC swept from a deposit address, and a direct EURC donation.
+ * Need #7: 500 EURC converted from a wallet (worth 540 USDC at EUR/USD 1.08, 0.27 USDC conversion cost),
+ * 1,000 EURC swept from a deposit address, and a direct USDC donation.
  */
 const DONATIONS_7: DonationView[] = [
   donation({
@@ -336,15 +336,15 @@ const DONATIONS_7: DonationView[] = [
     needId: '7',
     kind: 'CONVERTED',
     donor: DONOR,
-    amount: '462730000',
+    amount: '539730000',
     receiptId: '9',
     conversion: {
-      tokenIn: USDC,
-      tokenInSymbol: 'USDC',
+      tokenIn: EURC,
+      tokenInSymbol: 'EURC',
       amountIn: '500000000',
-      amountOut: '462730000',
-      fairValue: '462962962',
-      conversionFee: '232962',
+      amountOut: '539730000',
+      fairValue: '540000000',
+      conversionFee: '270000',
       via: DONOR,
       viaDepositAddress: false,
     },
@@ -355,20 +355,20 @@ const DONATIONS_7: DonationView[] = [
     needId: '7',
     kind: 'CONVERTED',
     donorRefHash: depositRefHash(FIXTURE_DEPOSIT_ADDRESS),
-    amount: '925460000',
+    amount: '1079460000',
     conversion: {
-      tokenIn: USDC,
-      tokenInSymbol: 'USDC',
+      tokenIn: EURC,
+      tokenInSymbol: 'EURC',
       amountIn: '1000000000',
-      amountOut: '925460000',
-      fairValue: '925925925',
-      conversionFee: '465925',
+      amountOut: '1079460000',
+      fairValue: '1080000000',
+      conversionFee: '540000',
       via: FIXTURE_DEPOSIT_ADDRESS,
       viaDepositAddress: true,
     },
     timestamp: 1_770_200_000,
   }),
-  donation({ id: '72', needId: '7', kind: 'DIRECT', donor: NGO, amount: '711810000', receiptId: '10' }),
+  donation({ id: '72', needId: '7', kind: 'DIRECT', donor: NGO, amount: '480810000', receiptId: '10' }),
 ]
 
 const DEPOSITS: Record<string, DepositAddressView> = {
@@ -382,12 +382,12 @@ const DEPOSITS: Record<string, DepositAddressView> = {
     deployedAt: 1_770_150_000,
     sweeps: [
       {
-        tokenIn: USDC,
+        tokenIn: EURC,
         amountIn: '1000000000',
-        converted: '925460000',
-        fairValue: '925925925',
-        deposited: '925460000',
-        conversionFee: '465925',
+        converted: '1079460000',
+        fairValue: '1080000000',
+        deposited: '1079460000',
+        conversionFee: '540000',
         txHash: tx(71),
         timestamp: 1_770_200_000,
       },
@@ -409,6 +409,9 @@ const DEPOSITS: Record<string, DepositAddressView> = {
 
 const detail = (index: number, rest: Partial<NeedDetail>): NeedDetail => ({
   ...needAt(index),
+  payees: [],
+  payments: [],
+  payeeChanges: [],
   tranches: [],
   deliveries: [],
   donations: [],
@@ -599,13 +602,13 @@ const TIMELINES: Record<string, TimelineEvent[]> = {
       {
         donor: DONOR,
         depositAddress: null,
-        tokenIn: USDC,
-        tokenInSymbol: 'USDC',
+        tokenIn: EURC,
+        tokenInSymbol: 'EURC',
         amountIn: '500000000',
-        converted: '462730000',
-        fairValue: '462962962',
-        amount: '462730000',
-        conversionFee: '232962',
+        converted: '539730000',
+        fairValue: '540000000',
+        amount: '539730000',
+        conversionFee: '270000',
         receiptId: '9',
       },
       410,
@@ -618,19 +621,19 @@ const TIMELINES: Record<string, TimelineEvent[]> = {
       {
         donor: null,
         depositAddress: FIXTURE_DEPOSIT_ADDRESS,
-        tokenIn: USDC,
-        tokenInSymbol: 'USDC',
+        tokenIn: EURC,
+        tokenInSymbol: 'EURC',
         amountIn: '1000000000',
-        converted: '925460000',
-        fairValue: '925925925',
-        amount: '925460000',
-        conversionFee: '465925',
+        converted: '1079460000',
+        fairValue: '1080000000',
+        amount: '1079460000',
+        conversionFee: '540000',
         receiptId: null,
       },
       420,
       1_770_200_000,
     ),
-    event('7', 5, 'Donated', { donor: NGO, amount: '711810000', receiptId: '10' }, 425, 1_770_250_000),
+    event('7', 5, 'Donated', { donor: NGO, amount: '480810000', receiptId: '10' }, 425, 1_770_250_000),
   ],
 }
 
@@ -908,6 +911,7 @@ const TRACKS: Record<string, DonationTrack> = {
     settlements: SETTLEMENTS_1,
     impactReport: null,
     deposit: null,
+    payees: [],
     updatedAt: 1_757_400_000,
   },
   [FIXTURE_PAYMENT_REF.toLowerCase()]: {
@@ -935,6 +939,7 @@ const TRACKS: Record<string, DonationTrack> = {
     settlements: [],
     impactReport: null,
     deposit: null,
+    payees: [],
     updatedAt: 1_758_200_000,
   },
   '7': {
@@ -953,6 +958,7 @@ const TRACKS: Record<string, DonationTrack> = {
     settlements: [],
     impactReport: null,
     deposit: null,
+    payees: [],
     updatedAt: 1_760_010_000,
   },
   [FIXTURE_DEPOSIT_ADDRESS.toLowerCase()]: {
@@ -960,17 +966,18 @@ const TRACKS: Record<string, DonationTrack> = {
     refKind: 'deposit',
     donation: DONATIONS_7[1] as DonationView,
     need: needAt(6),
-    shareBps: 4406,
+    shareBps: 5140,
     stages: stages({ Verified: reachedAt(1_770_050_000, tx(405), uid(75)) }),
     currentStage: 'Verified',
     outcome: 'InProgress',
     releasedToNgo: '0',
     refunded: '0',
-    tranches: withDonorShare(DETAILS['7']?.tranches ?? [], 4406),
+    tranches: withDonorShare(DETAILS['7']?.tranches ?? [], 5140),
     deliveries: [],
     settlements: [],
     impactReport: null,
     deposit: DEPOSITS[FIXTURE_DEPOSIT_ADDRESS.toLowerCase()] ?? null,
+    payees: [],
     updatedAt: 1_770_250_000,
   },
 }

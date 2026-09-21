@@ -1,6 +1,14 @@
 'use client'
 
-import { donationForwarderAbi, mockEURCAbi, NATIVE_TOKEN, type NeedStatus } from '@poa/shared'
+import {
+  donationForwarderAbi,
+  donationTokens,
+  type DonationTokenSymbol,
+  erc20TokenAbi,
+  NATIVE_TOKEN,
+  type NeedStatus,
+  vaultCurrency,
+} from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { type Address, isAddressEqual } from 'viem'
@@ -19,35 +27,41 @@ const POLL_MS = 10_000
 const REFRESH_DELAY_MS = 4_000
 
 export interface DepositBalance {
-  symbol: 'USDC' | 'ETH' | 'EURC'
+  symbol: DonationTokenSymbol
   token: Address
   value: bigint | undefined
 }
 
+/** The vault's own currency, and the stablecoin that converts into it: the two ERC-20s a deposit may hold. */
+const vault = deployment ? vaultCurrency(deployment) : undefined
+const convertible = deployment
+  ? donationTokens(deployment).find((token) => token.converted && !token.native)
+  : undefined
+
 /** Live balances of what a deposit address may hold, refreshed while the page is open. */
 const useDepositBalances = (address: Address): DepositBalance[] => {
-  const usdc = deployment?.external.USDC
-  const eurc = deployment?.external.Token
   const query = { refetchInterval: POLL_MS }
-  const usdcBalance = useReadContract({
-    address: usdc,
-    abi: mockEURCAbi,
+  const convertibleBalance = useReadContract({
+    address: convertible?.address,
+    abi: erc20TokenAbi,
     functionName: 'balanceOf',
     args: [address],
-    query: { ...query, enabled: Boolean(usdc) },
+    query: { ...query, enabled: Boolean(convertible) },
   })
-  const eurcBalance = useReadContract({
-    address: eurc,
-    abi: mockEURCAbi,
+  const vaultBalance = useReadContract({
+    address: vault?.address,
+    abi: erc20TokenAbi,
     functionName: 'balanceOf',
     args: [address],
-    query: { ...query, enabled: Boolean(eurc) },
+    query: { ...query, enabled: Boolean(vault) },
   })
   const ethBalance = useBalance({ address, query })
   return [
-    ...(usdc ? [{ symbol: 'USDC', token: usdc, value: usdcBalance.data } as const] : []),
+    ...(convertible
+      ? [{ symbol: convertible.symbol, token: convertible.address, value: convertibleBalance.data }]
+      : []),
     { symbol: 'ETH', token: NATIVE_TOKEN, value: ethBalance.data?.value },
-    ...(eurc ? [{ symbol: 'EURC', token: eurc, value: eurcBalance.data } as const] : []),
+    ...(vault ? [{ symbol: vault.symbol, token: vault.address, value: vaultBalance.data }] : []),
   ]
 }
 
@@ -76,6 +90,7 @@ export function DepositActivity({
   swept: boolean
 }) {
   const t = useTranslations('deposit')
+  const unit = useTranslations('common')('amountUnit')
   const router = useRouter()
   const mounted = useMounted()
   const balances = useDepositBalances(address)
@@ -134,7 +149,7 @@ export function DepositActivity({
             </div>
           ))}
         </dl>
-        <p className="hint">{holding ? t('holdingHint') : t('emptyHint')}</p>
+        <p className="hint">{holding ? t('holdingHint', { unit }) : t('emptyHint')}</p>
       </div>
 
       <div>
@@ -170,7 +185,7 @@ export function DepositActivity({
                 </span>
                 <span className={item.outcome === 'swept' ? 'text-emerald-800' : 'text-amber-900'}>
                   {item.outcome === 'swept'
-                    ? t('outcome_swept', { deposited: amount(item.deposited ?? '0') })
+                    ? t('outcome_swept', { deposited: amount(item.deposited ?? '0'), unit })
                     : item.outcome === 'failed'
                       ? t('outcome_failed', { detail: item.error ?? '' })
                       : t(`outcome_${item.outcome}`)}

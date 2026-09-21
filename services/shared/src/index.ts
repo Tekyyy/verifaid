@@ -1,4 +1,7 @@
 export * from './abis/index.js'
+// Every token here is a plain ERC-20 — the vault currency, the one that converts into it, the mocks on test chains.
+// The mock's generated ABI is the only ERC-20 ABI we export, so it stands in for all of them under an honest name.
+export { mockEURCAbi as erc20TokenAbi } from './abis/index.js'
 export * from './api.js'
 export * from './auth.js'
 export * from './chains.js'

@@ -1,4 +1,12 @@
-import { type Deployment, donationForwarderFactoryAbi, type ForwarderIntent, NATIVE_TOKEN } from '@poa/shared'
+import {
+  type Deployment,
+  donationForwarderFactoryAbi,
+  donationTokens,
+  type DonationTokenSymbol,
+  type ForwarderIntent,
+  NATIVE_TOKEN,
+  vaultCurrency,
+} from '@poa/shared'
 import { type Address, getAddress, isAddress, isHex, zeroAddress } from 'viem'
 import { conversionsEnabled, deployment } from '../config'
 import { publicClient } from './chain'
@@ -67,18 +75,24 @@ export const isKeeper = (context: ForwarderContext, address: Address): Promise<b
   })
 
 export interface DepositToken {
-  symbol: 'USDC' | 'ETH' | 'EURC'
+  symbol: DonationTokenSymbol
   address: Address
 }
 
-/** What a deposit address may hold, in sweep order: what an exchange sends first, the vault token last. */
-export const depositTokens = (context: ForwarderContext): DepositToken[] => [
-  ...(context.deployment.external.USDC
-    ? [{ symbol: 'USDC', address: context.deployment.external.USDC } as const]
-    : []),
-  { symbol: 'ETH', address: NATIVE_TOKEN },
-  { symbol: 'EURC', address: context.deployment.external.Token },
-]
+/**
+ * What a deposit address may hold, in sweep order: the tokens that have to be converted first, the vault's own
+ * currency last, because sweeping that one is a pass-through that cannot fail on a price.
+ */
+export const depositTokens = (context: ForwarderContext): DepositToken[] => {
+  const vault = vaultCurrency(context.deployment)
+  const converted = donationTokens(context.deployment).filter((token) => token.converted && !token.native)
+  return [
+    ...converted.map(({ symbol, address }) => ({ symbol, address })),
+    // ETH is always listed: an exchange withdrawal can land here even where the deployment does not advertise it.
+    { symbol: 'ETH', address: NATIVE_TOKEN },
+    { symbol: vault.symbol, address: vault.address },
+  ]
+}
 
 /** Reverts that describe the state of a deposit address rather than a fault: reported, never a 5xx. */
 export const EXPECTED_REVERTS = new Set([

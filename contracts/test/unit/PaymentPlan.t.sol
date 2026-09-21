@@ -213,9 +213,11 @@ contract PaymentPlanTest is PoATest {
 
         vm.prank(ngo);
         uint256 changeId = registry.proposePayeeChange(needId, 0, supplierB, keccak256("new quote"), "B");
+        vm.prank(verifier1);
+        registry.approvePayeeChange(needId, changeId);
         vm.expectEmit(true, true, false, true, address(registry));
         emit INeedsRegistry.PayeeChanged(needId, changeId, 0, supplierA, supplierB);
-        vm.prank(verifier1);
+        vm.prank(verifier2);
         registry.approvePayeeChange(needId, changeId);
 
         vault.releaseTranche(1);
@@ -269,6 +271,9 @@ contract PaymentPlanTest is PoATest {
 
         vm.prank(verifier1);
         registry.approvePayeeChange(needId, changeId);
+        assertEq(registry.payeesOf(needId)[1].account, supplierB, "one approval is never enough to move money");
+        vm.prank(verifier2);
+        registry.approvePayeeChange(needId, changeId);
         assertEq(registry.payeesOf(needId)[1].account, supplierC);
         assertEq(registry.pendingPayeeChangeOf(needId).id, 0);
     }
@@ -297,9 +302,13 @@ contract PaymentPlanTest is PoATest {
         uint256 needId = _verifiedNeedWith(_params(_splitPlan()));
         vm.prank(ngo);
         uint256 changeId = registry.proposePayeeChange(needId, 1, supplierC, 0, "C");
+        vm.prank(verifier1);
+        registry.approvePayeeChange(needId, changeId);
+
+        // The check is at the approval that decides it, not only at the one that proposed it.
         vm.prank(admin);
         roles.removeSupplier(supplierC);
-        vm.prank(verifier1);
+        vm.prank(verifier2);
         vm.expectRevert(Errors.SupplierNotRegistered.selector);
         registry.approvePayeeChange(needId, changeId);
     }

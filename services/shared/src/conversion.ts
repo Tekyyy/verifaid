@@ -20,25 +20,37 @@ export interface DonationToken {
   converted: boolean
 }
 
+const same = (a: string | undefined, b: string | undefined): boolean =>
+  Boolean(a && b && a.toLowerCase() === b.toLowerCase())
+
 /**
- * Tokens this deployment accepts, the vault token first.
+ * The currency this deployment holds: vaults, tranches and every published figure are denominated in it.
+ * Deployments are USD by default; a euro deployment holds EURC instead.
+ */
+export const vaultCurrency = (deployment: Deployment): DonationToken => ({
+  symbol: same(deployment.external.Token, deployment.external.EURC) ? 'EURC' : 'USDC',
+  address: deployment.external.Token,
+  decimals: 6,
+  native: false,
+  converted: false,
+})
+
+/**
+ * Tokens this deployment accepts, the vault currency first. The others are converted on the way in, so they are
+ * only offered when the deployment has a forwarder to convert them.
  */
 export const donationTokens = (deployment: Deployment): DonationToken[] => {
-  const tokens: DonationToken[] = [
-    { symbol: 'USDC', address: deployment.external.Token, decimals: 6, native: false, converted: false },
-  ]
+  const vault = vaultCurrency(deployment)
+  const tokens: DonationToken[] = [vault]
   if (!deployment.contracts.DonationForwarderFactory) return tokens
-  if (
-    deployment.external.USDC &&
-    deployment.external.Token.toLowerCase() !== deployment.external.USDC.toLowerCase()
-  ) {
-    tokens.push({
-      symbol: 'EURC',
-      address: deployment.external.USDC,
-      decimals: 6,
-      native: false,
-      converted: true,
-    })
+  const convertible: [DonationTokenSymbol, Address | undefined][] = [
+    ['USDC', deployment.external.USDC],
+    ['EURC', deployment.external.EURC],
+  ]
+  for (const [symbol, address] of convertible) {
+    if (address && !same(address, vault.address)) {
+      tokens.push({ symbol, address, decimals: 6, native: false, converted: true })
+    }
   }
   if (deployment.params.ethDonations) {
     tokens.push({ symbol: 'ETH', address: NATIVE_TOKEN, decimals: 18, native: true, converted: true })
@@ -50,9 +62,10 @@ export const donationTokens = (deployment: Deployment): DonationToken[] => {
 export const tokenSymbolOf = (deployment: Deployment, token: string): string => {
   const address = token.toLowerCase()
   if (address === NATIVE_TOKEN) return 'ETH'
-  if (address === deployment.external.Token.toLowerCase()) return 'USDC'
-  if (address === deployment.external.USDC?.toLowerCase()) return 'USDC'
-  if (address === deployment.external.WETH?.toLowerCase()) return 'ETH'
+  if (same(address, deployment.external.WETH)) return 'ETH'
+  if (same(address, deployment.external.USDC)) return 'USDC'
+  if (same(address, deployment.external.EURC)) return 'EURC'
+  if (same(address, deployment.external.Token)) return vaultCurrency(deployment).symbol
   return getAddress(token)
 }
 

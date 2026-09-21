@@ -68,6 +68,7 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
             swapRouter: vm.envOr("SWAP_ROUTER_ADDRESS", address(0)),
             weth: vm.envOr("WETH_ADDRESS", address(0)),
             usdc: vm.envOr("USDC_ADDRESS", address(0)),
+            eurc: vm.envOr("EURC_ADDRESS", address(0)),
             eurUsdFeed: vm.envOr("EUR_USD_FEED", address(0)),
             usdcUsdFeed: vm.envOr("USDC_USD_FEED", address(0)),
             ethUsdFeed: vm.envOr("ETH_USD_FEED", address(0)),
@@ -132,6 +133,7 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         external_.serialize("SwapRouter", s.conversion.swapRouter);
         external_.serialize("WETH", s.conversion.weth);
         external_.serialize("USDC", s.conversion.usdc);
+        external_.serialize("EURC", s.conversion.eurc);
         external_.serialize("EurUsdFeed", s.conversion.eurUsdFeed);
         external_.serialize("UsdcUsdFeed", s.conversion.usdcUsdFeed);
         external_.serialize("EthUsdFeed", s.conversion.ethUsdFeed);

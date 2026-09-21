@@ -29,6 +29,10 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     /// @notice True for addresses registered as some NGO's payout Safe (they may not hold other roles).
     mapping(address => bool) public isPayoutAddress;
 
+    /// @notice The operational role an address has ever held, kept after the role is removed. "One address, one
+    ///         role" is a rule about the address's history, not only about its live roles.
+    mapping(address => bytes32) public everHeldRole;
+
     /// @param admin Initial holder of DEFAULT_ADMIN_ROLE.
     constructor(address admin) {
         if (admin == address(0)) revert Errors.ZeroAddress();
@@ -45,11 +49,11 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
         if (ngo == address(0) || payout == address(0)) revert Errors.ZeroAddress();
         if (credentialHash == bytes32(0)) revert Errors.InvalidParameter();
         if (ngos[ngo].payoutAddress != address(0)) revert Errors.AlreadyRegistered();
-        _requireNoOperationalRole(ngo);
+        _claimOperationalRole(ngo, NGO_ROLE);
         // An NGO may pay out to itself (a single-address NGO on a testnet), but a payout Safe may not double as
         // any other participant — including another NGO or another NGO's payout, which would let two nominally
         // independent organizations share one treasury.
-        if (payout != ngo) _requireNoOperationalRole(payout);
+        if (payout != ngo) _requireNoOperationalRole(payout, bytes32(0));
 
         ngos[ngo] = NgoProfile({active: true, payoutAddress: payout, credentialHash: credentialHash, metadataURI: uri});
         isPayoutAddress[payout] = true;
@@ -69,7 +73,7 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     function registerVerifier(address verifier) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (verifier == address(0)) revert Errors.ZeroAddress();
         if (hasRole(VERIFIER_ROLE, verifier)) revert Errors.AlreadyRegistered();
-        _requireNoOperationalRole(verifier);
+        _claimOperationalRole(verifier, VERIFIER_ROLE);
         _grantRole(VERIFIER_ROLE, verifier);
         emit VerifierRegistered(verifier);
     }
@@ -84,7 +88,7 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     function registerBankPartner(address partner) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (partner == address(0)) revert Errors.ZeroAddress();
         if (hasRole(BANK_PARTNER_ROLE, partner)) revert Errors.AlreadyRegistered();
-        _requireNoOperationalRole(partner);
+        _claimOperationalRole(partner, BANK_PARTNER_ROLE);
         _grantRole(BANK_PARTNER_ROLE, partner);
         emit BankPartnerRegistered(partner);
     }
@@ -105,7 +109,7 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
         if (supplier == address(0)) revert Errors.ZeroAddress();
         if (credentialHash == bytes32(0)) revert Errors.InvalidParameter();
         if (hasRole(SUPPLIER_ROLE, supplier)) revert Errors.AlreadyRegistered();
-        _requireNoOperationalRole(supplier);
+        _claimOperationalRole(supplier, SUPPLIER_ROLE);
         _grantRole(SUPPLIER_ROLE, supplier);
         emit SupplierRegistered(supplier, credentialHash, uri);
     }
@@ -133,7 +137,7 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
         if (!isActiveNgo(msg.sender)) revert Errors.Unauthorized();
         if (agent == address(0)) revert Errors.ZeroAddress();
         if (fieldAgentNgo[agent] != address(0)) revert Errors.FieldAgentAlreadyBound();
-        _requireNoOperationalRole(agent);
+        _claimOperationalRole(agent, FIELD_AGENT_ROLE);
 
         fieldAgentNgo[agent] = msg.sender;
         _grantRole(FIELD_AGENT_ROLE, agent);
@@ -212,8 +216,18 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
 
     // ─── internal ──────────────────────────────────────────────────────────────
 
-    /// @dev "One address, one role": an address may hold at most one operational role.
-    function _requireNoOperationalRole(address account) internal view {
+    /// @dev "One address, one role", for the address's whole history: claims `role` for `account` or reverts.
+    function _claimOperationalRole(address account, bytes32 role) internal {
+        _requireNoOperationalRole(account, role);
+        if (everHeldRole[account] == bytes32(0)) everHeldRole[account] = role;
+    }
+
+    /// @dev An address may hold at most one operational role, and may never be re-registered under a different
+    ///      one: without the memory, an NGO could remove its own field agent and have the admin register that
+    ///      same address as an "independent" supplier, taking the share the NGO cap exists to bound.
+    function _requireNoOperationalRole(address account, bytes32 role) internal view {
+        bytes32 everHeld = everHeldRole[account];
+        if (everHeld != bytes32(0) && everHeld != role) revert Errors.RoleConflict();
         if (
             hasRole(NGO_ROLE, account) || hasRole(VERIFIER_ROLE, account) || hasRole(BANK_PARTNER_ROLE, account)
                 || hasRole(SUPPLIER_ROLE, account) || fieldAgentNgo[account] != address(0)

@@ -60,6 +60,7 @@ export function ConnectButton() {
           disabled={isPending}
           onClick={() => connect({ connector: option })}
         >
+          {/* biome-ignore lint/performance/noImgElement: a 16px wallet icon, a data URI from EIP-6963 that next/image cannot optimize */}
           {icon ? <img src={icon} alt="" aria-hidden="true" className="h-4 w-4 rounded" /> : null}
           {isPending ? t('connecting') : `${t('connect')}: ${passkey ? t('passkeyWallet') : option.name}`}
         </button>

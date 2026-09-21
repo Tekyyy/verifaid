@@ -112,7 +112,7 @@ contract SeedDemo is Script, DeploymentIO {
         vm.stopBroadcast();
 
         _mintDemoTokens(token, a);
-        _mintDemoUsdc(deployment, a);
+        _mintDemoAltStable(deployment, a);
         _registerKeeper(deployment, a);
 
         console2.log("");
@@ -177,7 +177,7 @@ contract SeedDemo is Script, DeploymentIO {
         vm.stopBroadcast();
     }
 
-    /// @dev Mints demo stablecoin to the donors and the bank partner when the deployment uses MockEURC.
+    /// @dev Mints the vault's own currency to the donors and the bank partner, when it is a mintable mock.
     function _mintDemoTokens(address token, Actors memory a) internal {
         vm.startBroadcast(a.adminKey);
         try MockEURC(token).mint(a.donor1, 50_000e6) {
@@ -203,17 +203,18 @@ contract SeedDemo is Script, DeploymentIO {
         console2.log("  relayer registered as deposit-address keeper", a.relayer);
     }
 
-    /// @dev v3: donors also hold MockUSDC, the token a card on-ramp or an exchange would deliver, to exercise
-    ///      the conversion path. Skipped for deployments without it or with real USDC.
-    function _mintDemoUsdc(string memory deployment, Actors memory a) internal {
-        if (!vm.keyExistsJson(deployment, ".external.USDC")) return;
-        address usdc = _readAddress(deployment, ".external.USDC");
+    /// @dev v3/v4: donors also hold the deployment's other stablecoin (mock EURC), so the demo can show a donation
+    ///      that has to be converted into the vault's currency. Skipped when there is none, or it is not mintable.
+    function _mintDemoAltStable(string memory deployment, Actors memory a) internal {
+        if (!vm.keyExistsJson(deployment, ".external.EURC")) return;
+        address eurc = _readAddress(deployment, ".external.EURC");
+        if (eurc == address(0) || eurc == _readAddress(deployment, ".external.Token")) return;
         vm.startBroadcast(a.adminKey);
-        try MockUSDC(usdc).mint(a.donor1, 50_000e6) {
-            MockUSDC(usdc).mint(a.donor2, 50_000e6);
-            console2.log("  minted demo mUSDC to donors");
+        try MockUSDC(eurc).mint(a.donor1, 50_000e6) {
+            MockUSDC(eurc).mint(a.donor2, 50_000e6);
+            console2.log("  minted demo mEURC to donors, to convert");
         } catch {
-            console2.log("  USDC is not mintable, skipping:", usdc);
+            console2.log("  the other stablecoin is not mintable, skipping:", eurc);
         }
         vm.stopBroadcast();
     }

@@ -1,4 +1,4 @@
-import type { NeedDetail, TimelineEvent } from '@poa/shared'
+import { type NeedDetail, type TimelineEvent, vaultCurrency } from '@poa/shared'
 import { chain, deployment, network } from '../config'
 import { amount, bpsOf, bpsPercent, timestamp } from '../format'
 import { isZeroUid } from '../links'
@@ -10,7 +10,8 @@ import { PdfReport } from './pdf'
  * needs to check it independently. English only: it is an audit artefact, not a localized page.
  */
 
-const UNIT = 'EURC'
+/** Every figure in the report is in the currency the vaults hold. */
+const UNIT = deployment ? vaultCurrency(deployment).symbol : 'USDC'
 const money = (value: string | bigint | null | undefined): string =>
   value === null || value === undefined ? '-' : `${amount(value)} ${UNIT}`
 

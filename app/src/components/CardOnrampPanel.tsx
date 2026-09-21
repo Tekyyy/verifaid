@@ -105,6 +105,9 @@ export function CardOnrampPanel({
 
   const usdc = deployment?.external.USDC
   const factory = deployment?.contracts.DonationForwarderFactory
+  // On a USD deployment the on-ramp delivers the vault's own currency, so the donation is a straight transfer:
+  // there is no price to quote and nothing to lose on the way in.
+  const passThrough = Boolean(usdc && deployment && usdc.toLowerCase() === deployment.external.Token.toLowerCase())
 
   useEffect(() => {
     setPurchase(readStored(storageKey(needId), isStoredPurchase))
@@ -292,6 +295,7 @@ export function CardOnrampPanel({
                         onClick={() => connect({ connector: option })}
                       >
                         {icon ? (
+                          // biome-ignore lint/performance/noImgElement: a 16px EIP-6963 data URI, nothing to optimize
                           <img src={icon} alt="" aria-hidden="true" className="h-4 w-4 rounded" />
                         ) : null}
                         {connecting ? tCommon('connecting') : passkey ? t('connect') : option.name}
@@ -406,10 +410,10 @@ export function CardOnrampPanel({
               {arrived > 0n ? (
                 <>
                   <p className="text-xs text-slate-700 tabular-nums" aria-live="polite">
-                    {fairValue !== undefined
+                    {fairValue !== undefined && !passThrough
                       ? t('arrivedQuote', {
                           usdc: amount(arrived),
-                          eurc: amount(fairValue),
+                          value: amount(fairValue),
                           unit: tCommon('amountUnit'),
                         })
                       : t('arrived', { usdc: amount(arrived) })}

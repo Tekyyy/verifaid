@@ -45,6 +45,7 @@ contract BaseMainnetConversionTest is PoATest {
             swapRouter: SWAP_ROUTER02,
             weth: WETH,
             usdc: USDC,
+            eurc: EURC,
             eurUsdFeed: EUR_USD,
             usdcUsdFeed: USDC_USD,
             ethUsdFeed: ETH_USD,

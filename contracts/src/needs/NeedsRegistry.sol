@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {RoleAware} from "../access/RoleAware.sol";
+import {IAidVault} from "../interfaces/IAidVault.sol";
 import {IAidVaultFactory} from "../interfaces/IAidVaultFactory.sol";
 import {IBeneficiaryGroups} from "../interfaces/IBeneficiaryGroups.sol";
 import {IDeliveryManager} from "../interfaces/IDeliveryManager.sol";
@@ -34,6 +35,9 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     /// @notice The most of an on-chain need the NGO may pay to itself (operations, staff, logistics); the rest goes
     ///         straight from the vault to the suppliers named in the plan.
     uint16 public constant MAX_NGO_SHARE_BPS = 2500;
+    /// @notice Replacing a supplier always needs at least this many independent verifiers, even on a need that
+    ///         one verifier was enough to verify: moving an escrow is a heavier decision than approving it.
+    uint8 public constant MIN_PAYEE_CHANGE_APPROVALS = 2;
 
     /// @notice Needs with `targetAmount` above this value require at least two independent verifications.
     uint256 public immutable HIGH_VALUE_THRESHOLD;
@@ -205,16 +209,31 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         _changeApprovedBy[changeId][msg.sender] = true;
         uint8 approvals = ++change.approvals;
         emit PayeeChangeApproved(needId, changeId, msg.sender, approvals);
-        if (approvals < n.verificationsRequired) return;
+        if (approvals < payeeChangeApprovalsRequired(needId)) return;
 
         // The replacement must still be a supplier when it takes effect, not only when it was proposed.
         address to = change.account;
         if (!roles.isActiveSupplier(to)) revert Errors.SupplierNotRegistered();
         uint8 index = change.index;
         address from = _payees[needId][index].account;
+        // Work that has already been confirmed is paid to whoever did it: a tranche standing releasable cannot be
+        // redirected, and releasing it is permissionless, so this only ever costs the NGO one transaction. A
+        // supplier that has lost its role is the exception — it cannot be paid at all, and replacing it is the
+        // way to unblock the need.
+        if (roles.isActiveSupplier(from) && n.vault != address(0) && ITrancheLedger(n.vault).hasReleasableTranche()) {
+            revert Errors.ReleasePending();
+        }
         _payees[needId][index].account = to;
         delete _pendingChange[needId];
         emit PayeeChanged(needId, changeId, index, from, to);
+        // Money the vault could not pay the old payee is owed to the new one.
+        if (n.vault != address(0)) IAidVault(n.vault).onPayeeChanged(from, to);
+    }
+
+    /// @inheritdoc INeedsRegistry
+    function payeeChangeApprovalsRequired(uint256 needId) public view returns (uint8) {
+        uint8 required = _need(needId).verificationsRequired;
+        return required < MIN_PAYEE_CHANGE_APPROVALS ? MIN_PAYEE_CHANGE_APPROVALS : required;
     }
 
     /// @inheritdoc INeedsRegistry
@@ -515,6 +534,9 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         } else if (p.custodian != address(0)) {
             revert Errors.InvalidParameter();
         }
+        // Money escrowed on-chain always has a horizon: without one, a need whose plan cannot be paid (a supplier
+        // that lost its role, say) could never be expired, and donors would have no permissionless way back.
+        if (p.custodyMode == CustodyMode.OnChain && p.executionDeadline == 0) revert Errors.InvalidParameter();
         if (p.executionDeadline != 0) {
             // Delivery cannot be due before money can have arrived.
             if (p.executionDeadline <= block.timestamp || p.executionDeadline <= p.fundingDeadline) {

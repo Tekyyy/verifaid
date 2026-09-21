@@ -103,6 +103,9 @@ abstract contract PoATest is Test, SystemDeployer {
     ConversionRouter internal router;
     DonationForwarderFactory internal forwarderFactory;
     MockUSDC internal usdc;
+    /// @dev The euro stablecoin of the deployment: the vault token itself in the default fixture.
+    MockEURC internal eurc;
+    address internal defaultVaultToken;
     MockWETH9 internal weth;
     MockSwapRouter internal swapRouter;
     MockV3Aggregator internal eurUsdFeed;
@@ -132,10 +135,14 @@ abstract contract PoATest is Test, SystemDeployer {
     }
 
     /// @dev Hooks for tests that run against a fork with real DeFi instead of the local mocks.
-    function _beforeDeploy() internal virtual {}
+    ///      By default the fixture holds euros (a MockEURC vault, USDC and ETH converted into it), which exercises
+    ///      the conversion path in every suite. `UsdcVaultTest` covers the USD-denominated deployment instead.
+    function _beforeDeploy() internal virtual {
+        defaultVaultToken = address(new MockEURC());
+    }
 
     function _tokenAddress() internal view virtual returns (address) {
-        return address(0);
+        return defaultVaultToken;
     }
 
     function _conversionParams() internal view virtual returns (ConversionParams memory) {
@@ -143,6 +150,7 @@ abstract contract PoATest is Test, SystemDeployer {
             swapRouter: address(0),
             weth: address(0),
             usdc: address(0),
+            eurc: address(0),
             eurUsdFeed: address(0),
             usdcUsdFeed: address(0),
             ethUsdFeed: address(0),
@@ -193,6 +201,7 @@ abstract contract PoATest is Test, SystemDeployer {
         router = sys.router;
         forwarderFactory = sys.forwarderFactory;
         usdc = MockUSDC(sys.conversion.usdc);
+        eurc = MockEURC(sys.conversion.eurc);
         weth = MockWETH9(payable(sys.conversion.weth));
         swapRouter = MockSwapRouter(sys.conversion.swapRouter);
         eurUsdFeed = MockV3Aggregator(sys.conversion.eurUsdFeed);
@@ -266,6 +275,9 @@ abstract contract PoATest is Test, SystemDeployer {
     }
 
     /// @dev v1-equivalent terms: on-chain custody, no deadlines, any amount may execute, no intermediary costs.
+    /// @dev How long the default fixture gives a need to deliver, counted from the moment it is created.
+    uint256 internal constant DEFAULT_EXECUTION_WINDOW = 365 days;
+
     function _needParams(uint256 programId, uint256 target, uint8 verificationsRequired, uint16[] memory bps)
         internal
         view
@@ -283,7 +295,8 @@ abstract contract PoATest is Test, SystemDeployer {
             custodyMode: INeedsRegistry.CustodyMode.OnChain,
             custodian: address(0),
             fundingDeadline: 0,
-            executionDeadline: 0,
+            // On-chain custody always has a delivery horizon, so donors always have a way back (expire).
+            executionDeadline: uint64(block.timestamp + DEFAULT_EXECUTION_WINDOW),
             minFundingBps: 1,
             thirdPartyCostBps: 0,
             expectedOutcomeHash: OUTCOME_HASH,

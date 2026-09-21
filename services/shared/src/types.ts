@@ -33,11 +33,14 @@ export interface Deployment {
     SchemaRegistry: Address
     Semaphore: Address
     SemaphoreVerifier: Address
+    /** The currency the vaults hold, and the unit of every published figure: this chain's USDC or EURC. */
     Token: Address
     /** v3 conversion path; on local chains these are mocks. */
     SwapRouter?: Address
     WETH?: Address
+    /** The chain's dollar and euro stablecoins; one of them is `Token`, the other converts into it. */
     USDC?: Address
+    EURC?: Address
     EurUsdFeed?: Address
     UsdcUsdFeed?: Address
     EthUsdFeed?: Address
@@ -49,11 +52,11 @@ export interface Deployment {
     highValueThreshold: string | number
     minExpectedRecipients: number
     dashboardBaseURI: string
-    /** v3: the oracle bound of the USDC route, in basis points. */
+    /** v3: the oracle bound of the stablecoin route into the vault currency, in basis points. */
     maxSlippageBps?: number
     /** v3: the oracle bound of the ETH route (two hops through volatile pools), in basis points. */
     ethMaxSlippageBps?: number
-    /** v3: Uniswap v3 fee tier of the USDC → vault token pool (100 = 0.01%, 500 = 0.05%). */
+    /** v3: Uniswap v3 fee tier of the stablecoin → vault currency pool (100 = 0.01%, 500 = 0.05%). */
     usdcPoolFee?: number
     /** v3: true when the swap router is a mock that fills at oracle prices (local chains). */
     mockSwapRouter?: boolean

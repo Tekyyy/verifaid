@@ -146,6 +146,7 @@ export function CreateNeedPanel() {
           thirdPartyCostBps: costBps as number,
           expectedOutcomeHash: outcomeHash,
           costDisclosureHash: disclosureHash,
+          payees: [],
         },
       ],
     })

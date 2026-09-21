@@ -193,7 +193,23 @@ abstract contract TrancheLedger is ITrancheLedger, ReentrancyGuardTransient {
 
         // Tranche 0 (pre-financing) starts the delivery phase; the final tranche completes the need.
         if (index == 0) registry.setStatus(id, INeedsRegistry.NeedStatus.InDelivery);
-        if (index == _trancheCount - 1) registry.setStatus(id, INeedsRegistry.NeedStatus.Completed);
+        if (index == _trancheCount - 1) _completeFinalRelease(id);
+    }
+
+    /// @dev Releasing the final tranche completes the need. A vault defers this until the tranche has actually
+    ///      been paid out: money it could not hand to a payee is money the need still owes.
+    function _completeFinalRelease(uint256 id) internal virtual {
+        registry.setStatus(id, INeedsRegistry.NeedStatus.Completed);
+    }
+
+    /// @dev True once every tranche has been released (and there is at least one, i.e. funding closed).
+    function _allTranchesReleased() internal view returns (bool) {
+        uint256 count = _trancheCount;
+        if (count == 0) return false;
+        for (uint256 i; i < count; ++i) {
+            if (_tranches[i].status != TrancheStatus.Released) return false;
+        }
+        return true;
     }
 
     /// @dev Checks a new contribution against the need's live funding terms and returns the target.

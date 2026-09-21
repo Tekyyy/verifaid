@@ -28,6 +28,8 @@ interface IAidVault is ITrancheLedger {
     /// @notice Part of a released tranche the token would not deliver (a frozen address); kept for the payee.
     event PaymentHeld(uint256 indexed needId, uint256 indexed index, address indexed payee, uint256 amount);
     event HeldPaymentClaimed(uint256 indexed needId, address indexed payee, uint256 amount);
+    /// @notice A held payment moved to the payee that replaced the one it was owed to.
+    event HeldPaymentReassigned(uint256 indexed needId, address indexed from, address indexed to, uint256 amount);
 
     /// @notice Donates `amount` stablecoin (requires prior approval) and mints a soulbound receipt to the caller.
     function donate(uint256 amount) external returns (uint256 receiptId);
@@ -47,6 +49,9 @@ interface IAidVault is ITrancheLedger {
 
     /// @notice Sends a payee the payments that were held for it. Callable by anyone; it only ever pays the payee.
     function claimHeldPayment(address payee) external returns (uint256 amount);
+
+    /// @notice Moves what is held for `from` to `to`. Only the needs registry, when verifiers approve a change.
+    function onPayeeChanged(address from, address to) external;
 
     /// @notice Released money not yet delivered to `payee` (the token refused the transfer).
     function heldPaymentOf(address payee) external view returns (uint256);

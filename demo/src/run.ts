@@ -55,8 +55,9 @@ import { attestation, fail, heading, info, note, step, tx } from './log.js'
  *   2. Off-chain custody (Model A): a payment provider holds the money; its attestations count the funding and
  *      release every tranche. No token touches the ledger.
  *   3. A funding deadline passing below the NGO's minimum: the need expires and the donor is refunded.
- *   4. Conversions (v3): USDC bought by card lands in the donor's own wallet and is swapped into the vault token
- *      on-chain under the Chainlink bound; ETH from a wallet; USDC withdrawn from an exchange to a deposit address.
+ *   4. Conversions (v3): USDC bought by card lands in the donor's own wallet and is donated as it is, because the
+ *      vaults hold USDC; euros and ETH are swapped into it under the Chainlink bound; and an exchange withdrawal
+ *      reaches a deposit address that can only ever donate to its need or refund.
  *
  *   pnpm demo:run anvil            all four
  *   pnpm demo:run base-sepolia onchain offchain
@@ -267,11 +268,14 @@ const expiryScenario = async (ctx: DemoContext, programId: bigint): Promise<stri
 // ─── scenario 4: conversions (v3) ─────────────────────────────────────────────
 
 const conversionScenario = async (ctx: DemoContext, programId: bigint): Promise<string[]> => {
-  heading('4 · Full blockchain mode: card-bought USDC, ETH and an exchange withdrawal, converted on-chain')
+  heading('4 · Full blockchain mode: card-bought USDC as it is, euros and ETH converted on-chain')
   const factory = ctx.deployment.contracts.DonationForwarderFactory as Address
   const router = ctx.deployment.contracts.ConversionRouter as Address
   const usdc = ctx.deployment.external.USDC as Address
   const token = ctx.deployment.external.Token
+  // The euro stablecoin, when this deployment has one that is not the vault currency itself.
+  const eurc = ctx.deployment.external.EURC
+  const convertible = eurc && eurc.toLowerCase() !== token.toLowerCase() ? (eurc as Address) : null
   const maxSlippageBps = BigInt(ctx.deployment.params.maxSlippageBps ?? 100)
   const spec: NeedSpec = {
     label: 'water purification tablets',
@@ -303,10 +307,8 @@ const conversionScenario = async (ctx: DemoContext, programId: bigint): Promise<
   info('USDC in the wallet', formatAmount(bought))
   note('the donor owns that wallet, as Coinbase requires: no platform account ever holds the money')
 
-  step('One tap: the factory swaps the USDC on Uniswap v3 and donates, bounded by Chainlink')
-  const fair = await quote(usdc, bought)
-  info('fair value', `${formatAmount(fair)} units (Chainlink EUR/USD and USDC/USD)`)
-  info('minimum accepted', `${formatAmount((fair * (BPS - maxSlippageBps)) / BPS)} units, or it reverts`)
+  step('One tap donates it, and the vaults hold USDC, so there is nothing to swap')
+  info('fair value', `${formatAmount(await quote(usdc, bought))} units: the same money, no pool, no price`)
   await send(ctx, 'donor1', {
     address: usdc,
     abi: mockEURCAbi as Abi,
@@ -322,8 +324,34 @@ const conversionScenario = async (ctx: DemoContext, programId: bigint): Promise<
   const receiptId = logConversion(card.receipt, 'DonatedWithConversion')
   tx(ctx.network, 'tx', card.hash)
 
+  if (convertible) {
+    step('A wallet gives euros: the factory swaps EURC on Uniswap v3, bounded by Chainlink')
+    const euros = 500_000_000n
+    await mintIfPossible(ctx, 'donor2', euros, convertible)
+    const fair = await quote(convertible, euros)
+    info('EURC given', formatAmount(euros))
+    info('fair value', `${formatAmount(fair)} units (Chainlink EUR/USD and USDC/USD)`)
+    info('minimum accepted', `${formatAmount((fair * (BPS - maxSlippageBps)) / BPS)} units, or it reverts`)
+    await send(ctx, 'donor2', {
+      address: convertible,
+      abi: mockEURCAbi as Abi,
+      functionName: 'approve',
+      args: [factory, euros],
+    })
+    const euroDonation = await send(ctx, 'donor2', {
+      address: factory,
+      abi: donationForwarderFactoryAbi as Abi,
+      functionName: 'donate',
+      args: [needId, convertible, euros],
+    })
+    logConversion(euroDonation.receipt, 'DonatedWithConversion')
+    tx(ctx.network, 'tx', euroDonation.hash)
+  } else {
+    note('this deployment has no second stablecoin, so there is nothing to convert from')
+  }
+
   if (ctx.deployment.params.ethDonations) {
-    step('A wallet donates ETH: routed ETH → USDC → vault token in the same transaction')
+    step('A wallet donates ETH: routed ETH → USDC in the same transaction')
     const eth = 100_000_000_000_000_000n // 0.1 ETH
     info('ETH given', formatEther(eth))
     info('fair value', `${formatAmount(await quote(NATIVE_TOKEN, eth))} units`)
@@ -375,7 +403,7 @@ const conversionScenario = async (ctx: DemoContext, programId: bigint): Promise<
   info('withdrawn to it', `${formatAmount(withdrawal)} USDC`)
   tx(ctx.network, 'transfer', sent.hash)
 
-  step('The platform keeper sweeps it: deploy, convert what fills the need, donate, return the rest')
+  step('The platform keeper sweeps it: deploy, donate what fills the need, return the rest')
   note("only the donor's own addresses or a registered keeper may sweep, so nobody can sandwich the swap")
   const sweep = await send(ctx, 'relayer', {
     address: factory,
@@ -393,7 +421,7 @@ const conversionScenario = async (ctx: DemoContext, programId: bigint): Promise<
     const symbol = tokenSymbolOf(ctx.deployment, leftover.args.token)
     info(`returned (${symbol})`, `${formatAmount(leftover.args.amount)} to the donor`)
   }
-  note('only what the need could take was converted: the rest goes home in the token it came in')
+  note('only what the need could take was donated: the rest goes home in the token it came in')
   tx(ctx.network, 'tx', sweep.hash)
   await expectStatus(ctx, needId, 'Funded')
 
@@ -404,7 +432,7 @@ const conversionScenario = async (ctx: DemoContext, programId: bigint): Promise<
     functionName: 'fundingFeesOf',
     args: [needId],
   })) as bigint
-  info('conversion costs', `${formatAmount(fees)} units`)
+  info('conversion costs', `${formatAmount(fees)} units (the euro and ETH swaps; USDC cost nothing)`)
   info('cap', `${spec.thirdPartyCostBps / 100}% of what donors paid`)
   note('a swap costing more than the cap allows reverts: the need never silently absorbs it')
 
@@ -956,7 +984,7 @@ const toSalt = (value: string | undefined): Hex => {
 
 const mintIfPossible = async (
   ctx: DemoContext,
-  role: 'donor1' | 'bankPartner',
+  role: 'donor1' | 'donor2' | 'bankPartner',
   amount: bigint,
   token: Address = ctx.deployment.external.Token,
 ): Promise<void> => {

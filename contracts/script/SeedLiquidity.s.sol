@@ -63,9 +63,10 @@ interface ISwapRouter02Single {
 }
 
 /// @title SeedLiquidity
-/// @notice Gives the testnet conversion path a real Uniswap v3 market: a MockUSDC / vault-token pool on Uniswap's
+/// @notice Gives the testnet conversion path a real Uniswap v3 market: a mock EURC / vault-token pool on Uniswap's
 ///         own Base Sepolia deployment, priced at the Chainlink-derived fair rate the ConversionRouter enforces.
 ///         The public Base Sepolia pools are thin and mispriced, so every donation would fail the oracle bound.
+///         A deployment that holds the chain's own USDC needs no pool at all: those donations never swap.
 ///
 ///         Re-runnable as a keeper: it creates and funds the pool once, then only swaps the price back to fair
 ///         value when it has drifted (anyone can mint the mock tokens and push it around).
@@ -90,7 +91,7 @@ contract SeedLiquidity is Script, DeploymentIO {
         INonfungiblePositionManager positions;
         address swapRouter;
         address token;
-        address usdc;
+        address alt; // the convertible stablecoin (mock EURC on test networks)
         address token0;
         address token1;
         uint24 fee;
@@ -105,6 +106,7 @@ contract SeedLiquidity is Script, DeploymentIO {
             console2.log("SeedLiquidity: this deployment uses the mock swap router, nothing to seed");
             return;
         }
+        if (!_convertsAnything(deployment)) return;
         Market memory m = _market(deployment);
 
         uint256 key = vm.envUint("DEPLOYER_PRIVATE_KEY");
@@ -122,27 +124,41 @@ contract SeedLiquidity is Script, DeploymentIO {
         console2.log("  fee tier          ", uint256(m.fee));
         console2.log("  fair sqrtPriceX96 ", uint256(m.fair));
         console2.log("  pool sqrtPriceX96 ", uint256(sqrtPrice));
-        console2.log("  1 USDC is worth   ", m.router.quote(m.usdc, 1e6, m.token), "vault token units");
+        console2.log("  1 EURC is worth   ", m.router.quote(m.alt, 1e6, m.token), "vault token units");
+    }
+
+    /// @dev A deployment whose vault currency is the chain's own USDC never swaps a stablecoin, so it needs no pool.
+    function _convertsAnything(string memory deployment) internal view returns (bool) {
+        if (!vm.keyExistsJson(deployment, ".external.EURC")) {
+            console2.log("SeedLiquidity: this deployment holds one currency and converts nothing");
+            return false;
+        }
+        address alt = _readAddress(deployment, ".external.EURC");
+        if (alt == address(0) || alt == _readAddress(deployment, ".external.Token")) {
+            console2.log("SeedLiquidity: the vault currency is the chain's own stablecoin, donations pass through");
+            return false;
+        }
+        return true;
     }
 
     function _market(string memory deployment) internal view returns (Market memory m) {
         m.router = IConversionRouter(_readAddress(deployment, ".contracts.ConversionRouter"));
         m.token = _readAddress(deployment, ".external.Token");
-        m.usdc = _readAddress(deployment, ".external.USDC");
+        m.alt = _readAddress(deployment, ".external.EURC");
         m.swapRouter = _readAddress(deployment, ".external.SwapRouter");
         m.positions = INonfungiblePositionManager(vm.envOr("UNISWAP_POSITION_MANAGER", BASE_SEPOLIA_POSITION_MANAGER));
         m.fee = uint24(vm.parseJsonUint(deployment, ".params.usdcPoolFee"));
-        (m.token0, m.token1) = m.usdc < m.token ? (m.usdc, m.token) : (m.token, m.usdc);
+        (m.token0, m.token1) = m.alt < m.token ? (m.alt, m.token) : (m.token, m.alt);
         // Full range, rounded inward to the fee tier's tick spacing.
         int24 spacing = IUniswapV3Factory(m.positions.factory()).feeAmountTickSpacing(m.fee);
         require(spacing > 0, "SeedLiquidity: fee tier not enabled");
         m.maxTick = (MAX_TICK / spacing) * spacing;
-        m.fair = _fairSqrtPrice(m.router, m.usdc, m.token, m.token0);
+        m.fair = _fairSqrtPrice(m.router, m.alt, m.token, m.token0);
     }
 
     function _addLiquidity(Market memory m, address operator) internal {
-        MockUSDC(m.usdc).mint(operator, LIQUIDITY_PER_SIDE);
-        MockEURC(m.token).mint(operator, LIQUIDITY_PER_SIDE);
+        MockEURC(m.alt).mint(operator, LIQUIDITY_PER_SIDE);
+        MockUSDC(m.token).mint(operator, LIQUIDITY_PER_SIDE);
         IERC20(m.token0).approve(address(m.positions), LIQUIDITY_PER_SIDE);
         IERC20(m.token1).approve(address(m.positions), LIQUIDITY_PER_SIDE);
         (, uint128 liquidity, uint256 amount0, uint256 amount1) = m.positions
@@ -166,13 +182,13 @@ contract SeedLiquidity is Script, DeploymentIO {
     }
 
     /// @dev sqrt(token1 per token0) in Q64.96, from the router's own oracle quote so the pool and the bound agree.
-    function _fairSqrtPrice(IConversionRouter router, address usdc, address token, address token0)
+    function _fairSqrtPrice(IConversionRouter router, address alt, address token, address token0)
         internal
         view
         returns (uint160)
     {
-        uint256 tokenPerUsdc = router.quote(usdc, 1e6, token); // both tokens have 6 decimals
-        (uint256 amount0, uint256 amount1) = token0 == usdc ? (uint256(1e6), tokenPerUsdc) : (tokenPerUsdc, 1e6);
+        uint256 tokenPerAlt = router.quote(alt, 1e6, token); // both stablecoins have 6 decimals
+        (uint256 amount0, uint256 amount1) = token0 == alt ? (uint256(1e6), tokenPerAlt) : (tokenPerAlt, 1e6);
         return uint160(Math.sqrt(Math.mulDiv(amount1, 1 << 192, amount0)));
     }
 

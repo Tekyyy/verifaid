@@ -169,6 +169,9 @@ export const needFixture = (id: string, overrides: Partial<NeedDetail> = {}): Ne
   donations: [],
   settlements: [],
   impactReport: null,
+  payees: [],
+  payments: [],
+  payeeChanges: [],
   ...overrides,
 })
 
@@ -216,6 +219,7 @@ export const trackFixture = (
   settlements: [],
   impactReport: null,
   deposit: null,
+  payees: [],
   updatedAt: 1_700_000_300,
 })
 
