@@ -18,6 +18,7 @@ import { ProgressBar } from '@/components/ProgressBar'
 import { RefundPanel } from '@/components/RefundPanel'
 import { SettlementList } from '@/components/SettlementList'
 import { NeedStatusBadge } from '@/components/StatusBadge'
+import { TaxDeductionNotice } from '@/components/TaxDeductionNotice'
 import { TermsPanel } from '@/components/TermsPanel'
 import { Timeline } from '@/components/Timeline'
 import { TrancheBar } from '@/components/TrancheBar'
@@ -239,6 +240,8 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
           {refundable ? <RefundPanel vault={data.vault} /> : null}
           <WithdrawDonationPanel need={data} />
 
+          {fundingOpen ? <TaxDeductionNotice taxStatus={data.taxStatus} /> : null}
+
           {data.custodyMode === 'OnChain' ? (
             <DonatePanel
               needId={data.id}
@@ -247,6 +250,7 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
               targetAmount={data.targetAmount}
               totalDonated={data.totalDonated}
               thirdPartyCostBps={data.thirdPartyCostBps}
+              taxStatus={data.taxStatus}
             />
           ) : null}
 
@@ -258,11 +262,13 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
                 open={fundingOpen}
                 remaining={data.fundingGap}
                 thirdPartyCostBps={data.thirdPartyCostBps}
+                taxStatus={data.taxStatus}
               />
               <DepositAddressPanel
                 needId={data.id}
                 open={fundingOpen}
                 thirdPartyCostBps={data.thirdPartyCostBps}
+                taxStatus={data.taxStatus}
               />
             </>
           ) : null}
@@ -272,6 +278,7 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
             custodyMode={data.custodyMode}
             open={fundingOpen}
             thirdPartyCostBps={data.thirdPartyCostBps}
+            taxStatus={data.taxStatus}
           />
 
           <section className="card" aria-labelledby="donations">

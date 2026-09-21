@@ -107,10 +107,10 @@ const PRESENTATION_1: NeedPresentationView = {
   timestamp: 1_757_005_000,
 }
 
-/** The demo NGO states a US standing, and the platform checked it. */
+/** The demo NGO states it is a US 501(c)(3), and the platform checked it. */
 const TAX_STATUS: OrgTaxStatusView = {
   org: NGO,
-  jurisdiction: 'US',
+  jurisdiction: 'US:501c3',
   taxId: '12-3456789',
   legalName: 'Aurora Relief Foundation Inc.',
   source: 'https://example.org/501c3-determination-letter.pdf',
@@ -119,6 +119,27 @@ const TAX_STATUS: OrgTaxStatusView = {
   verifiedBy: getAddress('0x7642c9178a738dd623aac1f943bafb81589e9050'),
   verifiedSource: 'IRS Tax Exempt Organization Search, checked 2026-09-21',
   verifiedAt: 1_756_100_000,
+}
+
+/** Need #5 is run by a Singapore IPC: deductible there, but only for money given by card or bank transfer. */
+const NGO_SG = getAddress('0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc')
+const TAX_STATUS_SG: OrgTaxStatusView = {
+  org: NGO_SG,
+  jurisdiction: 'SG:IPC',
+  taxId: '201912345K',
+  legalName: 'Harbour Aid Ltd.',
+  source: 'https://www.charities.gov.sg',
+  claimedAt: 1_756_000_000,
+  verified: true,
+  verifiedBy: getAddress('0x7642c9178a738dd623aac1f943bafb81589e9050'),
+  verifiedSource: 'Charity Portal IPC register, checked 2026-09-21',
+  verifiedAt: 1_756_100_000,
+}
+
+/** Who runs each need, where it differs from Aurora Relief. Need #7's organisation has published no tax standing. */
+const ORG_OVERRIDES: Record<string, Pick<NeedSummary, 'ngo' | 'ngoName' | 'taxStatus'>> = {
+  '5': { ngo: NGO_SG, ngoName: 'Harbour Aid', taxStatus: TAX_STATUS_SG },
+  '7': { ngo: NGO, ngoName: 'Aurora Relief', taxStatus: null },
 }
 
 const ACKNOWLEDGMENT: DonationAcknowledgmentView = {
@@ -214,6 +235,7 @@ const summary = (
     settlementFees: terms.settlementFees ?? '0',
     createdAt,
     expiredAt: terms.expiredAt ?? null,
+    ...ORG_OVERRIDES[id],
   }
 }
 

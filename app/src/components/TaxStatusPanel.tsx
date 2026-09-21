@@ -2,7 +2,7 @@
 
 import { easAbi, roleRegistryAbi } from '@poa/shared'
 import { useTranslations } from 'next-intl'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { type Address, isAddress } from 'viem'
 import { useAccount, useReadContract } from 'wagmi'
 import { FormError, Panel, TextField } from '@/components/form'
@@ -10,6 +10,9 @@ import { TxStatus } from '@/components/TxStatus'
 import { deployment } from '@/lib/config'
 import { communityAttestationRequest, hasCommunitySchema } from '@/lib/eas'
 import { useTx } from '@/lib/hooks'
+import { TAX_DESIGNATIONS, type TaxRegime } from '@/lib/taxEligibility'
+
+type Designation = TaxRegime | 'other'
 
 /**
  * An organisation states its tax standing, and the platform admin can sign that it checked it. Both are the
@@ -24,7 +27,9 @@ export function TaxStatusPanel() {
   const tx = useTx()
   const { address } = useAccount()
   const [org, setOrg] = useState('')
-  const [jurisdiction, setJurisdiction] = useState('US')
+  const designationId = useId()
+  const [designation, setDesignation] = useState<Designation>('US_501C3')
+  const [country, setCountry] = useState('')
   const [taxId, setTaxId] = useState('')
   const [legalName, setLegalName] = useState('')
   const [source, setSource] = useState('')
@@ -49,6 +54,8 @@ export function TaxStatusPanel() {
 
   // An organisation signs for itself; the admin signs for someone else, which is what marks it checked.
   const subject = isAdmin && org.trim() ? org.trim() : (address ?? '')
+  // The designation rides in the jurisdiction string, so the admin's check covers it along with the number.
+  const jurisdiction = designation === 'other' ? country.trim().toUpperCase() : TAX_DESIGNATIONS[designation]
 
   const publish = async () => {
     if (!isAddress(subject)) return setError(t('errorOrg'))
@@ -81,8 +88,25 @@ export function TaxStatusPanel() {
           hint={t('statusOrgHint')}
         />
       ) : null}
+      <div>
+        <label className="label" htmlFor={designationId}>
+          {t('statusDesignation')}
+        </label>
+        <select
+          id={designationId}
+          className="input"
+          value={designation}
+          onChange={(event) => setDesignation(event.target.value as Designation)}
+        >
+          <option value="US_501C3">{t('designationUS')}</option>
+          <option value="SG_IPC">{t('designationSG')}</option>
+          <option value="other">{t('designationOther')}</option>
+        </select>
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <TextField label={t('statusJurisdiction')} value={jurisdiction} onChange={setJurisdiction} />
+        {designation === 'other' ? (
+          <TextField label={t('statusCountry')} value={country} onChange={setCountry} />
+        ) : null}
         <TextField label={t('statusTaxId')} value={taxId} onChange={setTaxId} hint={t('statusTaxIdHint')} />
       </div>
       <TextField label={t('statusLegalName')} value={legalName} onChange={setLegalName} />

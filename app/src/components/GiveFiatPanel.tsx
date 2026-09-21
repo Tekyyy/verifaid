@@ -1,9 +1,10 @@
 'use client'
 
-import type { CustodyMode } from '@poa/shared'
+import type { CustodyMode, OrgTaxStatusView } from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import { useId, useRef, useState } from 'react'
 import { FormError } from '@/components/form'
+import { DeductibleLine } from '@/components/TaxDeductionNotice'
 import { useRouter } from '@/i18n/navigation'
 import { startCheckout } from '@/lib/appApi'
 import { estimateFee, feeWithinCap, PAYMENT_METHODS, type PaymentMethod, parseEuro } from '@/lib/fees'
@@ -26,11 +27,13 @@ export function GiveFiatPanel({
   custodyMode,
   open,
   thirdPartyCostBps,
+  taxStatus = null,
 }: {
   needId: string
   custodyMode: CustodyMode
   open: boolean
   thirdPartyCostBps: number
+  taxStatus?: OrgTaxStatusView | null
 }) {
   const t = useTranslations('give')
   const tErrors = useTranslations('errors')
@@ -71,6 +74,7 @@ export function GiveFiatPanel({
         {t('sandbox')}
       </p>
       {custodyMode === 'OffChain' ? <p className="mt-2 text-sm text-slate-700">{t('onlyWay')}</p> : null}
+      {open ? <DeductibleLine taxStatus={taxStatus} channel="cash" /> : null}
 
       {!open ? (
         <p className="mt-3 text-sm font-medium text-slate-700">{t('closed')}</p>

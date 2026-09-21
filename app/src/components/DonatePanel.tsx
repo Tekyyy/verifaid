@@ -6,11 +6,13 @@ import {
   donationForwarderFactoryAbi,
   donationTokens,
   mockEURCAbi,
+  type OrgTaxStatusView,
 } from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { type Address, type Log, parseEventLogs } from 'viem'
 import { useAccount, useBalance, useReadContract } from 'wagmi'
+import { DeductibleLine } from '@/components/TaxDeductionNotice'
 import { TxStatus } from '@/components/TxStatus'
 import { Link } from '@/i18n/navigation'
 import { conversionsEnabled, deployment } from '@/lib/config'
@@ -43,6 +45,7 @@ export function DonatePanel({
   targetAmount,
   totalDonated,
   thirdPartyCostBps,
+  taxStatus = null,
 }: {
   needId: string
   vault: Address | null
@@ -52,6 +55,7 @@ export function DonatePanel({
   totalDonated: string
   /** The need's disclosed cap on intermediary costs; conversion fees count against it. */
   thirdPartyCostBps: number
+  taxStatus?: OrgTaxStatusView | null
 }) {
   const t = useTranslations('need')
   const tCommon = useTranslations('common')
@@ -204,6 +208,7 @@ export function DonatePanel({
           ? t('donateConvertedBody', { symbol: selected.symbol, unit })
           : t('donateBody', { unit })}
       </p>
+      {open ? <DeductibleLine taxStatus={taxStatus} channel="digital" /> : null}
 
       {!open ? (
         <p className="mt-3 text-sm font-medium text-slate-700">{t('donateClosed')}</p>

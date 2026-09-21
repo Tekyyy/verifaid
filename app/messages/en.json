@@ -963,11 +963,34 @@
     "tax": "{jurisdiction} tax id {id}",
     "taxUnchecked": "(unverified)",
     "taxVerifiedHint": "The organisation published a registration number and this platform checked it in the public register.",
-    "taxClaimedHint": "The organisation’s own statement. Nobody here has checked it."
+    "taxClaimedHint": "The organisation’s own statement. Nobody here has checked it.",
+    "taxDeductible": "Tax-deductible · {regime}",
+    "taxDeductibleHint": "A platform-verified US 501(c)(3) or Singapore IPC: see the need page for which ways of giving count."
   },
   "photos": {
     "title": "Photos of the work",
     "note": "Published by the NGO that ran this need and signed with its wallet. The images are hosted by the NGO; only the links and the signature are on chain. They show goods, sites and deliveries — never beneficiaries."
+  },
+  "deduction": {
+    "usTitle": "Tax-deductible in the United States",
+    "usBody": "{name} is a 501(c)(3) public charity (EIN {id}). Gifts to it can be deducted on a US federal return.",
+    "usDigital": "Tokens from a wallet, a card purchase or an exchange are a non-cash gift: you report it on Form 8283 above $500, and above $5,000 the IRS requires a qualified appraisal.",
+    "usCash": "Money given by card or bank transfer is a cash gift. From tax year 2026, donors who do not itemize can still deduct up to $1,000 ($2,000 filing jointly) of cash gifts.",
+    "usWhen": "It becomes a completed gift when this need’s funding closes. Until then you can take it back, so it is not deductible yet.",
+    "usReceipt": "After donating, download a receipt for your return from the donation’s tracking page. For $250 or more you also need the organisation’s signed acknowledgment, which it signs on chain.",
+    "sgTitle": "Tax-deductible in Singapore — card or bank only",
+    "sgBody": "{name} is an Institution of a Public Character (UEN {id}). Cash gifts to it are deductible in Singapore.",
+    "sgRate": "Qualifying donations get a {rate}% tax deduction (for donations made up to 31 Dec 2026).",
+    "sgRateUnknown": "Qualifying donations get a tax deduction; check the current rate with IRAS.",
+    "sgCashOnly": "Only money given by card or bank transfer counts. Tokens sent from a wallet or an exchange are not a qualifying donation type, so they are not deductible.",
+    "sgNric": "There is no receipt to file: the organisation reports your donation to IRAS against your NRIC, FIN or UEN and it is included in your assessment. Give that number to the organisation directly — this platform never asks for it.",
+    "sgWhen": "It counts once this need’s funding closes; until then you can take it back.",
+    "checked": "Checked by this platform in the public register: {source}",
+    "disclaimer": "Whether you can deduct it depends on your own return. This is not tax advice.",
+    "lineDigital": "Deductible as a non-cash gift ({regime}). You can download a tax receipt after donating.",
+    "lineCash": "Deductible as a cash gift ({regime}).",
+    "regimeUS": "US 501(c)(3)",
+    "regimeSG": "Singapore IPC"
   },
   "tax": {
     "title": "Receipt for your tax return",
@@ -989,7 +1012,12 @@
     "statusOrgHint": "Fill this to confirm someone else’s claim. Leave it empty to publish your own.",
     "statusJurisdiction": "Jurisdiction (ISO country code)",
     "statusTaxId": "Registration number",
-    "statusTaxIdHint": "An EIN for a US 501(c)(3). This is public information about the organisation.",
+    "statusTaxIdHint": "An EIN for a US 501(c)(3), a UEN for a Singapore IPC. This is public information about the organisation.",
+    "statusDesignation": "Tax designation",
+    "designationUS": "United States — 501(c)(3) public charity",
+    "designationSG": "Singapore — Institution of a Public Character (IPC)",
+    "designationOther": "Other — registered, but gifts are not shown as deductible",
+    "statusCountry": "Country (ISO code)",
     "statusLegalName": "Registered legal name",
     "statusSource": "Link to the determination letter or register entry",
     "statusSourceHint": "Where anyone can check the claim for themselves.",
@@ -1011,6 +1039,13 @@
     "ackHint": "No donor name is published: the acknowledgment is about the donation, and donors add their own details to the document they download.",
     "errorNoStatus": "Publish your tax standing first: the acknowledgment quotes your legal name and registration number.",
     "holderNote": "Receipt token #{id} cannot be transferred or sold, so whoever holds it is the wallet that paid. A block explorer will say so independently, along with the amount.",
-    "holderLink": "See the holder on the block explorer →"
+    "holderLink": "See the holder on the block explorer →",
+    "assessDeductibleUS": "Deductible in the US: {amount} {unit}, a completed gift since {date} (tax year {year}).",
+    "assessDeductibleSG": "Deductible in Singapore: {amount} {unit}, a completed gift since {date} (Year of Assessment {ya}). The organisation reports it to IRAS against your NRIC or FIN — you file nothing.",
+    "assessPartial": "Only the part already paid out for the need counts; the rest is refunded to you.",
+    "assessRevocable": "Not deductible yet: funding is still open and you can take this donation back. It becomes a completed gift when funding closes — come back then for the final receipt.",
+    "assessReturned": "Not deductible: this donation came back to you.",
+    "assessChannel": "Not deductible in Singapore: tokens sent from a wallet or an exchange are not a qualifying donation type. Only money given by card or bank transfer counts.",
+    "assessNone": "This organisation is not a platform-verified US 501(c)(3) or Singapore IPC, so this receipt makes no statement that the donation is deductible."
   }
 }

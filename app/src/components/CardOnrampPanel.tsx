@@ -1,11 +1,12 @@
 'use client'
 
-import { aidVaultAbi, donationForwarderFactoryAbi, mockEURCAbi } from '@poa/shared'
+import { aidVaultAbi, donationForwarderFactoryAbi, mockEURCAbi, type OrgTaxStatusView } from '@poa/shared'
 import { useLocale, useTranslations } from 'next-intl'
 import { useCallback, useEffect, useId, useState } from 'react'
 import { type Address, isAddressEqual, parseEventLogs } from 'viem'
 import { useAccount, useConnect, useReadContract } from 'wagmi'
 import { FormError } from '@/components/form'
+import { DeductibleLine } from '@/components/TaxDeductionNotice'
 import { TxStatus } from '@/components/TxStatus'
 import { Link } from '@/i18n/navigation'
 import {
@@ -72,12 +73,14 @@ export function CardOnrampPanel({
   open,
   remaining,
   thirdPartyCostBps,
+  taxStatus = null,
 }: {
   needId: string
   open: boolean
   /** What the need still takes, in vault-token base units: USDC beyond it is returned unconverted. */
   remaining: string
   thirdPartyCostBps: number
+  taxStatus?: OrgTaxStatusView | null
 }) {
   const t = useTranslations('onramp')
   const tConversion = useTranslations('conversion')
@@ -247,6 +250,8 @@ export function CardOnrampPanel({
         {t('title')}
       </h2>
       <p className="mt-1 text-sm text-slate-700">{t('body')}</p>
+      {/* The card buys USDC into the donor's own wallet, which then gives tokens: a non-cash gift. */}
+      {open ? <DeductibleLine taxStatus={taxStatus} channel="digital" /> : null}
       {onrampMode === 'mock' ? (
         <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
           {t('sandbox')}

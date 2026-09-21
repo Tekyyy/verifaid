@@ -1,12 +1,13 @@
 'use client'
 
-import { donationForwarderFactoryAbi, type ForwarderIntent } from '@poa/shared'
+import { donationForwarderFactoryAbi, type ForwarderIntent, type OrgTaxStatusView } from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import { useEffect, useId, useState } from 'react'
 import { type Address, bytesToHex, getAddress, type Hex, isAddress, isAddressEqual, zeroAddress } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { useAccount, usePublicClient } from 'wagmi'
 import { FormError } from '@/components/form'
+import { DeductibleLine } from '@/components/TaxDeductionNotice'
 import { Link } from '@/i18n/navigation'
 import { createDepositAddress, type IntentJson } from '@/lib/appApi'
 import { chain, chainId, conversionsEnabled, deployment, network } from '@/lib/config'
@@ -58,10 +59,12 @@ export function DepositAddressPanel({
   needId,
   open,
   thirdPartyCostBps,
+  taxStatus = null,
 }: {
   needId: string
   open: boolean
   thirdPartyCostBps: number
+  taxStatus?: OrgTaxStatusView | null
 }) {
   const t = useTranslations('deposit')
   const tConversion = useTranslations('conversion')
@@ -213,6 +216,7 @@ export function DepositAddressPanel({
         {t('title')}
       </h2>
       <p className="mt-1 text-sm text-slate-700">{t('body')}</p>
+      {open ? <DeductibleLine taxStatus={taxStatus} channel="digital" /> : null}
 
       {thirdPartyCostBps === 0 ? (
         <p className="mt-3 text-sm text-slate-700">{tConversion('noCosts')}</p>

@@ -5,7 +5,9 @@ import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { FormError, TextField } from '@/components/form'
 import { deployment } from '@/lib/config'
+import { amount, timestamp } from '@/lib/format'
 import { attestationUrl, nftUrl, readContractUrl, txUrl } from '@/lib/links'
+import { assessDonation } from '@/lib/taxEligibility'
 import { renderTaxReceipt } from '@/lib/taxReceipt'
 
 /**
@@ -22,6 +24,28 @@ export function TaxReceiptPanel({ track, unit }: { track: DonationTrack; unit: s
 
   const tax = track.need.taxStatus
   const acknowledged = track.acknowledgment !== null
+  const assessment = assessDonation(track)
+  const regime = assessment.kind === 'none' ? null : assessment.regime
+  const verdict = (() => {
+    switch (assessment.kind) {
+      case 'deductible': {
+        const values = { amount: amount(assessment.amount), unit, date: timestamp(assessment.since) }
+        const line =
+          assessment.regime === 'US_501C3'
+            ? t('assessDeductibleUS', { ...values, year: assessment.taxYear })
+            : t('assessDeductibleSG', { ...values, ya: assessment.taxYear + 1 })
+        return assessment.partial ? `${line} ${t('assessPartial')}` : line
+      }
+      case 'revocable':
+        return t('assessRevocable')
+      case 'returned':
+        return t('assessReturned')
+      case 'channel':
+        return t('assessChannel')
+      case 'none':
+        return t('assessNone')
+    }
+  })()
 
   // The explorer is the independent witness this document points at: it names who holds the receipt token.
   const receiptContract = deployment?.contracts.DonationReceipt ?? null
@@ -80,7 +104,22 @@ export function TaxReceiptPanel({ track, unit }: { track: DonationTrack; unit: s
         )}
       </p>
 
-      <p className="mt-2 text-xs text-slate-600">{acknowledged ? t('acknowledged') : t('notAcknowledged')}</p>
+      <p
+        className={`mt-2 rounded-md px-3 py-2 text-xs font-medium ${
+          assessment.kind === 'deductible' ? 'bg-emerald-50 text-emerald-900' : 'bg-slate-50 text-slate-700'
+        }`}
+        data-testid="tax-assessment"
+        data-kind={assessment.kind}
+      >
+        {verdict}
+      </p>
+
+      {/* The $250 acknowledgment rule is American; an IPC reports to IRAS instead. */}
+      {regime !== 'SG_IPC' ? (
+        <p className="mt-2 text-xs text-slate-600">
+          {acknowledged ? t('acknowledged') : t('notAcknowledged')}
+        </p>
+      ) : null}
 
       {explorerNft ? (
         <p className="mt-2 text-xs text-slate-600">

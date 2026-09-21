@@ -1,6 +1,7 @@
 import type { NeedBadges, OrgTaxStatusView } from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import { bpsPercent } from '@/lib/format'
+import { parseJurisdiction, regimeOf } from '@/lib/taxEligibility'
 
 /**
  * What the chain can say about the organisation behind a need. Both badges are facts recomputed from events,
@@ -21,6 +22,9 @@ export function NeedBadgeRow({
   className?: string
 }) {
   const t = useTranslations('badges')
+  const tDeduction = useTranslations('deduction')
+  const regime = regimeOf(taxStatus)
+  const country = taxStatus ? parseJurisdiction(taxStatus.jurisdiction).country : ''
   const clean = badges.payoutAccuracyBps !== null && badges.payoutAccuracyBps >= 10_000
 
   if (badges.workPhotos === 0 && badges.payoutAccuracyBps === null && !taxStatus) return null
@@ -41,14 +45,22 @@ export function NeedBadgeRow({
           {clean ? t('payouts') : t('payoutsPartial', { percent: bpsPercent(badges.payoutAccuracyBps) })}
         </li>
       ) : null}
-      {taxStatus ? (
+      {taxStatus && regime ? (
+        <li
+          className="badge bg-emerald-100 text-emerald-900"
+          title={t('taxDeductibleHint')}
+          data-testid="tax-deductible-badge"
+        >
+          {t('taxDeductible', { regime: tDeduction(regime === 'US_501C3' ? 'regimeUS' : 'regimeSG') })}
+        </li>
+      ) : taxStatus ? (
         <li
           className={`badge ${taxStatus.verified ? 'bg-indigo-100 text-indigo-900' : 'bg-slate-100 text-slate-600'}`}
           title={taxStatus.verified ? t('taxVerifiedHint') : t('taxClaimedHint')}
         >
           {taxStatus.verified
-            ? t('tax', { jurisdiction: taxStatus.jurisdiction, id: taxStatus.taxId })
-            : `${t('tax', { jurisdiction: taxStatus.jurisdiction, id: taxStatus.taxId })} ${t('taxUnchecked')}`}
+            ? t('tax', { jurisdiction: country, id: taxStatus.taxId })
+            : `${t('tax', { jurisdiction: country, id: taxStatus.taxId })} ${t('taxUnchecked')}`}
         </li>
       ) : null}
       {badges.needsCompleted > 0 ? (

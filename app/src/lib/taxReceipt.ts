@@ -1,17 +1,24 @@
 import type { DonationTrack } from '@poa/shared'
 import { amount, timestamp } from '@/lib/format'
 import { PdfReport } from '@/lib/pdf'
+import {
+  assessDonation,
+  type DeductionAssessment,
+  parseJurisdiction,
+  sgDeductionRate,
+} from '@/lib/taxEligibility'
 
 /**
- * The document a US donor gives their accountant, built in the browser so the donor's own name and address
- * never reach a server or a chain.
+ * The document a donor gives their accountant, built in the browser so the donor's own name and address
+ * never reach a server or a chain. What it says about deductibility comes from `assessDonation`: which regime
+ * the organisation is verified under (US 501(c)(3) or Singapore IPC), how the money was given, and whether the
+ * gift is complete yet.
  *
- * It is a *contemporaneous written acknowledgment* in the IRS sense only when the donee organisation has
- * signed one on chain: that signature is what §170(f)(8) asks for, and this document quotes it, along with the
- * attestation that carries it. Everything else here is copied from events anyone can verify.
+ * For a US donor it is a *contemporaneous written acknowledgment* in the §170(f)(8) sense only when the donee
+ * has signed one on chain; this document quotes it. A Singapore donor needs no receipt at all: the IPC reports
+ * the donation to IRAS against the donor's NRIC/FIN, so this is a record, not a claim form.
  *
- * What this is not: advice that a contribution is deductible. That depends on the organisation's standing and
- * on the donor — their holding period, their basis, their own return. The document says so, in those words.
+ * What this is not: advice that a contribution is deductible for this donor. The document says so.
  */
 
 /** What the organisation signs, and what this document quotes back. Kept identical on both sides. */
@@ -47,6 +54,42 @@ export interface TaxReceiptInput {
   explorerVaultReadUrl: string | null
 }
 
+const REGIME_NAME = { US_501C3: 'United States', SG_IPC: 'Singapore' } as const
+
+/** One sentence per outcome, the same wording the tracking page shows. */
+export const assessmentSentence = (assessment: DeductionAssessment, unit: string): string => {
+  switch (assessment.kind) {
+    case 'none':
+      return (
+        'This organisation is not a platform-verified US 501(c)(3) or Singapore Institution of a Public ' +
+        'Character, so this document makes no statement that the donation is deductible.'
+      )
+    case 'channel':
+      return (
+        'Not deductible in Singapore: a donation of digital tokens is not a qualifying donation type under ' +
+        'IRAS rules. Only money given by card or bank transfer counts.'
+      )
+    case 'revocable':
+      return (
+        'Not deductible yet. Funding for this need is still open and the donor can take this donation back, ' +
+        'so it is not yet a completed gift. It becomes one when funding closes; download this receipt again ' +
+        'after that date for the final version.'
+      )
+    case 'returned':
+      return 'Not deductible: this donation was returned to the donor (withdrawn or refunded).'
+    case 'deductible': {
+      const where = REGIME_NAME[assessment.regime]
+      const base =
+        `Deductible in ${where}, subject to the donor's own circumstances: ${amount(assessment.amount)} ` +
+        `${unit}, a completed gift since ${timestamp(assessment.since)}, when funding for this need closed and ` +
+        'the donation could no longer be taken back.'
+      return assessment.partial
+        ? `${base} Only the part already paid out for the need counts; the rest is refunded to the donor.`
+        : base
+    }
+  }
+}
+
 export const renderTaxReceipt = async (input: TaxReceiptInput): Promise<Uint8Array> => {
   const { track, unit, donorName, donorAddress } = input
   const tax = track.need.taxStatus
@@ -54,6 +97,10 @@ export const renderTaxReceipt = async (input: TaxReceiptInput): Promise<Uint8Arr
   const donation = track.donation
   const date = timestamp(donation.timestamp)
   const receiptId = donation.receiptId ?? track.ref
+  const assessment = assessDonation(track)
+  const regime = assessment.kind === 'none' ? null : assessment.regime
+  const cash = track.refKind === 'payment'
+  const done = assessment.kind === 'deductible' ? assessment : null
 
   const report = await PdfReport.create({
     title: `Donation receipt - ${track.ref}`,
@@ -62,7 +109,9 @@ export const renderTaxReceipt = async (input: TaxReceiptInput): Promise<Uint8Arr
 
   report.title(
     'Donation receipt',
-    tax ? `${tax.legalName}${tax.taxId ? ` - ${tax.jurisdiction} tax id ${tax.taxId}` : ''}` : track.need.ngo,
+    tax
+      ? `${tax.legalName}${tax.taxId ? ` - ${parseJurisdiction(tax.jurisdiction).country} tax id ${tax.taxId}` : ''}`
+      : track.need.ngo,
   )
 
   report.keyValues([
@@ -70,40 +119,54 @@ export const renderTaxReceipt = async (input: TaxReceiptInput): Promise<Uint8Arr
     ['Donor address', donorAddress || '(not stated)'],
     ['Date of contribution', date],
     ['Amount', `${amount(donation.amount)} ${unit}`],
-    ['Form of contribution', `${unit} (a digital asset), transferred on-chain`],
-    ['Donor wallet (holds the receipt)', donation.donor ?? '-'],
+    [
+      'Form of contribution',
+      cash
+        ? `Money paid by card or bank transfer through a payment provider, credited to the need as ${unit}`
+        : `${unit} (a digital asset), transferred on-chain`,
+    ],
+    ...(cash
+      ? ([['Payment reference', track.ref]] as [string, string][])
+      : ([['Donor wallet (holds the receipt)', donation.donor ?? '-']] as [string, string][])),
     ['Transferred to', track.need.vault ?? '-'],
     ['Transaction', donation.txHash],
     ['Need', `#${track.need.id} - ${track.need.categoryLabel}, ${track.need.regionLabel}`],
-    ['Receipt token', `#${track.ref} (soulbound; non-transferable, no market value)`],
+    ...(donation.receiptId
+      ? ([['Receipt token', `#${donation.receiptId} (soulbound; non-transferable, no market value)`]] as [
+          string,
+          string,
+        ][])
+      : []),
+    ...(done || assessment.kind === 'revocable'
+      ? ([['Completed gift on', done ? timestamp(done.since) : 'Not yet - see below']] as [string, string][])
+      : []),
+    ...(done && done.regime === 'US_501C3'
+      ? ([['US tax year', String(done.taxYear)]] as [string, string][])
+      : []),
+    ...(done && done.regime === 'SG_IPC'
+      ? ([['Singapore Year of Assessment', String(done.taxYear + 1)]] as [string, string][])
+      : []),
+    ...(done?.partial
+      ? ([['Deductible amount', `${amount(done.amount)} ${unit}`]] as [string, string][])
+      : []),
   ])
 
-  report.heading('Acknowledgment by the donee')
-  if (ack) {
-    report.paragraph(ack.statement)
-    report.keyValues([
-      ['Signed by', ack.ngo],
-      ['Signed at', timestamp(ack.timestamp)],
-      ['Attestation', ack.uid],
-      ['Document hash', ack.documentHash],
-      ...(input.explorerAttestationUrl
-        ? [['Verify at', input.explorerAttestationUrl] as [string, string]]
-        : []),
-    ])
-  } else {
-    report.paragraph(
-      'This organisation has not signed an acknowledgment for this contribution yet. For a contribution of ' +
-        '$250 or more, US donors are required to hold a contemporaneous written acknowledgment from the donee. ' +
-        'Ask the organisation to sign one; it will then appear here and on the public tracking page.',
-    )
-  }
+  report.heading('Deductibility')
+  report.paragraph(assessmentSentence(assessment, unit))
 
   report.heading('Tax standing of the organisation')
   if (tax) {
     report.keyValues([
       ['Legal name', tax.legalName],
-      ['Jurisdiction', tax.jurisdiction],
-      ['Tax identification number', tax.taxId],
+      [
+        'Designation',
+        regime === 'US_501C3'
+          ? 'United States - 501(c)(3) public charity'
+          : regime === 'SG_IPC'
+            ? 'Singapore - Institution of a Public Character (IPC)'
+            : `${tax.jurisdiction} - not a designation this platform treats as deductible`,
+      ],
+      [regime === 'SG_IPC' ? 'UEN' : 'Tax identification number', tax.taxId],
       ['Stated source', tax.source],
       [
         'Checked by the platform',
@@ -113,20 +176,14 @@ export const renderTaxReceipt = async (input: TaxReceiptInput): Promise<Uint8Arr
       ],
     ])
   } else {
-    report.paragraph(
-      'This organisation has published no tax standing. Contributions to it are unlikely to be deductible in ' +
-        'the United States unless it is a qualified organisation under section 170(c).',
-    )
+    report.paragraph('This organisation has published no tax standing.')
   }
 
-  report.heading('What your accountant will ask')
-  report.paragraph(
-    'A donation of a digital asset is a non-cash contribution. Above 500 US dollars it is reported on Form ' +
-      '8283, Section A. Above 5,000 US dollars the IRS has required a qualified appraisal and a donee ' +
-      'signature on Form 8283, Section B; an exchange price is not a substitute for one. The deductible ' +
-      'amount depends on how long you held the asset and on your basis in it, neither of which is recorded ' +
-      'here.',
-  )
+  if (regime === 'SG_IPC') {
+    renderSingapore(report, assessment, donation.timestamp, ack, input.explorerAttestationUrl)
+  } else {
+    renderUnitedStates(report, { cash, regime, ack, explorerAttestationUrl: input.explorerAttestationUrl })
+  }
 
   report.heading('How to verify every figure above')
   report.paragraph(
@@ -145,18 +202,22 @@ export const renderTaxReceipt = async (input: TaxReceiptInput): Promise<Uint8Arr
     )
   }
   report.keyValues([
-    ['Receipt token, in the explorer', input.explorerNftUrl],
+    ...(input.explorerNftUrl
+      ? ([['Receipt token, in the explorer', input.explorerNftUrl]] as [string, string][])
+      : []),
     ['Tracking page', input.trackingUrl],
     ['Transaction', input.explorerTxUrl],
   ])
-  if (input.explorerReceiptReadUrl || input.explorerVaultReadUrl) {
+  const walletRows = Boolean(donation.receiptId && input.explorerReceiptReadUrl)
+  const vaultRows = Boolean(donation.donor && input.explorerVaultReadUrl)
+  if (walletRows || vaultRows) {
     report.paragraph(
       'An explorer renders token metadata from a cached copy, so read the contracts directly for the figure ' +
         'of record. On the "Read Contract" tab of each address below, anyone can call these without a wallet, ' +
         'an account or any permission:',
     )
     report.keyValues([
-      ...(input.explorerReceiptReadUrl
+      ...(walletRows
         ? ([
             ['Receipt contract', input.explorerReceiptReadUrl],
             ['  ownerOf(' + receiptId + ')', 'the wallet holding this receipt today'],
@@ -167,12 +228,13 @@ export const renderTaxReceipt = async (input: TaxReceiptInput): Promise<Uint8Arr
             ['  locked(' + receiptId + ')', 'true - the token cannot be transferred or sold'],
           ] as [string, string][])
         : []),
-      ...(input.explorerVaultReadUrl
+      ...(vaultRows
         ? ([
             ['Vault holding the money', input.explorerVaultReadUrl],
             [
-              '  donatedBy(' + (donation.donor ?? 'wallet') + ')',
-              'everything this wallet has given to this need, net of anything it took back',
+              '  donatedBy(donor wallet)',
+              `called with ${donation.donor ?? 'the donor wallet'}: everything this wallet has given to this ` +
+                'need, net of anything it took back',
             ],
             ['  totalDonated()', 'what the need has raised in total, which this contribution is part of'],
           ] as [string, string][])
@@ -187,9 +249,103 @@ export const renderTaxReceipt = async (input: TaxReceiptInput): Promise<Uint8Arr
 
   report.paragraph(
     'This document is a record of a transaction and of what the donee signed. It is not tax advice, and ' +
-      'nothing here states that your contribution is deductible: that depends on the organisation and on your ' +
-      'own circumstances. Speak to a tax professional.',
+      'whether this contribution is deductible for you depends on your own circumstances. Speak to a tax ' +
+      'professional.',
   )
 
   return report.finish('Proof of Aid - every figure in this document is verifiable on-chain')
+}
+
+const renderUnitedStates = (
+  report: PdfReport,
+  input: {
+    cash: boolean
+    regime: 'US_501C3' | null
+    ack: DonationTrack['acknowledgment']
+    explorerAttestationUrl: string | null
+  },
+): void => {
+  const { ack } = input
+  report.heading('Acknowledgment by the donee')
+  if (ack) {
+    report.paragraph(ack.statement)
+    report.keyValues([
+      ['Signed by', ack.ngo],
+      ['Signed at', timestamp(ack.timestamp)],
+      ['Attestation', ack.uid],
+      ['Document hash', ack.documentHash],
+      ...(input.explorerAttestationUrl
+        ? [['Verify at', input.explorerAttestationUrl] as [string, string]]
+        : []),
+    ])
+  } else {
+    report.paragraph(
+      'This organisation has not signed an acknowledgment for this contribution yet. For a contribution of ' +
+        '$250 or more, US donors are required to hold a contemporaneous written acknowledgment from the donee, ' +
+        'obtained before they file. Ask the organisation to sign one; it will then appear here and on the ' +
+        'public tracking page.',
+    )
+  }
+
+  if (!input.regime) return
+
+  report.heading('What your accountant will ask (United States)')
+  if (input.cash) {
+    report.paragraph(
+      'This is a cash contribution: money paid by card or bank transfer. Keep this document together with ' +
+        'the card or bank statement that shows the payment. From tax year 2026 a donor who does not itemize ' +
+        'can still deduct up to 1,000 US dollars (2,000 filing jointly) of cash contributions to public ' +
+        'charities; a donor who itemizes deducts it on Schedule A.',
+    )
+  } else {
+    report.paragraph(
+      'A donation of a digital asset is a non-cash contribution of property. Above 500 US dollars it is ' +
+        'reported on Form 8283, Section A. Above 5,000 US dollars the IRS has required a qualified appraisal ' +
+        'and a donee signature on Form 8283, Section B; an exchange price is not a substitute for one. The ' +
+        'deductible amount depends on how long you held the asset and on your basis in it, neither of which ' +
+        'is recorded here. A non-cash contribution is not covered by the deduction for donors who do not ' +
+        'itemize.',
+    )
+  }
+}
+
+const renderSingapore = (
+  report: PdfReport,
+  assessment: DeductionAssessment,
+  donatedAt: number,
+  ack: DonationTrack['acknowledgment'],
+  explorerAttestationUrl: string | null,
+): void => {
+  report.heading('How the deduction works in Singapore')
+  if (assessment.kind === 'channel') {
+    report.paragraph(
+      'IRAS grants a deduction for specific donation types: cash (including card, bank transfer and ' +
+        'PayNow), shares listed in Singapore, and a few others. Digital payment tokens are not among them, so ' +
+        'this donation is a record of giving, not a deductible donation. To give deductibly to this ' +
+        'organisation, give by card or bank transfer.',
+    )
+    return
+  }
+  const rate = sgDeductionRate(donatedAt)
+  report.paragraph(
+    rate
+      ? `A qualifying cash donation to an IPC is deducted at ${rate}% of its amount from your assessable ` +
+          'income, for donations made up to 31 December 2026.'
+      : 'A qualifying cash donation to an IPC is deductible; check the rate that applies with IRAS.',
+  )
+  report.paragraph(
+    'You do not claim it yourself and do not need to send this document to anyone. The organisation reports ' +
+      'the donation to IRAS against your NRIC, FIN or UEN, and IRAS includes it in your assessment for the ' +
+      'following Year of Assessment. That only happens if the organisation has your number: give it to them ' +
+      'directly. This platform never collects it. If the deduction is missing from your assessment, ask the ' +
+      'organisation to report it.',
+  )
+  report.paragraph('No deduction is allowed if you received a benefit in return for the donation.')
+  if (ack) {
+    report.paragraph(`The organisation signed, on chain: ${ack.statement}`)
+    report.keyValues([
+      ['Attestation', ack.uid],
+      ...(explorerAttestationUrl ? [['Verify at', explorerAttestationUrl] as [string, string]] : []),
+    ])
+  }
 }

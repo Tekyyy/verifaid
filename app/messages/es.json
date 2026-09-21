@@ -963,11 +963,34 @@
     "tax": "Nº fiscal {jurisdiction} {id}",
     "taxUnchecked": "(sin comprobar)",
     "taxVerifiedHint": "La organización publicó un número de registro y esta plataforma lo comprobó en el registro público.",
-    "taxClaimedHint": "Declaración de la propia organización. Aquí nadie lo ha comprobado."
+    "taxClaimedHint": "Declaración de la propia organización. Aquí nadie lo ha comprobado.",
+    "taxDeductible": "Desgravable · {regime}",
+    "taxDeductibleHint": "Una 501(c)(3) de EE. UU. o IPC de Singapur comprobada por la plataforma: en la página de la necesidad se indica qué formas de donar cuentan."
   },
   "photos": {
     "title": "Fotos del trabajo",
     "note": "Publicadas por la ONG que ejecutó esta necesidad y firmadas con su cartera. Las imágenes las aloja la ONG; en cadena solo van los enlaces y la firma. Muestran bienes, lugares y entregas, nunca a las personas beneficiarias."
+  },
+  "deduction": {
+    "usTitle": "Desgravable en Estados Unidos",
+    "usBody": "{name} es una entidad benéfica 501(c)(3) (EIN {id}). Las donaciones a ella se pueden deducir en la declaración federal de EE. UU.",
+    "usDigital": "Los tokens enviados desde una wallet, comprados con tarjeta o desde un exchange son una donación en especie: por encima de 500 $ se declara en el formulario 8283, y por encima de 5.000 $ el IRS exige una tasación cualificada.",
+    "usCash": "El dinero dado con tarjeta o transferencia es una donación en efectivo. Desde el ejercicio 2026, quien no detalla deducciones puede deducir igualmente hasta 1.000 $ (2.000 $ en declaración conjunta) de donaciones en efectivo.",
+    "usWhen": "Pasa a ser una donación firme cuando se cierra la financiación de esta necesidad. Hasta entonces puedes recuperarla, así que todavía no es deducible.",
+    "usReceipt": "Después de donar, descarga el justificante para tu declaración desde la página de seguimiento. Para 250 $ o más necesitas además el reconocimiento firmado de la organización, que se firma en la cadena.",
+    "sgTitle": "Desgravable en Singapur — solo tarjeta o transferencia",
+    "sgBody": "{name} es una Institution of a Public Character (UEN {id}). Las donaciones en efectivo a ella son deducibles en Singapur.",
+    "sgRate": "Las donaciones que cumplen los requisitos tienen una deducción del {rate}% (para donaciones hechas hasta el 31 dic 2026).",
+    "sgRateUnknown": "Las donaciones que cumplen los requisitos son deducibles; consulta el porcentaje vigente en IRAS.",
+    "sgCashOnly": "Solo cuenta el dinero dado con tarjeta o transferencia. Los tokens enviados desde una wallet o un exchange no son un tipo de donación admitido, así que no son deducibles.",
+    "sgNric": "No hay justificante que presentar: la organización comunica tu donación a IRAS con tu NRIC, FIN o UEN y se incluye en tu liquidación. Dale ese número directamente a la organización — esta plataforma nunca lo pide.",
+    "sgWhen": "Cuenta cuando se cierra la financiación de esta necesidad; hasta entonces puedes recuperarla.",
+    "checked": "Comprobado por esta plataforma en el registro público: {source}",
+    "disclaimer": "Que puedas deducirla depende de tu propia declaración. Esto no es asesoramiento fiscal.",
+    "lineDigital": "Deducible como donación en especie ({regime}). Podrás descargar el justificante fiscal después de donar.",
+    "lineCash": "Deducible como donación en efectivo ({regime}).",
+    "regimeUS": "501(c)(3) de EE. UU.",
+    "regimeSG": "IPC de Singapur"
   },
   "tax": {
     "title": "Justificante para tu declaración",
@@ -989,7 +1012,12 @@
     "statusOrgHint": "Rellénalo para confirmar la declaración de otra organización. Déjalo vacío para publicar la tuya.",
     "statusJurisdiction": "Jurisdicción (código ISO de país)",
     "statusTaxId": "Número de registro",
-    "statusTaxIdHint": "Un EIN para una 501(c)(3) estadounidense. Es información pública de la organización.",
+    "statusTaxIdHint": "Un EIN para una 501(c)(3) estadounidense, un UEN para una IPC de Singapur. Es información pública de la organización.",
+    "statusDesignation": "Categoría fiscal",
+    "designationUS": "Estados Unidos — entidad benéfica 501(c)(3)",
+    "designationSG": "Singapur — Institution of a Public Character (IPC)",
+    "designationOther": "Otra — registrada, pero las donaciones no se muestran como deducibles",
+    "statusCountry": "País (código ISO)",
     "statusLegalName": "Denominación legal registrada",
     "statusSource": "Enlace a la resolución o al asiento registral",
     "statusSourceHint": "Donde cualquiera puede comprobarlo por su cuenta.",
@@ -1011,6 +1039,13 @@
     "ackHint": "No se publica ningún nombre: el acuse es sobre la donación, y quien dona añade sus datos al documento que descarga.",
     "errorNoStatus": "Publica antes tu situación fiscal: el acuse cita tu denominación legal y tu número de registro.",
     "holderNote": "El recibo n.º {id} no se puede transferir ni vender, así que quien lo tiene es la cartera que pagó. Un explorador de bloques lo dice por su cuenta, junto con el importe.",
-    "holderLink": "Ver quién lo tiene en el explorador →"
+    "holderLink": "Ver quién lo tiene en el explorador →",
+    "assessDeductibleUS": "Deducible en EE. UU.: {amount} {unit}, donación firme desde el {date} (ejercicio {year}).",
+    "assessDeductibleSG": "Deducible en Singapur: {amount} {unit}, donación firme desde el {date} (Year of Assessment {ya}). La organización la comunica a IRAS con tu NRIC o FIN — tú no presentas nada.",
+    "assessPartial": "Solo cuenta la parte ya pagada para la necesidad; el resto se te devuelve.",
+    "assessRevocable": "Todavía no es deducible: la financiación sigue abierta y puedes recuperar esta donación. Pasa a ser firme cuando se cierra la financiación — vuelve entonces a por el justificante definitivo.",
+    "assessReturned": "No es deducible: esta donación se te ha devuelto.",
+    "assessChannel": "No es deducible en Singapur: los tokens enviados desde una wallet o un exchange no son un tipo de donación admitido. Solo cuenta el dinero dado con tarjeta o transferencia.",
+    "assessNone": "Esta organización no es una 501(c)(3) de EE. UU. ni una IPC de Singapur comprobada por la plataforma, así que este justificante no afirma que la donación sea deducible."
   }
 }
