@@ -274,7 +274,9 @@
     "withdrawButton": "Recuperarla",
     "withdrawReceipt": "Recibo n.º {id} · {date}",
     "presentationTitle": "Sobre esta necesidad",
-    "presentationBy": "Publicado por la ONG que registró esta necesidad"
+    "presentationBy": "Publicado por la ONG que registró esta necesidad",
+    "donateApproved": "1. Aprobado ✓",
+    "donateApproveFirst": "Aprueba antes a la bóveda: hasta entonces esta transacción fallaría."
   },
   "donor": {
     "title": "Mis donaciones",

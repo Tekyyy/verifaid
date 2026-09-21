@@ -104,6 +104,20 @@ export function DonatePanel({
   const ethBalance = useBalance({ address: wallet, query: { enabled: Boolean(wallet && selected?.native) } })
   const balance = selected?.native ? ethBalance.data?.value : tokenBalance.data
 
+  /**
+   * `AidVault.donate` pulls the tokens, so without an allowance it reverts before a wallet can even estimate
+   * its gas — which a wallet reports as "this transaction is likely to fail". The button is held until the
+   * allowance is really there rather than letting someone sign something that cannot succeed.
+   */
+  const allowance = useReadContract({
+    address: token,
+    abi: mockEURCAbi,
+    functionName: 'allowance',
+    args: wallet && vault ? [wallet, vault] : undefined,
+    query: { enabled: Boolean(wallet && vault && token) },
+  })
+  const approved = parsed !== null && parsed > 0n && (allowance.data ?? 0n) >= parsed
+
   const choose = (next: DonationToken['symbol']) => {
     setSymbol(next)
     setValue('')
@@ -117,12 +131,13 @@ export function DonatePanel({
   const runApprove = async () => {
     if (!parsed || !token || !vault) return setFormError(tErrors('invalidAmount'))
     setFormError(null)
-    await approve.run({
+    const result = await approve.run({
       address: token,
       abi: mockEURCAbi,
       functionName: 'approve',
       args: [vault, parsed],
     })
+    if (result) await allowance.refetch()
   }
 
   const runDonate = async () => {
@@ -135,7 +150,10 @@ export function DonatePanel({
       functionName: 'donate',
       args: [parsed],
     })
-    if (result) setReceiptId(receiptIdOf(result.logs))
+    if (result) {
+      setReceiptId(receiptIdOf(result.logs))
+      await allowance.refetch()
+    }
   }
 
   const runConverted = async () => {
@@ -317,9 +335,9 @@ export function DonatePanel({
                   type="button"
                   className="btn-secondary w-full sm:w-auto"
                   onClick={runApprove}
-                  disabled={wrongChain || busy(approve)}
+                  disabled={wrongChain || busy(approve) || approved}
                 >
-                  {t('donateApprove')}
+                  {approved ? t('donateApproved') : t('donateApprove')}
                 </button>
                 <TxStatus state={approve} />
               </div>
@@ -328,10 +346,13 @@ export function DonatePanel({
                   type="button"
                   className="btn-primary w-full sm:w-auto"
                   onClick={runDonate}
-                  disabled={wrongChain || busy(donate)}
+                  disabled={wrongChain || busy(donate) || !approved}
                 >
                   {t('donateSend')}
                 </button>
+                {!approved && parsed !== null && parsed > 0n ? (
+                  <p className="hint">{t('donateApproveFirst')}</p>
+                ) : null}
                 <TxStatus state={donate} />
               </div>
             </div>

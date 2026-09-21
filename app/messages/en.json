@@ -274,7 +274,9 @@
     "withdrawButton": "Take it back",
     "withdrawReceipt": "Receipt #{id} · {date}",
     "presentationTitle": "About this need",
-    "presentationBy": "Published by the NGO that registered this need"
+    "presentationBy": "Published by the NGO that registered this need",
+    "donateApproved": "1. Approved ✓",
+    "donateApproveFirst": "Approve the vault first — until you do, this transaction would fail."
   },
   "donor": {
     "title": "My donations",
