@@ -188,7 +188,6 @@
     "sort_gap": "Mayor importe pendiente",
     "sort_newest": "Más recientes",
     "gap": "Falta",
-    "withdrawnNote": "({amount} recuperados)",
     "ofTarget": "de {target} recaudado · {percent}%"
   },
   "need": {
@@ -276,7 +275,10 @@
     "presentationTitle": "Sobre esta necesidad",
     "presentationBy": "Publicado por la ONG que registró esta necesidad",
     "donateApproved": "1. Aprobado ✓",
-    "donateApproveFirst": "Aprueba antes a la bóveda: hasta entonces esta transacción fallaría."
+    "donateApproveFirst": "Aprueba antes a la bóveda: hasta entonces esta transacción fallaría.",
+    "withdrawnNote": "({amount} recuperados)",
+    "yourStake": "Has dado {amount} {unit} a esta necesidad.",
+    "yourStakeWithdraw": "Recupéralo →"
   },
   "donor": {
     "title": "Mis donaciones",

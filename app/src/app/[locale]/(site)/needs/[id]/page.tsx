@@ -23,6 +23,7 @@ import { Timeline } from '@/components/Timeline'
 import { TrancheBar } from '@/components/TrancheBar'
 import { WithdrawDonationPanel } from '@/components/WithdrawDonationPanel'
 import { WorkPhotos } from '@/components/WorkPhotos'
+import { YourDonationsNote } from '@/components/YourDonationsNote'
 import { conversionsEnabled } from '@/lib/config'
 import { amount, percent, timestamp } from '@/lib/format'
 import { getNeed, getTimeline, needFeedPath } from '@/lib/indexer'
@@ -277,6 +278,7 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
             <h2 id="donations" className="section-title">
               {t('donationsTitle')}
             </h2>
+            <YourDonationsNote need={data} />
             <DonationList donations={data.donations} />
           </section>
 

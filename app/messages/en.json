@@ -188,7 +188,6 @@
     "sort_gap": "Largest funding gap",
     "sort_newest": "Newest",
     "gap": "Still needed",
-    "withdrawnNote": "({amount} taken back)",
     "ofTarget": "of {target} raised · {percent}%"
   },
   "need": {
@@ -276,7 +275,10 @@
     "presentationTitle": "About this need",
     "presentationBy": "Published by the NGO that registered this need",
     "donateApproved": "1. Approved ✓",
-    "donateApproveFirst": "Approve the vault first — until you do, this transaction would fail."
+    "donateApproveFirst": "Approve the vault first — until you do, this transaction would fail.",
+    "withdrawnNote": "({amount} taken back)",
+    "yourStake": "You have given {amount} {unit} to this need.",
+    "yourStakeWithdraw": "Take it back →"
   },
   "donor": {
     "title": "My donations",
