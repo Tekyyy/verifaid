@@ -12,6 +12,7 @@ import {
   encodeSchemaData,
   formatAmount,
   mockEURCAbi,
+  mockYieldVaultAbi,
   NATIVE_TOKEN,
   NEED_STATUS_VALUE,
   needStatusName,
@@ -59,16 +60,19 @@ import { attestation, fail, heading, info, note, step, tx } from './log.js'
  *      vaults hold USDC; euros and ETH are swapped into it under the Chainlink bound; and an exchange withdrawal
  *      reaches a deposit address that can only ever donate to its need or refund.
  *
- *   pnpm demo:run anvil            all four
- *   pnpm demo:run base-sepolia onchain offchain
+ *   5. Idle capital: a programme whose deliveries run for months lets the committed money wait in an ERC-4626
+ *      venue, earns on it, pays every supplier out of it, and hands the earnings to the NGO at the end.
+ *
+ *   pnpm demo:run anvil            all five
+ *   pnpm demo:run base-sepolia onchain idle
  */
 
 const EXPECTED_RECIPIENTS = 10
 const REGION = regionCode('ES-CM')
 const BPS = 10_000n
 
-type Scenario = 'onchain' | 'offchain' | 'expiry' | 'conversion'
-const SCENARIOS: Scenario[] = ['onchain', 'offchain', 'expiry', 'conversion']
+type Scenario = 'onchain' | 'offchain' | 'expiry' | 'conversion' | 'idle'
+const SCENARIOS: Scenario[] = ['onchain', 'offchain', 'expiry', 'conversion', 'idle']
 
 interface NeedSpec {
   label: string
@@ -120,6 +124,14 @@ const main = async (): Promise<void> => {
     }
   }
 
+  if (selected.includes('idle')) {
+    if (external.YieldVenue && external.YieldVenue !== zeroAddress) {
+      links.push(...(await idleScenario(ctx, programId, proofs)))
+    } else {
+      note('skipping the idle-capital scenario: this deployment approves no venue')
+    }
+  }
+
   heading('Done')
   for (const link of links) note(link)
   console.log('')
@@ -166,6 +178,135 @@ const onChainScenario = async (ctx: DemoContext, programId: bigint, proofs: Proo
     `  card donor tracking:      ${ctx.dashboardUrl}/en/track/${card}`,
     `  report:                   ${ctx.dashboardUrl}/api/reports/${needId}`,
   ]
+}
+
+// ─── scenario 5: idle capital ─────────────────────────────────────────────────
+
+/**
+ * The case this exists for: a programme whose deliveries run for months, holding money nobody can spend yet.
+ * Every rule that makes it safe is visible here — it only goes out once funding has closed, a tranche that is
+ * payable now never leaves, releasing pulls back whatever the vault is short of, and the earnings are handed
+ * over only at the end. What a donor gave stays what a donor is owed throughout.
+ */
+const idleScenario = async (ctx: DemoContext, programId: bigint, proofs: Proofs): Promise<string[]> => {
+  heading('5 · Idle capital: committed money earns while it waits for a delivery')
+  const venue = ctx.deployment.external.YieldVenue as Address
+  const spec: NeedSpec = {
+    label: 'boreholes over two dry seasons',
+    category: 'WATER',
+    target: 4_000_000_000n,
+    trancheBps: [2000, 4000, 4000],
+    custodyMode: 'OnChain',
+    minFundingBps: 6000,
+    thirdPartyCostBps: 0,
+    fundingWindowSeconds: 30 * 86_400,
+    executionWindowSeconds: 180 * 86_400,
+    outcome: '6 boreholes drilled and handed over in ES-CM across two dry seasons',
+  }
+  const needId = await createNeed(ctx, programId, spec, zeroAddress)
+
+  step('The NGO opts the need in — only possible now, before it can take a single donation')
+  const optIn = await send(ctx, 'ngo', {
+    address: ctx.deployment.contracts.NeedsRegistry,
+    abi: needsRegistryAbi as Abi,
+    functionName: 'enableYield',
+    args: [needId],
+  })
+  info('venue', venue)
+  note('a donor sees this on the need before giving; after verification it can no longer be turned on')
+  tx(ctx.network, 'tx', optIn.hash)
+
+  const vault = await verifyNeed(ctx, needId)
+  await donateDirect(ctx, vault, spec.target)
+  await expectStatus(ctx, needId, 'Funded')
+  await releaseOnChain(ctx, vault, 0)
+
+  step('What no supplier can claim yet goes to the venue to earn')
+  const room = (await ctx.publicClient.readContract({
+    address: vault,
+    abi: aidVaultAbi,
+    functionName: 'deployableAmount',
+  })) as bigint
+  const deployed = await send(ctx, 'ngo', {
+    address: vault,
+    abi: aidVaultAbi as Abi,
+    functionName: 'deployIdle',
+    args: [room],
+  })
+  info('lent', `${formatAmount(room)} units, at cost`)
+  note('the cap and every tranche a delivery could unlock today are both held back')
+  tx(ctx.network, 'tx', deployed.hash)
+
+  step('Interest arrives and the need takes it')
+  const gain = room / 20n // a round 5%, standing in for months of a real rate
+  await mintIfPossible(ctx, 'donor2', gain)
+  await send(ctx, 'donor2', {
+    address: ctx.deployment.external.Token,
+    abi: mockEURCAbi as Abi,
+    functionName: 'approve',
+    args: [venue, gain],
+  })
+  await send(ctx, 'donor2', {
+    address: venue,
+    abi: mockYieldVaultAbi as Abi,
+    functionName: 'accrue',
+    args: [gain],
+  })
+  const harvested = await send(ctx, 'ngo', {
+    address: vault,
+    abi: aidVaultAbi as Abi,
+    functionName: 'harvest',
+    args: [],
+  })
+  const earned = (await ctx.publicClient.readContract({
+    address: vault,
+    abi: aidVaultAbi,
+    functionName: 'yieldRealised',
+  })) as bigint
+  info('earned', `${formatAmount(earned)} units, realised into the vault`)
+  tx(ctx.network, 'tx', harvested.hash)
+
+  step('Deliveries: each release pulls back from the venue whatever the vault is short of')
+  let lastSignOff: Hex | undefined
+  for (let index = 1; index < spec.trancheBps.length; index += 1) {
+    lastSignOff = await runDelivery(ctx, needId, index, proofs)
+    await releaseOnChain(ctx, vault, index)
+  }
+  await expectStatus(ctx, needId, 'Completed')
+
+  step('The need is over: the position is closed and the earnings follow the work')
+  // Releasing pulls back only what each tranche needed, so the position can still be open — and a position
+  // that is open at all, even holding nothing, is one the vault will not pay earnings out of.
+  const sleeve = (await ctx.publicClient.readContract({
+    address: vault,
+    abi: aidVaultAbi,
+    functionName: 'sleeve',
+  })) as Address
+  const lent = (await ctx.publicClient.readContract({
+    address: vault,
+    abi: aidVaultAbi,
+    functionName: 'deployedPrincipal',
+  })) as bigint
+  if (sleeve !== zeroAddress) {
+    await send(ctx, 'ngo', {
+      address: vault,
+      abi: aidVaultAbi as Abi,
+      functionName: 'unwind',
+      args: [lent * 2n + 1n],
+    })
+  }
+  const paid = await send(ctx, 'ngo', {
+    address: vault,
+    abi: aidVaultAbi as Abi,
+    functionName: 'payYield',
+    args: [],
+  })
+  info('handed to the NGO', `${formatAmount(earned)} units`)
+  note('a donor would have been repaid what they gave, and never a slice of this')
+  tx(ctx.network, 'tx', paid.hash)
+
+  await publishImpactReport(ctx, needId, vault, lastSignOff, 600)
+  return [`need ${needId} (idle capital): ${ctx.dashboardUrl}/en/needs/${needId}`]
 }
 
 // ─── scenario 2: off-chain custody (Model A) ──────────────────────────────────

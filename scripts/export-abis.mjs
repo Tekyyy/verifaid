@@ -29,6 +29,7 @@ const FORGE_ARTIFACTS = [
   'DonationForwarder',
   'DonationForwarderFactory',
   'MockEURC',
+  'MockYieldVault',
   'Semaphore',
 ]
 
