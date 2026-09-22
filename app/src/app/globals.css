@@ -12,7 +12,7 @@
   }
 
   :focus-visible {
-    @apply outline outline-2 outline-offset-2 outline-indigo-700;
+    @apply outline outline-2 outline-offset-2 outline-teal-700;
   }
 
   a {
@@ -31,7 +31,7 @@
   }
 
   .btn-primary {
-    @apply btn bg-indigo-700 text-white hover:bg-indigo-800;
+    @apply btn bg-teal-700 text-white hover:bg-teal-800;
   }
 
   .btn-secondary {
@@ -44,6 +44,10 @@
 
   .btn-lg {
     @apply min-h-[56px] px-6 py-4 text-base;
+  }
+
+  .btn-accent {
+    @apply btn bg-amber-500 text-white hover:bg-amber-600;
   }
 
   .label {
@@ -64,7 +68,7 @@
   }
 
   .link {
-    @apply text-indigo-700 underline hover:text-indigo-900;
+    @apply text-teal-700 underline hover:text-teal-800;
   }
 
   .section-title {

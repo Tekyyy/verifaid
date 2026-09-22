@@ -2,8 +2,8 @@ import type { CustodyMode } from '@poa/shared'
 import { useTranslations } from 'next-intl'
 
 const TONES: Record<CustodyMode, string> = {
-  OnChain: 'bg-indigo-100 text-indigo-900',
-  OffChain: 'bg-teal-100 text-teal-900',
+  OnChain: 'bg-teal-100 text-teal-800',
+  OffChain: 'bg-teal-100 text-teal-800',
 }
 
 /** "Model B · on-chain escrow" or "Model A · payment provider", optionally with its one-line explanation. */

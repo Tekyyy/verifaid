@@ -4,7 +4,7 @@ import { useTranslations } from 'next-intl'
 const NEED_TONES: Record<NeedStatus, string> = {
   Pending: 'bg-slate-200 text-slate-800',
   Verified: 'bg-sky-100 text-sky-900',
-  Funding: 'bg-indigo-100 text-indigo-900',
+  Funding: 'bg-teal-100 text-teal-800',
   Funded: 'bg-violet-100 text-violet-900',
   InDelivery: 'bg-amber-100 text-amber-900',
   Completed: 'bg-emerald-100 text-emerald-900',

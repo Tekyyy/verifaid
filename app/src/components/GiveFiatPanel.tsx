@@ -105,7 +105,7 @@ export function GiveFiatPanel({
                 <label
                   key={option}
                   className={`flex min-h-[44px] cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${
-                    method === option ? 'border-indigo-700 bg-indigo-50' : 'border-slate-300 bg-white'
+                    method === option ? 'border-teal-700 bg-teal-50' : 'border-slate-300 bg-white'
                   }`}
                 >
                   <input

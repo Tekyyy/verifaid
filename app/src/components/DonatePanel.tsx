@@ -234,7 +234,7 @@ export function DonatePanel({
                     key={option.symbol}
                     className={`flex min-h-[44px] cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${
                       selected?.symbol === option.symbol
-                        ? 'border-indigo-700 bg-indigo-50'
+                        ? 'border-teal-700 bg-teal-50'
                         : 'border-slate-300 bg-white'
                     }`}
                   >
@@ -325,7 +325,7 @@ export function DonatePanel({
             <div className="mt-4">
               <button
                 type="button"
-                className="btn-primary w-full sm:w-auto"
+                className="btn-accent w-full sm:w-auto"
                 onClick={runConverted}
                 disabled={wrongChain || checking || busy(convert)}
               >
@@ -349,7 +349,7 @@ export function DonatePanel({
               <div>
                 <button
                   type="button"
-                  className="btn-primary w-full sm:w-auto"
+                  className="btn-accent w-full sm:w-auto"
                   onClick={runDonate}
                   disabled={wrongChain || busy(donate) || !approved}
                 >

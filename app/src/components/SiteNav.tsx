@@ -27,17 +27,16 @@ export function SiteNav() {
   const pathname = usePathname()
   const isCurrent = (href: string) => pathname === href || pathname.startsWith(`${href}/`)
 
-  return (
+      return (
     <nav
       aria-label={tCommon('mainNavigation')}
-      className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1"
+      className="flex w-full flex-wrap items-center justify-between gap-x-2 gap-y-1"
     >
       {PUBLIC_ROUTES.map((route) => (
         <NavLink key={route.href} href={route.href} current={isCurrent(route.href)}>
           {t(route.key)}
         </NavLink>
       ))}
-      <span aria-hidden="true" className="mx-1 hidden h-4 w-px bg-slate-200 sm:block" />
       {ROLE_ROUTES.map((route) => (
         <NavLink key={route.href} href={route.href} current={isCurrent(route.href)} muted>
           {t(route.key)}
@@ -64,12 +63,10 @@ function NavLink({
       aria-current={current ? 'page' : undefined}
       // prefetch: a click should not wait for the page to be fetched from scratch
       prefetch
-      className={`rounded-md px-2.5 py-1.5 text-sm no-underline transition-colors ${
+      className={`rounded-md px-3 py-1.5 text-sm no-underline transition-colors ${
         current
-          ? 'bg-slate-100 font-semibold text-slate-900'
-          : muted
-            ? 'font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-900'
-            : 'font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+          ? 'border border-teal-600 bg-teal-600 font-semibold text-white'
+          : 'border border-slate-300 bg-white font-medium text-slate-500 hover:bg-slate-200'
       }`}
     >
       {children}

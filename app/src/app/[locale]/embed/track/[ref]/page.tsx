@@ -28,7 +28,7 @@ function WidgetMessage({
       <p className="font-semibold">{title}</p>
       <p className="text-xs text-slate-600 dark:text-slate-400">{body}</p>
       <a
-        className="mt-auto text-xs font-semibold text-indigo-700 underline dark:text-indigo-300"
+        className="mt-auto text-xs font-semibold text-teal-700 underline dark:text-teal-300"
         href={href}
         target="_blank"
         rel="noreferrer noopener"

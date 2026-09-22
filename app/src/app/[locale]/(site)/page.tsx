@@ -28,9 +28,9 @@ export default async function HomePage() {
 
   return (
     <div className="space-y-12">
-      <section>
-        <p className="text-sm font-semibold uppercase tracking-wide text-indigo-700">{tCommon('tagline')}</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">{t('title')}</h1>
+      <section className="rounded-2xl border border-teal-100 bg-gradient-to-br from-teal-200 to-white px-6 py-10 sm:px-10 sm:py-14">
+        <p className="text-sm font-semibold uppercase tracking-wide text-teal-700">{tCommon('tagline')}</p>
+        <h1 className="mt-2 text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">{t('title')}</h1>
         <p className="mt-3 max-w-3xl text-base text-slate-700">{t('lead')}</p>
         <div className="mt-5 flex flex-wrap gap-3">
           <Link className="btn-primary" href="/needs">
@@ -53,7 +53,7 @@ export default async function HomePage() {
             {stats.map((stat) => (
               <div key={stat.label} className="card">
                 <dt className="text-xs text-slate-600">{stat.label}</dt>
-                <dd className="mt-1 text-xl font-bold tabular-nums text-slate-900">{stat.value}</dd>
+                <dd className="mt-1 text-2xl font-bold tabular-nums text-teal-700">{stat.value}</dd>
               </div>
             ))}
           </dl>
@@ -71,7 +71,7 @@ export default async function HomePage() {
         <ol className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {flow.map((step) => (
             <li key={step} className="card">
-              <p className="text-xs font-bold text-indigo-700">{step}</p>
+              <p className="text-xs font-bold text-teal-700">{step}</p>
               <h3 className="mt-1 font-semibold">{t(`flow${step}Title`)}</h3>
               <p className="mt-1 text-sm text-slate-700">{t(`flow${step}Body`)}</p>
             </li>
@@ -79,7 +79,7 @@ export default async function HomePage() {
         </ol>
       </section>
 
-      <section aria-labelledby="privacy" className="card border-indigo-200 bg-indigo-50">
+      <section aria-labelledby="privacy" className="card border-teal-200 bg-teal-50">
         <h2 id="privacy" className="section-title">
           {t('privacyTitle')}
         </h2>

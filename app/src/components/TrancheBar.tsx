@@ -57,7 +57,7 @@ export function TrancheBar({ tranches }: { tranches: (TrancheView | DonorTranche
                 {amount(tranche.amount)} {tCommon('amountUnit')}
               </p>
               {hasDonorShare(tranche) ? (
-                <p className="text-xs text-indigo-800 tabular-nums">
+                <p className="text-xs text-teal-800 tabular-nums">
                   {tDonor('trancheShare')}: {amount(tranche.donorShare)} {tCommon('amountUnit')}
                 </p>
               ) : null}

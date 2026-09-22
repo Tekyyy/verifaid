@@ -23,7 +23,7 @@ export function Timeline({ events }: { events: TimelineEvent[] }) {
       {events.map((event) => (
         <li key={event.id} className="relative">
           <span
-            className="absolute -left-[27px] top-1.5 h-3 w-3 rounded-full border-2 border-white bg-indigo-600"
+            className="absolute -left-[27px] top-1.5 h-3 w-3 rounded-full border-2 border-white bg-teal-600"
             aria-hidden="true"
           />
           <div className="rounded-md border border-slate-200 bg-white p-3">

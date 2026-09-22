@@ -99,10 +99,10 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
             </a>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <CustodyBadge mode={data.custodyMode} />
           <NeedStatusBadge status={data.status} />
-          <NeedBadgeRow badges={data.badges} taxStatus={data.taxStatus} className="w-full" />
+          <NeedBadgeRow badges={data.badges} taxStatus={data.taxStatus} className="w-full justify-end" />
         </div>
       </header>
 

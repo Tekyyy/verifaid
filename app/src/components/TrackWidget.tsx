@@ -11,7 +11,7 @@ const DOT = {
 } as const
 
 const OUTCOME_TONE: Record<DonationTrack['outcome'], string> = {
-  InProgress: 'bg-indigo-100 text-indigo-900 dark:bg-indigo-900 dark:text-indigo-100',
+  InProgress: 'bg-teal-100 text-teal-800 dark:bg-teal-800 dark:text-teal-100',
   Completed: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100',
   Refundable: 'bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-100',
   Refunded: 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100',
@@ -100,7 +100,7 @@ export function TrackWidget({ track, fullPageHref }: { track: DonationTrack; ful
       <footer className="mt-auto flex items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
         <span>{t('updatedAt', { at: timestamp(track.updatedAt) })}</span>
         <a
-          className="font-semibold text-indigo-700 underline dark:text-indigo-300"
+          className="font-semibold text-teal-700 underline dark:text-teal-300"
           href={fullPageHref}
           target="_blank"
           rel="noreferrer noopener"

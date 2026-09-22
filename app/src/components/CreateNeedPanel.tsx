@@ -273,7 +273,7 @@ export function CreateNeedPanel() {
             <label
               key={key}
               className={`flex cursor-pointer gap-2 rounded-md border p-3 text-sm ${
-                timeline === key ? 'border-indigo-700 bg-indigo-50' : 'border-slate-300 bg-white'
+                timeline === key ? 'border-teal-700 bg-teal-50' : 'border-slate-300 bg-white'
               }`}
             >
               <input
@@ -452,7 +452,7 @@ export function CreateNeedPanel() {
               <label
                 key={mode}
                 className={`flex cursor-pointer gap-2 rounded-md border p-3 text-sm ${
-                  custodyMode === mode ? 'border-indigo-700 bg-indigo-50' : 'border-slate-300 bg-white'
+                  custodyMode === mode ? 'border-teal-700 bg-teal-50' : 'border-slate-300 bg-white'
                 }`}
               >
                 <input
@@ -476,7 +476,7 @@ export function CreateNeedPanel() {
 
       {/* ── what donors will be shown, in plain words ──────────────────────── */}
       <section
-        className="rounded-md border border-indigo-200 bg-indigo-50 p-3 text-sm text-slate-900"
+        className="rounded-md border border-teal-200 bg-teal-50 p-3 text-sm text-slate-900"
         aria-live="polite"
       >
         <h3 className="font-semibold">{t('summaryTitle')}</h3>

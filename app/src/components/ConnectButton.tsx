@@ -43,24 +43,32 @@ export function ConnectButton() {
         <span className="font-mono text-xs text-slate-700" title={`${connector?.name ?? ''} ${address}`}>
           {shorten(address, 6, 4)}
         </span>
-        <button type="button" className="btn-secondary text-xs" onClick={() => disconnect()}>
+        <button type="button" className="btn-secondary text-sm min-h-0 py-1.5 text-slate-500" onClick={() => disconnect()}>
           {t('disconnect')}
         </button>
       </div>
     )
   }
 
+  // Some browsers show the same wallet multiple times: we display each name only once.
+  const seen = new Set<string>()
+  const uniqueWallets = wallets.filter(({ connector }) => {
+    if (seen.has(connector.name)) return false
+    seen.add(connector.name)
+    return true
+  })
+
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {wallets.map(({ connector: option, passkey, icon }) => (
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      {uniqueWallets.map(({ connector: option, passkey, icon }) => (
         <button
           key={option.uid}
           type="button"
-          className={`${passkey ? 'btn-primary' : 'btn-secondary'} inline-flex items-center gap-1.5 text-xs`}
+          className="btn-secondary inline-flex min-h-0 items-center gap-1.5 py-1.5 text-xs"
           disabled={isPending}
           onClick={() => connect({ connector: option })}
         >
-          {/* biome-ignore lint/performance/noImgElement: a 16px wallet icon, a data URI from EIP-6963 that next/image cannot optimize */}
+          {/* biome-ignore lint/performance/noImgElement: 16px icon, data URI EIP-6963 */}
           {icon ? <img src={icon} alt="" aria-hidden="true" className="h-4 w-4 rounded" /> : null}
           {isPending ? t('connecting') : `${t('connect')}: ${passkey ? t('passkeyWallet') : option.name}`}
         </button>

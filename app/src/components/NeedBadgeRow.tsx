@@ -55,7 +55,7 @@ export function NeedBadgeRow({
         </li>
       ) : taxStatus ? (
         <li
-          className={`badge ${taxStatus.verified ? 'bg-indigo-100 text-indigo-900' : 'bg-slate-100 text-slate-600'}`}
+          className={`badge ${taxStatus.verified ? 'bg-teal-100 text-teal-800' : 'bg-slate-100 text-slate-600'}`}
           title={taxStatus.verified ? t('taxVerifiedHint') : t('taxClaimedHint')}
         >
           {taxStatus.verified
