@@ -25,6 +25,7 @@ import {MockSwapRouter} from "../../src/mocks/MockSwapRouter.sol";
 import {MockUSDC} from "../../src/mocks/MockUSDC.sol";
 import {MockV3Aggregator} from "../../src/mocks/MockV3Aggregator.sol";
 import {MockWETH9} from "../../src/mocks/MockWETH9.sol";
+import {MockYieldVault} from "../../src/mocks/MockYieldVault.sol";
 import {NeedsRegistry} from "../../src/needs/NeedsRegistry.sol";
 import {ProofOfAidResolver} from "../../src/resolvers/ProofOfAidResolver.sol";
 import {IEAS} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
@@ -52,6 +53,10 @@ abstract contract SystemDeployer is CommonBase {
     struct Params {
         address admin;
         address token; // the vault currency; zero → deploy a MockUSDC (a USD-denominated deployment)
+        // ERC-4626 vault where a need may let committed money wait; zero → a mock one on a test chain, and
+        // nothing at all on mainnet, where the address of a real curated vault has to be passed in deliberately.
+        address yieldVenue;
+        uint16 yieldCapBps; // share of a need's pot allowed there at once; zero → 8000
         address eas;
         address semaphore;
         uint256 highValueThreshold;
@@ -99,6 +104,8 @@ abstract contract SystemDeployer is CommonBase {
         address token;
         address eas;
         address semaphore;
+        /// @notice The ERC-4626 vault approved for idle capital, or zero where none is.
+        address yieldVenue;
         Conversion conversion;
     }
 
@@ -161,6 +168,7 @@ abstract contract SystemDeployer is CommonBase {
         );
 
         s.registry.wire(address(s.factory), address(s.groups), address(s.deliveryManager), address(s.resolver));
+        _approveYieldVenue(s, p);
         s.factory.wire(address(s.registry), s.token, address(s.vaultImplementation), address(s.ledgerImplementation));
         s.groups.wire(address(s.deliveryManager));
         s.deliveryManager.wire(address(s.resolver));
@@ -223,6 +231,19 @@ abstract contract SystemDeployer is CommonBase {
 
     /// @dev Every unset dependency is replaced by a freely mintable or settable mock. That is the point on anvil and
     ///      on Base Sepolia (which lacks EUR/USD and liquid pools), and a catastrophe anywhere else.
+    /// @dev Approves the one venue a need may let its idle escrow wait in. Nothing is opted in by this: an NGO
+    ///      does that per need, before the need can take a donation. On mainnet a venue must be passed in — this
+    ///      never invents one, because the address of a lending vault is not a thing to get from a default.
+    function _approveYieldVenue(System memory s, Params memory p) internal {
+        address venue = p.yieldVenue;
+        if (venue == address(0)) {
+            if (!_mocksAllowed()) return;
+            venue = address(new MockYieldVault(IERC20(s.token)));
+        }
+        s.registry.setYieldVenue(venue, p.yieldCapBps == 0 ? 8000 : p.yieldCapBps);
+        s.yieldVenue = venue;
+    }
+
     function _mocksAllowed() internal view returns (bool) {
         return block.chainid == 31_337 || block.chainid == 84_532;
     }

@@ -233,6 +233,8 @@ contract V3ReviewFindingsTest is PoATest {
                 challengePeriod: CHALLENGE_PERIOD,
                 minExpectedRecipients: MIN_EXPECTED_RECIPIENTS,
                 dashboardBaseURI: DASHBOARD_BASE_URI,
+                yieldVenue: address(0),
+                yieldCapBps: 0,
                 conversion: _conversionParams()
             })
         );

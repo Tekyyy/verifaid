@@ -185,6 +185,8 @@ abstract contract PoATest is Test, SystemDeployer {
                 challengePeriod: CHALLENGE_PERIOD,
                 minExpectedRecipients: MIN_EXPECTED_RECIPIENTS,
                 dashboardBaseURI: DASHBOARD_BASE_URI,
+                yieldVenue: address(0),
+                yieldCapBps: 0,
                 conversion: _conversionParams()
             })
         );

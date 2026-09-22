@@ -45,6 +45,8 @@ export interface Deployment {
     UsdcUsdFeed?: Address
     EthUsdFeed?: Address
     SequencerUptimeFeed?: Address
+    /** ERC-4626 vault where a need may let idle escrow wait; absent or zero when the platform approves none. */
+    YieldVenue?: Address
   }
   params: {
     confirmationThresholdBps: number

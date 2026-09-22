@@ -32,6 +32,8 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
             challengePeriod: uint64(vm.envOr("CHALLENGE_PERIOD_SECONDS", uint256(600))),
             minExpectedRecipients: uint32(vm.envOr("MIN_EXPECTED_RECIPIENTS", uint256(5))),
             dashboardBaseURI: vm.envOr("DASHBOARD_BASE_URI", string("http://localhost:3000/needs/")),
+            yieldVenue: vm.envOr("YIELD_VENUE_ADDRESS", address(0)),
+            yieldCapBps: uint16(vm.envOr("YIELD_CAP_BPS", uint256(0))),
             conversion: _conversionParams()
         });
 
@@ -138,6 +140,8 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         external_.serialize("UsdcUsdFeed", s.conversion.usdcUsdFeed);
         external_.serialize("EthUsdFeed", s.conversion.ethUsdFeed);
         external_.serialize("SequencerUptimeFeed", s.conversion.sequencerUptimeFeed);
+        // The ERC-4626 vault a need may let its idle escrow wait in; zero where the platform approves none.
+        external_.serialize("YieldVenue", s.yieldVenue);
         string memory externalJson = external_.serialize("Token", s.token);
 
         string memory protocolParams = "params";
