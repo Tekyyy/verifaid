@@ -9,6 +9,7 @@ import { useReadContract } from 'wagmi'
 import { AcknowledgeDonationsPanel } from '@/components/AcknowledgeDonationsPanel'
 import { CreateNeedPanel } from '@/components/CreateNeedPanel'
 import { Advanced, FormError, Panel, TextArea, TextField } from '@/components/form'
+import { IdleCapitalPanel } from '@/components/IdleCapitalPanel'
 import { NeedPresentationPanel } from '@/components/NeedPresentationPanel'
 import { MissingDeployment, Notice } from '@/components/Notice'
 import { ProposePayeeChangePanel } from '@/components/PayeeChangePanel'
@@ -33,6 +34,7 @@ export function NgoConsole() {
       <NeedPresentationPanel />
       <CloseFunding />
       <ReleaseTranche />
+      <IdleCapitalPanel />
       <ProposePayeeChangePanel />
       <SettlementPanel />
       <PublishPhotosPanel />

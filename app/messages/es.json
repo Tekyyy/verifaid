@@ -1059,6 +1059,16 @@
     "lost": "La bóveda devolvió {amount} {unit} menos de lo que recibió. La necesidad asume la diferencia.",
     "venue": "Dónde espera:",
     "idleNow": "Ahora mismo no hay nada prestado: todo está de vuelta en depósito.",
-    "donorPromise": "Si recuperas tu donación o la necesidad se cancela, se te devuelve lo que diste: nunca menos por esto, y nunca una parte de lo ganado."
+    "donorPromise": "Si recuperas tu donación o la necesidad se cancela, se te devuelve lo que diste: nunca menos por esto, y nunca una parte de lo ganado.",
+    "manageTitle": "El dinero que espera",
+    "manageBody": "Cerrada la ronda, el depósito que aún no se puede gastar puede esperar en la bóveda aprobada. Cualquiera puede hacerlo: el importe lo decide el contrato, no quien llama, así que luego puede encargarse un proceso automático.",
+    "needId": "Id de la necesidad",
+    "deployable": "Puede salir ahora",
+    "unrealised": "Ganado, aún sin retirar",
+    "deployButton": "Ponerlo a esperar",
+    "unwindButton": "Traerlo todo de vuelta",
+    "harvestButton": "Retirar lo ganado",
+    "payButton": "Pagar lo ganado",
+    "manageHint": "El dinero que un proveedor pueda reclamar ahora mismo nunca sale, y cualquier pago recupera antes lo que necesite. Lo ganado solo se paga cuando la necesidad ha terminado y no queda nada prestado."
   }
 }

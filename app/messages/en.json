@@ -1059,6 +1059,16 @@
     "lost": "The vault gave back {amount} {unit} less than it was given. The need carries the difference.",
     "venue": "Where it waits:",
     "idleNow": "Nothing is lent right now; all of it is back in escrow.",
-    "donorPromise": "If you take your donation back or the need is called off, you are repaid what you gave — never less because of this, and never a share of what it earned."
+    "donorPromise": "If you take your donation back or the need is called off, you are repaid what you gave — never less because of this, and never a share of what it earned.",
+    "manageTitle": "The money that waits",
+    "manageBody": "Once funding has closed, escrow nobody can spend yet can wait in the approved vault. Anyone may do this — the contract decides the amount, never the caller — so a keeper can take it over later.",
+    "needId": "Need id",
+    "deployable": "Can go out now",
+    "unrealised": "Earned, not yet taken",
+    "deployButton": "Send it to wait",
+    "unwindButton": "Bring it all back",
+    "harvestButton": "Take the earnings",
+    "payButton": "Pay the earnings out",
+    "manageHint": "Money a supplier can claim this instant never goes out, and any payout pulls back what it needs first. The earnings can only be paid once the need is over and nothing is lent."
   }
 }
