@@ -11,6 +11,7 @@ import {ITrancheLedger} from "../../src/interfaces/ITrancheLedger.sol";
 import {MockEURC} from "../../src/mocks/MockEURC.sol";
 import {MockUSDC} from "../../src/mocks/MockUSDC.sol";
 import {MockV3Aggregator} from "../../src/mocks/MockV3Aggregator.sol";
+import {MockYieldVault} from "../../src/mocks/MockYieldVault.sol";
 import {NeedsRegistry} from "../../src/needs/NeedsRegistry.sol";
 import {BlocklistEURC} from "../utils/BlocklistEURC.sol";
 import {PoATest} from "../utils/PoATest.sol";
@@ -22,6 +23,8 @@ import {StdUtils} from "forge-std/StdUtils.sol";
 ///         and swept from deposit addresses), releases, cancellation, the passage of time (funding and execution
 ///         deadlines, partial execution), refunds (including forwarder-credited ones), and an issuer freezing a
 ///         payee, so payments the token refuses — and the claims that deliver them later — are fuzzed too.
+///         Committed money also comes and goes from a yield venue that gains, loses and runs dry at random,
+///         because the accounting identity has to close whatever a third party does with the money.
 contract VaultHandler is CommonBase, StdCheats, StdUtils {
     AidVault public immutable vault;
     MockEURC public immutable token;
@@ -35,9 +38,15 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
     address[3] public donors;
     /// @dev Receipts the handler's donations minted, so `withdrawDonation` has one to name.
     mapping(address => uint256[]) public receiptsOf;
+    MockYieldVault public venue;
     address[3] public payees; // the plan: supplier A, supplier B, the NGO's payout Safe
     bytes32[2] public donorRefs;
     uint256 public paymentRefNonce;
+    uint256 public deployCalls;
+    uint256 public unwindCalls;
+    uint256 public harvestCalls;
+    uint256 public payYieldCalls;
+    uint256 public venueCalls;
 
     // ─── call counters, reported by `forge test -vv` after the invariant run ───
     uint256 public donateCalls;
@@ -182,6 +191,22 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
         donateCalls++;
     }
 
+    /// @dev Finishes the round in one call. Without it a fifty-call sequence spends itself raising 50,000 a
+    ///      random slice at a time, and what happens *after* funding closes is barely fuzzed at all.
+    function fundToTarget(uint256 actorSeed) external {
+        if (!_fundingOpen()) return;
+        uint256 remaining = _remaining();
+        if (remaining == 0) return;
+        address donor = donors[actorSeed % donors.length];
+
+        token.mint(donor, remaining);
+        vm.startPrank(donor);
+        token.approve(address(vault), remaining);
+        receiptsOf[donor].push(vault.donate(remaining));
+        vm.stopPrank();
+        donateCalls++;
+    }
+
     function donateOnBehalf(uint256 refSeed, uint256 amount) external {
         if (!_fundingOpen()) return;
         uint256 remaining = _remaining();
@@ -285,6 +310,58 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
         } catch {}
     }
 
+    function setVenue(MockYieldVault venue_) external {
+        venue = venue_;
+    }
+
+    /// @dev Idle escrow goes out to earn. The vault decides how much may go; the fuzzer only picks a fraction.
+    function deployIdle(uint256 amountSeed) external {
+        uint256 room = vault.deployableAmount();
+        if (room == 0) return;
+        try vault.deployIdle(bound(amountSeed, 1, room)) {
+            deployCalls++;
+        } catch {}
+    }
+
+    /// @dev And comes back, in part or entirely.
+    function unwind(uint256 amountSeed) external {
+        uint256 principal = vault.deployedPrincipal();
+        if (principal == 0) return;
+        try vault.unwind(bound(amountSeed, 1, principal * 2)) {
+            unwindCalls++;
+        } catch {}
+    }
+
+    function harvest() external {
+        try vault.harvest() {
+            harvestCalls++;
+        } catch {}
+    }
+
+    function payYield() external {
+        try vault.payYield() {
+            payYieldCalls++;
+        } catch {}
+    }
+
+    /// @dev The venue itself: interest arriving, bad debt in a market, and liquidity coming and going.
+    function moveVenue(uint256 seed, uint256 amount) external {
+        if (address(venue) == address(0)) return;
+        uint256 assets = token.balanceOf(address(venue));
+        uint256 choice = seed % 3;
+        if (choice == 0) {
+            uint256 gain = bound(amount, 1, 1000e6);
+            deal(address(token), address(this), gain);
+            token.approve(address(venue), gain);
+            venue.accrue(gain);
+        } else if (choice == 1 && assets > 0) {
+            venue.lose(bound(amount, 1, assets));
+        } else {
+            venue.setLiquidityCap(seed % 7 == 0 ? 0 : bound(amount, 0, type(uint128).max));
+        }
+        venueCalls++;
+    }
+
     /// @dev The stablecoin issuer freezes or unfreezes a payee: its share of a release is held instead of paid.
     function setPayeeFrozen(uint256 seed) external {
         BlocklistEURC(address(token)).setBlocked(payees[seed % payees.length], seed % 3 != 0);
@@ -342,19 +419,27 @@ contract AidVaultInvariantTest is PoATest {
         p.payees[2] = _payee(address(0), _uniformShares(3, 1000));
         vm.prank(ngo);
         needId = registry.createNeed(p);
+        // The venue has to be approved and the need opted in before it is verified: after that it can take money,
+        // and what a donation is exposed to is settled.
+        MockYieldVault venue = new MockYieldVault(token);
+        vm.prank(admin);
+        registry.setYieldVenue(address(venue), 8000);
+        vm.prank(ngo);
+        registry.enableYield(needId);
         _attestNeedVerified(verifier1, needId, true);
         _attestNeedVerified(verifier2, needId, true);
         vault = AidVault(registry.vaultOf(needId));
 
         handler = new VaultHandler(vault, token, registry, admin, ngo, address(deliveryManager), bankPartner);
         handler.setPayees([supplierA, supplierB, ngoPayout]);
+        handler.setVenue(venue);
         vm.prank(admin);
         forwarderFactory.setKeeper(address(handler), true); // the handler sweeps like the platform's relayer
         handler.setConversion(
             forwarderFactory, usdc, [eurUsdFeed, usdcUsdFeed, ethUsdFeed], [MOCK_EUR_USD, MOCK_USDC_USD, MOCK_ETH_USD]
         );
 
-        bytes4[] memory selectors = new bytes4[](15);
+        bytes4[] memory selectors = new bytes4[](21);
         selectors[0] = VaultHandler.donate.selector;
         selectors[1] = VaultHandler.donateOnBehalf.selector;
         selectors[2] = VaultHandler.closeFunding.selector;
@@ -370,6 +455,12 @@ contract AidVaultInvariantTest is PoATest {
         selectors[12] = VaultHandler.setPayeeFrozen.selector;
         selectors[13] = VaultHandler.claimHeldPayment.selector;
         selectors[14] = VaultHandler.withdrawDonation.selector;
+        selectors[15] = VaultHandler.deployIdle.selector;
+        selectors[16] = VaultHandler.unwind.selector;
+        selectors[17] = VaultHandler.harvest.selector;
+        selectors[18] = VaultHandler.payYield.selector;
+        selectors[19] = VaultHandler.moveVenue.selector;
+        selectors[20] = VaultHandler.fundToTarget.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
         targetContract(address(handler));
     }
@@ -377,9 +468,10 @@ contract AidVaultInvariantTest is PoATest {
     /// @notice The spec's core accounting identity (§5.4), with payments the token refused still in the vault.
     function invariant_vaultAccounting() public view {
         assertEq(
-            token.balanceOf(address(vault)) + vault.totalReleased() + vault.totalRefunded(),
-            vault.totalDonated() + vault.totalHeld(),
-            "balance + released + refunded == donated + held"
+            token.balanceOf(address(vault)) + vault.deployedPrincipal() + vault.totalReleased() + vault.totalRefunded()
+                + vault.lossRealised(),
+            vault.totalDonated() + vault.totalHeld() + vault.yieldRealised() - vault.yieldPaid(),
+            "balance + lent + released + refunded + lost == donated + held + earned - handed on"
         );
     }
 
@@ -388,13 +480,26 @@ contract AidVaultInvariantTest is PoATest {
     function invariant_releasedMoneyReachedOnlyThePlan() public view {
         uint256 a = _owedTo(supplierA);
         uint256 b = _owedTo(supplierB);
-        uint256 ngoShare = _owedTo(ngoPayout);
+        // The NGO's payout address also receives the need's earnings, which are not released money: they are
+        // paid by payYield, under their own event, and counting them here would read a gain as an overpayment.
+        uint256 ngoShare = _owedTo(ngoPayout) - vault.yieldPaid();
         assertEq(a + b + ngoShare, vault.totalReleased(), "released == paid to, or still owed to, the plan");
         // 60 / 30 / 10 per tranche. A and B are rounded down (losing up to 1 unit each per tranche); the NGO is
         // last in the plan, so it also takes that dust (up to 2 units per tranche). Over three tranches that is up
         // to 6 units on the NGO's side, which the x6 comparison magnifies, and 3 on A's.
         assertApproxEqAbs(ngoShare * 6, a, 6 * 6 + 3, "NGO share stays 10%");
         assertApproxEqAbs(b * 2, a, 3 * 2 + 3, "supplier B stays at half of A");
+    }
+
+    /// @notice Whatever the venue did, a donor is owed the principal they gave and never a unit less. The
+    ///         earnings are the need's; the risk of the venue is not quietly the donor's.
+    function invariant_donorsAreOwedTheirPrincipal() public view {
+        uint256 owed;
+        for (uint256 i; i < 3; ++i) {
+            owed += vault.donatedBy(handler.donors(i));
+        }
+        assertLe(owed, vault.totalDonated(), "a donor is never owed more than the need holds for them");
+        assertLe(vault.yieldPaid(), vault.yieldRealised(), "earnings handed on never exceed earnings made");
     }
 
     function _owedTo(address payee) internal view returns (uint256) {
@@ -440,7 +545,8 @@ contract AidVaultInvariantTest is PoATest {
             handler.donateCalls() + handler.donateOnBehalfCalls() + handler.releaseCalls() + handler.refundCalls()
                     + handler.cancelCalls() + handler.expireCalls() + handler.convertedCalls() + handler.sweepCalls()
                     + handler.forwarderRefundCalls() + handler.freezeCalls() + handler.claimHeldCalls()
-                    + handler.withdrawCalls() >= 0
+                    + handler.withdrawCalls() + handler.deployCalls() + handler.unwindCalls() + handler.harvestCalls()
+                    + handler.payYieldCalls() + handler.venueCalls() >= 0
         );
     }
 }

@@ -115,4 +115,10 @@ library Errors {
     error AmountMismatch();
     error SettlementAlreadyRecorded();
     error ReportAlreadyActive();
+
+    // ─── idle capital (yield sleeve) ───────────────────────────────────────────
+    error YieldNotEnabled();
+    error YieldVenueChanged();
+    error SleeveIlliquid();
+    error SleeveNotClosed();
 }

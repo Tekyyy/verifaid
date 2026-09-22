@@ -7,6 +7,15 @@ import {ITrancheLedger} from "./ITrancheLedger.sol";
 /// @notice Custodial ledger (`CustodyMode.OnChain`): per-need escrow that holds stablecoin donations and releases
 ///         them in tranches.
 interface IAidVault is ITrancheLedger {
+    /// @notice Idle capital left for the venue, and came back.
+    event IdleDeployed(uint256 indexed needId, address indexed venue, uint256 assets, uint256 shares);
+    event IdleUnwound(uint256 indexed needId, address indexed venue, uint256 assets);
+    /// @notice Gains realised into this vault, and the part handed on to the NGO once the need is over.
+    event YieldHarvested(uint256 indexed needId, address indexed venue, uint256 assets);
+    event YieldPaid(uint256 indexed needId, address indexed to, uint256 assets);
+    /// @notice The venue gave back less principal than it was given. Loud on purpose.
+    event SleeveLoss(uint256 indexed needId, address indexed venue, uint256 shortfall);
+
     event Donated(uint256 indexed needId, address indexed donor, uint256 amount, uint256 receiptId);
     event DonatedOnBehalf(
         uint256 indexed needId, address indexed partner, uint256 amount, bytes32 donorRefHash, bytes32 paymentRefHash

@@ -97,6 +97,15 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     /// @dev changeId => verifier => approved. Change ids are global, so approvals never carry over.
     mapping(uint256 => mapping(address => bool)) private _changeApprovedBy;
 
+    /// @notice The single ERC-4626 vault idle capital may be deployed into, or 0 while the platform allows none.
+    /// @dev One approved venue, admin-set, never an address an NGO chooses: a vault that can pick where donations
+    ///      wait is a vault that can send them somewhere that never gives them back.
+    address public yieldVenue;
+    /// @notice Share of a need's pot that may sit in the venue at once, in basis points.
+    uint16 public yieldCapBps;
+    /// @notice Needs whose NGO opted in while the need was still Pending, so donors saw it before they gave.
+    mapping(uint256 => bool) public yieldEnabled;
+
     /// @notice Number of payee changes ever proposed (their ids are 1..payeeChangeCount).
     uint256 public payeeChangeCount;
 
@@ -122,6 +131,40 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         deliveryManager = deliveryManager_;
         resolver = resolver_;
         emit Wired(vaultFactory_, beneficiaryGroups_, deliveryManager_, resolver_);
+    }
+
+    // ─── idle capital ──────────────────────────────────────────────────────────
+
+    /// @notice Approves the one venue where a need's idle capital may wait, and how much of a pot may go there.
+    /// @dev Withdrawing the venue (address 0) stops new deployments everywhere at once. It cannot pull money
+    ///      back — each vault does that itself — but nothing new leaves while it is unset.
+    // forge-lint: disable-next-line(missing-zero-check) the zero address is the "no venue approved" state
+    function setYieldVenue(address venue, uint16 capBps) external {
+        if (!roles.isAdmin(msg.sender)) revert Errors.Unauthorized();
+        if (capBps > BPS_DENOMINATOR) revert Errors.InvalidParameter();
+        if (venue == address(0) && capBps != 0) revert Errors.InvalidParameter();
+        yieldVenue = venue;
+        yieldCapBps = capBps;
+        emit YieldVenueSet(venue, capBps);
+    }
+
+    /// @notice An NGO lets this need's committed money earn while it waits for the next delivery.
+    /// @dev Only while the need is Pending: this changes what a donation is exposed to, so it has to be on the
+    ///      page before anyone donates, not switched on over the heads of people who already gave.
+    function enableYield(uint256 needId) external whenNotPaused {
+        NeedRecord storage n = _need(needId);
+        if (msg.sender != n.ngo) revert Errors.Unauthorized();
+        if (n.status != NeedStatus.Pending) revert Errors.InvalidNeedStatus();
+        address venue = yieldVenue;
+        if (venue == address(0)) revert Errors.YieldNotEnabled();
+        yieldEnabled[needId] = true;
+        emit YieldEnabled(needId, venue, yieldCapBps);
+    }
+
+    /// @inheritdoc INeedsRegistry
+    function yieldVenueOf(uint256 needId) external view returns (address venue, uint16 capBps) {
+        if (!yieldEnabled[needId]) return (address(0), 0);
+        return (yieldVenue, yieldCapBps);
     }
 
     // ─── NGO ───────────────────────────────────────────────────────────────────

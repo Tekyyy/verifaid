@@ -629,10 +629,13 @@ abstract contract PoATest is Test, SystemDeployer {
     }
 
     /// @dev The core vault accounting invariant from the spec (§5.4).
+    /// @dev Money is in exactly one of five places: this vault, the venue it was lent to, a payee, a donor it
+    ///      went back to, or gone in a loss. Gains raise the right-hand side until they are handed on.
     function assertVaultInvariant(AidVault vault) internal view {
         assertEq(
-            token.balanceOf(address(vault)) + vault.totalReleased() + vault.totalRefunded(),
-            vault.totalDonated() + vault.totalHeld(),
+            token.balanceOf(address(vault)) + vault.deployedPrincipal() + vault.totalReleased() + vault.totalRefunded()
+                + vault.lossRealised(),
+            vault.totalDonated() + vault.totalHeld() + vault.yieldRealised() - vault.yieldPaid(),
             "vault invariant"
         );
     }

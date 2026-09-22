@@ -54,7 +54,7 @@ exclude_lints = [
 
 [profile.ci]
 fuzz = { runs = 1000 }
-invariant = { runs = 256, depth = 50 }
+invariant = { runs = 256, depth = 150 }
 
 [rpc_endpoints]
 base_sepolia = "${BASE_SEPOLIA_RPC_URL}"
@@ -68,7 +68,9 @@ runs = 1000
 
 [invariant]
 runs = 256
-depth = 50
+# Deep enough that a sequence gets past closing funding with calls to spare: releases, refunds and the
+# yield venue all live in the second half of the life of a need, and a shallow run never reaches them.
+depth = 150
 fail_on_revert = false
 
 [fmt]

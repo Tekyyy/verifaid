@@ -6,6 +6,10 @@ import {IRoleAware} from "./IRoleAware.sol";
 /// @title INeedsRegistry
 /// @notice Registry of verified humanitarian needs (the proposal's "NeedClaim") and their lifecycle state machine.
 interface INeedsRegistry is IRoleAware {
+    /// @notice The ERC-4626 vault a need's idle capital may wait in, and the share of the pot allowed there.
+    /// @dev Returns (0, 0) when this need's NGO never opted in, which is the default.
+    function yieldVenueOf(uint256 needId) external view returns (address venue, uint16 capBps);
+
     enum NeedStatus {
         Pending,
         Verified,
@@ -106,6 +110,10 @@ interface INeedsRegistry is IRoleAware {
     );
     event VerificationRevokedAfterFunding(uint256 indexed needId, address indexed verifier, bytes32 attestationUID);
     event Wired(address vaultFactory, address beneficiaryGroups, address deliveryManager, address resolver);
+    /// @notice The platform approved (or withdrew) the one venue where idle capital may wait.
+    event YieldVenueSet(address indexed venue, uint16 capBps);
+    /// @notice An NGO opted a need in, before it could take a single donation.
+    event YieldEnabled(uint256 indexed needId, address indexed venue, uint16 capBps);
     event PayeeChangeProposed(
         uint256 indexed needId,
         uint256 indexed changeId,

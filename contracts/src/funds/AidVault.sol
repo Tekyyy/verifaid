@@ -11,6 +11,7 @@ import {IRoleRegistry} from "../interfaces/IRoleRegistry.sol";
 import {Errors} from "../libraries/Errors.sol";
 import {Roles} from "../libraries/Roles.sol";
 import {TrancheLedger} from "./TrancheLedger.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -19,7 +20,10 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 ///         verified deliveries, then pays each tranche straight to the suppliers of the need's payment plan.
 /// @dev There is intentionally no admin withdrawal path: funds leave only as tranche payments to the payees the
 ///      plan names (the NGO only for its disclosed share) or as pro-rata refunds.
-///      Invariant: token.balanceOf(vault) + totalReleased + totalRefunded == totalDonated + totalHeld.
+///      Invariant, with the idle capital a need may let wait in an ERC-4626 venue:
+///        balance + deployedPrincipal + totalReleased + totalRefunded + lossRealised
+///          == totalDonated + totalHeld + yieldRealised - yieldPaid
+///      With no sleeve in use the four new terms are zero and it is the original identity.
 contract AidVault is TrancheLedger, IAidVault {
     using SafeERC20 for IERC20;
 
@@ -32,6 +36,18 @@ contract AidVault is TrancheLedger, IAidVault {
 
     /// @notice A donation can be taken back until this long before the funding deadline.
     uint256 public constant WITHDRAW_LOCK_PERIOD = 2 days;
+
+    /// @notice The ERC-4626 venue this vault's idle capital is waiting in, or 0 while it holds none.
+    /// @dev Read from the registry on the first deployment and then fixed until the position is fully closed, so
+    ///      an admin changing the approved venue can never strand money in a vault nobody is looking at.
+    IERC4626 public sleeve;
+    /// @notice What the vault put in, at cost. Never `convertToAssets`: donors gave assets, not a share price.
+    uint256 public deployedPrincipal;
+    /// @notice Gains brought back into this vault, and the part already handed on.
+    uint256 public yieldRealised;
+    uint256 public yieldPaid;
+    /// @notice Principal the venue did not return. Recorded so the identity still closes after a loss.
+    uint256 public lossRealised;
 
     uint128 private _totalRefunded;
     /// @inheritdoc IAidVault
@@ -202,6 +218,8 @@ contract AidVault is TrancheLedger, IAidVault {
         _requireNotPaused();
         uint256 id = needId();
         (uint256 amount,) = _release(id, index);
+        // Waiting money comes home first: a tranche must not be held for a payee just because it was earning.
+        _ensureLiquid(amount);
         // The payment plan decides who is paid; it reverts while a supplier in this tranche has lost its role.
         (address[] memory payees, uint16[] memory shares) = registry.trancheSplitOf(id, index);
         emit TrancheReleased(id, index, amount, address(0));
@@ -216,6 +234,7 @@ contract AidVault is TrancheLedger, IAidVault {
         if (amount == 0) revert Errors.NothingToClaim();
         delete heldPaymentOf[payee];
         totalHeld -= amount;
+        _ensureLiquid(amount);
         token.safeTransfer(payee, amount);
         uint256 id = needId();
         emit HeldPaymentClaimed(id, payee, amount);
@@ -236,6 +255,94 @@ contract AidVault is TrancheLedger, IAidVault {
         emit HeldPaymentReassigned(needId(), from, to, amount);
     }
 
+    // ─── idle capital ──────────────────────────────────────────────────────────
+
+    /// @notice Sends idle escrow to the need's approved venue to earn while it waits for the next delivery.
+    /// @dev Only once funding has closed. While it is open a donor can still take their money back, and money
+    ///      that can be recalled at any moment has no business in a lending vault. Permissionless on purpose:
+    ///      anyone may call it, the rules decide the amount, and a keeper needs no privilege to do its job.
+    function deployIdle(uint256 assets) external nonReentrant onlyClone returns (uint256 shares) {
+        _requireNotPaused();
+        uint256 id = needId();
+        INeedsRegistry.NeedStatus s = registry.statusOf(id);
+        if (s != INeedsRegistry.NeedStatus.Funded && s != INeedsRegistry.NeedStatus.InDelivery) {
+            revert Errors.InvalidNeedStatus();
+        }
+        (address venue, uint16 capBps) = registry.yieldVenueOf(id);
+        if (venue == address(0)) revert Errors.YieldNotEnabled();
+        address current = address(sleeve);
+        if (current == address(0)) sleeve = IERC4626(venue);
+        else if (current != venue) revert Errors.YieldVenueChanged();
+        if (assets == 0 || assets > _deployable(capBps)) revert Errors.InvalidParameter();
+
+        deployedPrincipal += assets;
+        token.forceApprove(venue, assets);
+        shares = IERC4626(venue).deposit(assets, address(this));
+        emit IdleDeployed(id, venue, assets, shares);
+    }
+
+    /// @notice Brings escrow home from the venue. A large enough amount closes the position entirely.
+    /// @dev Deliberately callable while the platform is paused and by anyone: returning money to the escrow it
+    ///      belongs in is never the unsafe direction, and a pause that trapped funds in a third party would be
+    ///      the opposite of a safety measure.
+    function unwind(uint256 assets) external nonReentrant onlyClone returns (uint256 received) {
+        if (assets == 0) revert Errors.ZeroAmount();
+        received = _unwind(assets);
+        if (received == 0) revert Errors.SleeveIlliquid();
+    }
+
+    /// @notice Realises the gain without touching the principal, so the dashboard can show a curve.
+    function harvest() external nonReentrant onlyClone returns (uint256 amount) {
+        IERC4626 venue = sleeve;
+        if (address(venue) == address(0)) revert Errors.NothingToClaim();
+        uint256 value = venue.previewRedeem(venue.balanceOf(address(this)));
+        uint256 principal = deployedPrincipal;
+        if (value <= principal) revert Errors.NothingToClaim();
+        uint256 available = venue.maxWithdraw(address(this));
+        uint256 surplus = value - principal;
+        amount = surplus < available ? surplus : available;
+        if (amount == 0) revert Errors.SleeveIlliquid();
+        venue.withdraw(amount, address(this), address(this));
+        yieldRealised += amount;
+        emit YieldHarvested(needId(), address(venue), amount);
+    }
+
+    /// @notice Hands the earnings to the NGO once the need is over and the position is closed.
+    /// @dev Donors are repaid principal and nothing else, whatever happened in the venue — a refund is worked out
+    ///      from what was donated and released, never from this vault's balance. What the money earned while it
+    ///      waited belongs to the need, and a loss is charged against those earnings before anything is paid.
+    function payYield() external nonReentrant onlyClone returns (uint256 amount) {
+        uint256 id = needId();
+        INeedsRegistry.NeedStatus s = registry.statusOf(id);
+        if (s != INeedsRegistry.NeedStatus.Completed && !_isRefundable(s)) revert Errors.InvalidNeedStatus();
+        if (address(sleeve) != address(0) || deployedPrincipal != 0) revert Errors.SleeveNotClosed();
+        uint256 charged = yieldPaid + lossRealised;
+        if (yieldRealised <= charged) revert Errors.NothingToClaim();
+        amount = yieldRealised - charged;
+        yieldPaid += amount;
+        (address ngo,,,) = registry.coreOf(id);
+        address to = roles.payoutOf(ngo);
+        token.safeTransfer(to, amount);
+        emit YieldPaid(id, to, amount);
+    }
+
+    /// @notice What this vault could send to the venue right now.
+    function deployableAmount() external view returns (uint256) {
+        (address venue, uint16 capBps) = registry.yieldVenueOf(needId());
+        if (venue == address(0)) return 0;
+        address current = address(sleeve);
+        if (current != address(0) && current != venue) return 0;
+        return _deployable(capBps);
+    }
+
+    /// @notice What the position is worth today, and the part of it that is not principal.
+    function sleeveValue() external view returns (uint256 value, uint256 unrealisedYield) {
+        IERC4626 venue = sleeve;
+        if (address(venue) == address(0)) return (0, 0);
+        value = venue.previewRedeem(venue.balanceOf(address(this)));
+        unrealisedYield = value > deployedPrincipal ? value - deployedPrincipal : 0;
+    }
+
     // ─── refunds ───────────────────────────────────────────────────────────────
 
     /// @inheritdoc IAidVault
@@ -250,6 +357,7 @@ contract AidVault is TrancheLedger, IAidVault {
         delete donatedBy[msg.sender];
         _totalRefunded += uint128(amount);
 
+        _ensureLiquid(amount);
         token.safeTransfer(msg.sender, amount);
         emit Refunded(id, msg.sender, amount);
     }
@@ -278,6 +386,7 @@ contract AidVault is TrancheLedger, IAidVault {
         delete donatedByRef[donorRefHash];
         _totalRefunded += uint128(amount);
 
+        _ensureLiquid(amount);
         token.safeTransfer(to, amount);
         emit RefundedByRef(id, donorRefHash, to, amount);
     }
@@ -344,6 +453,79 @@ contract AidVault is TrancheLedger, IAidVault {
         if (totalHeld != 0 || !_allTranchesReleased()) return;
         if (registry.statusOf(id) != INeedsRegistry.NeedStatus.InDelivery) return;
         registry.setStatus(id, INeedsRegistry.NeedStatus.Completed);
+    }
+
+    /// @dev Pulls back from the venue whatever this vault is short of, and refuses to go on if it cannot. A
+    ///      supplier being paid late is a problem; a supplier being paid a part while the rest is "held" because
+    ///      the money was quietly somewhere else is a worse one.
+    function _ensureLiquid(uint256 amount) internal {
+        uint256 balance = token.balanceOf(address(this));
+        if (balance >= amount) return;
+        _unwind(amount - balance);
+        // Still short while money is still lent out: the venue is the problem, and paying part of a tranche
+        // while the rest sits in a lending market is worse than saying so plainly. Short with nothing lent is
+        // a loss the need has already taken, and that is not this function's to hide.
+        if (token.balanceOf(address(this)) < amount && address(sleeve) != address(0)) {
+            revert Errors.SleeveIlliquid();
+        }
+    }
+
+    /// @dev Withdrawals count against principal first; what the venue returns beyond it is yield, and principal
+    ///      still standing when the last share is gone is a loss. Both settle in the one place.
+    function _unwind(uint256 assets) internal returns (uint256 received) {
+        IERC4626 venue = sleeve;
+        if (address(venue) == address(0) || assets == 0) return 0;
+        uint256 available = venue.maxWithdraw(address(this));
+        if (assets >= available) {
+            uint256 shares = venue.maxRedeem(address(this));
+            if (shares == 0) return 0;
+            received = venue.redeem(shares, address(this), address(this));
+        } else {
+            venue.withdraw(assets, address(this), address(this));
+            received = assets;
+        }
+        uint256 principal = deployedPrincipal;
+        if (received >= principal) {
+            deployedPrincipal = 0;
+            yieldRealised += received - principal;
+        } else {
+            deployedPrincipal = principal - received;
+        }
+        emit IdleUnwound(needId(), address(venue), received);
+        // Closed is a question about value, not about share count: redeeming everything a venue will part with
+        // routinely leaves a share or two behind, worth nothing, and a position that can never be called closed
+        // is one whose loss is never recognised and whose earnings can never be handed on.
+        // forge-lint: disable-next-line(incorrect-strict-equality)
+        if (venue.previewRedeem(venue.balanceOf(address(this))) == 0) {
+            uint256 shortfall = deployedPrincipal;
+            if (shortfall != 0) {
+                deployedPrincipal = 0;
+                lossRealised += shortfall;
+                emit SleeveLoss(needId(), address(venue), shortfall);
+            }
+            sleeve = IERC4626(address(0));
+        }
+    }
+
+    /// @dev What may go to the venue: never money a payee could claim this instant, and never past the cap.
+    function _deployable(uint16 capBps) internal view returns (uint256) {
+        uint256 balance = token.balanceOf(address(this));
+        uint256 reserved = totalHeld + _releasableAmount();
+        if (balance <= reserved) return 0;
+        uint256 free = balance - reserved;
+        // The cap is on the whole pot, so repeated deployments cannot creep past it one call at a time.
+        uint256 ceiling = ((balance + deployedPrincipal) * capBps) / BPS_DENOMINATOR;
+        if (deployedPrincipal >= ceiling) return 0;
+        uint256 headroom = ceiling - deployedPrincipal;
+        return free < headroom ? free : headroom;
+    }
+
+    /// @dev Tranches a verified delivery has already unlocked: payable now, so they stay liquid now.
+    function _releasableAmount() internal view returns (uint256 total) {
+        uint256 count = _trancheCount;
+        for (uint256 i; i < count; ++i) {
+            if (_tranches[i].status == TrancheStatus.Releasable) total += _tranches[i].amount;
+        }
     }
 
     function _refundAmount(uint256 donated) internal view returns (uint256) {
