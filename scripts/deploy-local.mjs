@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Deploys the whole system to a local anvil chain and seeds the demo data:
- *   Deploy.s.sol → RegisterSchemas.s.sol → SeedDemo.s.sol
+ *   Deploy.s.sol → RegisterSchemas.s.sol → SeedDemo.s.sol → VerifyDemoNeeds.s.sol
  *
  * Uses anvil's first well-known account as deployer/admin. Since nothing on a fresh anvil has code, the deploy
  * script also brings up its own EAS, SchemaRegistry and Semaphore v4 instances.
@@ -63,6 +63,7 @@ const run = (script) => {
 run('Deploy.s.sol')
 run('RegisterSchemas.s.sol')
 run('SeedDemo.s.sol')
+run('VerifyDemoNeeds.s.sol')
 
 // Addresses on a fresh anvil are deterministic, so a stale bundle does not fail loudly — it silently points the
 // demo and the app at the *previous* deployment's token wiring. Rebuild it here, where the deployment just changed.

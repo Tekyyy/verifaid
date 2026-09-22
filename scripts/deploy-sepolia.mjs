@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Deploys the whole system to Base Sepolia and seeds the demo data:
- *   Deploy.s.sol → RegisterSchemas.s.sol → SeedDemo.s.sol → SeedLiquidity.s.sol
+ *   Deploy.s.sol → RegisterSchemas.s.sol → SeedDemo.s.sol → VerifyDemoNeeds.s.sol → SeedLiquidity.s.sol
  *
  *   pnpm deploy:sepolia
  *
@@ -129,6 +129,8 @@ if (wanted('deploy') && existsSync(deployment)) {
 if (wanted('deploy')) run('Deploy.s.sol', verify ? ['--verify'] : [])
 if (wanted('schemas')) run('RegisterSchemas.s.sol')
 if (wanted('seed')) run('SeedDemo.s.sol')
+// Seeding registers the needs; this is what opens them for donations. Re-run alone: `pnpm deploy:sepolia verify`.
+if (wanted('verify')) run('VerifyDemoNeeds.s.sol')
 // Also a keeper: re-run `pnpm deploy:sepolia liquidity` to put the pool back at the oracle price.
 if (wanted('liquidity')) run('SeedLiquidity.s.sol')
 
