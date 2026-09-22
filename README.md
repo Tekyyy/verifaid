@@ -112,6 +112,7 @@ app/          Next.js dashboard: public needs and tracking pages, embeddable wid
 demo/         runs the four lifecycle scenarios against a live chain (including conversions)
 deployments/  addresses + schema UIDs per network, written by the deploy scripts
 docs/         DECISIONS.md, THREAT_MODEL.md, DEMO_SCRIPT.md, ROADMAP.md, GAP_PLAN.md
+justfile      one-command shortcuts (see "Quick start")
 ```
 
 ## Quick start
@@ -140,6 +141,26 @@ pnpm app:dev        # dashboard on :3000
 pnpm services:up    # Postgres and the four services (Docker)
 ```
 
+### Shortcuts with `just`
+
+With [`just`](https://github.com/casey/just) installed, the everyday workflows are a single command:
+
+```bash
+just up             # install, build everything, and start the full stack (Base Sepolia)
+just front          # dashboard only, on bundled sample data — no chain or indexer needed
+just stack          # indexer + dashboard together, against the live Base Sepolia deployment
+just install        # install dependencies only
+​```
+
+- `just up` is the one-shot "get it running": it installs, runs `pnpm build` (which compiles the contracts, so
+  it needs Foundry) and then starts the stack.
+- `just front` renders the bundled fixtures (`NEXT_PUBLIC_USE_FIXTURES=1` in `app/.env.local`), so the UI runs
+  with no backend at all — handy for frontend and design work.
+- `just stack` shows real testnet data: it reads needs straight from the deployed contracts. It expects
+  `PONDER_NETWORK=base-sepolia` in `indexer/.env.local`, and `NEXT_PUBLIC_CHAIN_ID=84532` with fixtures off in
+  `app/.env.local`. `Ctrl+C` stops both processes. It uses the contracts already deployed on Base Sepolia — it
+  does not redeploy anything.
+
 Deploy to Base Sepolia (needs `DEPLOYER_PRIVATE_KEY` and `BASESCAN_API_KEY` in `.env`). The whole system costs
 well under 0.001 ETH, and the script reuses the EAS, Semaphore, Uniswap and Chainlink contracts already deployed
 there:
@@ -166,7 +187,3 @@ commitment from the group. See `docs/THREAT_MODEL.md` for what this does **not**
 - [`docs/GAP_PLAN.md`](docs/GAP_PLAN.md) — the proposal, item by item, and where each lives in the code
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — what is deliberately left out, and what it would take
 - [`contracts/README.md`](contracts/README.md) — contract map, need terms, money flow and test suites
-
-## License
-
-MIT

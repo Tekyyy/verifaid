@@ -63,10 +63,10 @@ function NavLink({
       aria-current={current ? 'page' : undefined}
       // prefetch: a click should not wait for the page to be fetched from scratch
       prefetch
-      className={`rounded-md px-3 py-1.5 text-sm no-underline transition-colors ${
+      className={`rounded-md px-3 py-1.5 text-sm no-underline transition-all ${
         current
-          ? 'border border-teal-600 bg-teal-600 font-semibold text-white'
-          : 'border border-slate-300 bg-white font-medium text-slate-500 hover:bg-slate-200'
+          ? 'bg-teal-600 font-semibold text-white shadow'
+          : 'bg-white font-medium text-slate-500 shadow-sm hover:bg-slate-50 hover:shadow'
       }`}
     >
       {children}

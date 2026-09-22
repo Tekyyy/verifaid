@@ -43,7 +43,7 @@ export function ConnectButton() {
         <span className="font-mono text-xs text-slate-700" title={`${connector?.name ?? ''} ${address}`}>
           {shorten(address, 6, 4)}
         </span>
-        <button type="button" className="btn-secondary text-sm min-h-0 py-1.5 text-slate-500" onClick={() => disconnect()}>
+        <button type="button" className="btn-secondary text-sm min-h-0 py-1.5 text-slate-500 border-0 shadow-sm" onClick={() => disconnect()}>
           {t('disconnect')}
         </button>
       </div>
@@ -64,7 +64,7 @@ export function ConnectButton() {
         <button
           key={option.uid}
           type="button"
-          className="btn-secondary inline-flex min-h-0 items-center gap-1.5 py-1.5 text-xs"
+          className="btn-secondary inline-flex min-h-0 items-center gap-1.5 py-1.5 text-xs border-0 shadow-sm"
           disabled={isPending}
           onClick={() => connect({ connector: option })}
         >

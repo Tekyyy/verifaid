@@ -28,7 +28,7 @@ export function LocaleSwitcher() {
     <label className="flex items-center gap-2 text-sm">
       <span className="sr-only sm:not-sr-only sm:text-slate-500">{t('language')}</span>
       <select
-        className="appearance-none rounded-md border border-slate-300 bg-white bg-no-repeat py-1.5 pl-3 pr-9 text-sm font-medium text-slate-500"
+        className="appearance-none rounded-md bg-white bg-no-repeat py-1.5 pl-3 pr-9 text-sm text-slate-500 shadow-sm"
         style={{
           backgroundImage:
             "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%2364748b'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.25a.75.75 0 01-1.06 0L5.21 8.27a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E\")",
