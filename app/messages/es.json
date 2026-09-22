@@ -504,7 +504,9 @@
     "presentationGalleryHint": "Opcional. Fotos del plan, del lugar o de los bienes, nunca de personas.",
     "presentationPublish": "Publicar la presentación",
     "presentationReplaces": "Publicar de nuevo reemplaza lo que ve quien dona; cada versión queda en cadena como una atestación que firmaste.",
-    "presentationErrorTags": "Como mucho {max} etiquetas."
+    "presentationErrorTags": "Como mucho {max} etiquetas.",
+    "idleTitle": "Deja que el dinero gane mientras espera",
+    "idleHint": "Solo después de cerrar la ronda, y nunca dinero que un proveedor pueda reclamar. Quien dona lo ve en la necesidad antes de dar, y siempre recupera lo que dio. Requiere una segunda firma justo después de crear la necesidad."
   },
   "verifier": {
     "title": "Cola del verificador",
@@ -1047,5 +1049,16 @@
     "assessReturned": "No es deducible: esta donación se te ha devuelto.",
     "assessChannel": "No es deducible en Singapur: los tokens enviados desde una wallet o un exchange no son un tipo de donación admitido. Solo cuenta el dinero dado con tarjeta o transferencia.",
     "assessNone": "Esta organización no es una 501(c)(3) de EE. UU. ni una IPC de Singapur comprobada por la plataforma, así que este justificante no afirma que la donación sea deducible."
+  },
+  "idle": {
+    "title": "Qué hace el dinero mientras espera",
+    "body": "Las entregas de esta necesidad duran meses y, si no, el dinero en depósito estaría parado. En su lugar espera en una bóveda de préstamo, y lo que gana es de la necesidad.",
+    "deployed": "Esperando en la bóveda",
+    "earned": "Ganado hasta ahora",
+    "paidOut": "Entregado a la organización",
+    "lost": "La bóveda devolvió {amount} {unit} menos de lo que recibió. La necesidad asume la diferencia.",
+    "venue": "Dónde espera:",
+    "idleNow": "Ahora mismo no hay nada prestado: todo está de vuelta en depósito.",
+    "donorPromise": "Si recuperas tu donación o la necesidad se cancela, se te devuelve lo que diste: nunca menos por esto, y nunca una parte de lo ganado."
   }
 }

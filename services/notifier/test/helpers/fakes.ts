@@ -147,6 +147,7 @@ export const needFixture = (id: string, overrides: Partial<NeedDetail> = {}): Ne
   totalReleased: '0',
   totalRefunded: '0',
   fundingGap: '3765440000',
+  idleCapital: null,
   status: 'Funding' as NeedStatus,
   custodyMode: 'OnChain',
   vault: '0x00000000000000000000000000000000000000b2',

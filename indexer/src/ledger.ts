@@ -322,3 +322,88 @@ ponder.on('Ledger:RefundedByRef', async ({ event, context }) => {
     data: { donorRefHash, to, amount: amount.toString(), kind: await refundKind(context, donorRefHash) },
   })
 })
+
+// ─── idle capital ────────────────────────────────────────────────────────────
+
+/**
+ * Money a need cannot spend yet, waiting in an ERC-4626 venue. The vault keeps its books in assets at cost,
+ * so `deployedPrincipal` is what went out and `yieldRealised` is only what actually came home — the dashboard
+ * never shows a paper gain as if it were money the need has.
+ */
+ponder.on('Ledger:IdleDeployed', async ({ event, context }) => {
+  const { needId, venue, assets } = event.args
+
+  await context.db.update(schema.need, { id: needId }).set((need) => ({
+    yieldVenue: venue,
+    deployedPrincipal: need.deployedPrincipal + assets,
+  }))
+
+  await appendTimeline(context, event, {
+    needId,
+    type: 'IdleDeployed',
+    data: { venue, amount: assets.toString() },
+  })
+})
+
+ponder.on('Ledger:IdleUnwound', async ({ event, context }) => {
+  const { needId, venue, assets } = event.args
+
+  await context.db.update(schema.need, { id: needId }).set((need) => ({
+    // Withdrawals count against principal first, exactly as the vault does it; the surplus arrives as a
+    // YieldHarvested-shaped credit through the same event, so it is not added twice here.
+    deployedPrincipal: need.deployedPrincipal > assets ? need.deployedPrincipal - assets : 0n,
+    yieldRealised:
+      need.deployedPrincipal > assets
+        ? need.yieldRealised
+        : need.yieldRealised + (assets - need.deployedPrincipal),
+  }))
+
+  await appendTimeline(context, event, {
+    needId,
+    type: 'IdleUnwound',
+    data: { venue, amount: assets.toString() },
+  })
+})
+
+ponder.on('Ledger:YieldHarvested', async ({ event, context }) => {
+  const { needId, venue, assets } = event.args
+
+  await context.db
+    .update(schema.need, { id: needId })
+    .set((need) => ({ yieldRealised: need.yieldRealised + assets }))
+
+  await appendTimeline(context, event, {
+    needId,
+    type: 'YieldHarvested',
+    data: { venue, amount: assets.toString() },
+  })
+})
+
+ponder.on('Ledger:YieldPaid', async ({ event, context }) => {
+  const { needId, to, assets } = event.args
+
+  await context.db.update(schema.need, { id: needId }).set((need) => ({ yieldPaid: need.yieldPaid + assets }))
+
+  await appendTimeline(context, event, {
+    needId,
+    type: 'YieldPaid',
+    data: { to, amount: assets.toString() },
+  })
+})
+
+/** Principal a venue did not return. Recorded on its own, because a need that lost money has to say so. */
+ponder.on('Ledger:SleeveLoss', async ({ event, context }) => {
+  const { needId, venue, shortfall } = event.args
+
+  await context.db.update(schema.need, { id: needId }).set((need) => ({
+    yieldLost: need.yieldLost + shortfall,
+    deployedPrincipal: 0n,
+    yieldVenue: null,
+  }))
+
+  await appendTimeline(context, event, {
+    needId,
+    type: 'SleeveLoss',
+    data: { venue, amount: shortfall.toString() },
+  })
+})

@@ -23,6 +23,11 @@ export interface NeedSummary {
   totalRefunded: string
   /** `targetAmount - totalDonated` while funding is open, "0" afterwards. */
   fundingGap: string
+  /**
+   * What a need does with money it cannot spend yet. `null` on every need whose NGO did not opt in, which is
+   * the default and, on a need created before the venue existed, the only possibility.
+   */
+  idleCapital: IdleCapitalView | null
   status: NeedStatus
   custodyMode: CustodyMode
   vault: Address | null
@@ -340,6 +345,23 @@ export interface PayeeChangeView {
   resolvedAt: number | null
 }
 
+/**
+ * Committed money waiting in an ERC-4626 venue. Principal is stated at cost — what the vault put in — never as
+ * a share price, and `earned` counts only what has actually come home. A donor is repaid `principal`, never a
+ * slice of `earned`: the earnings belong to the need, and `lost` is charged against them before anyone is paid.
+ */
+export interface IdleCapitalView {
+  /** The venue it is waiting in, or null when nothing is lent right now. */
+  venue: Address | null
+  /** Lent out at this moment, at cost. */
+  deployed: string
+  /** Realised and brought back into the vault, and the part already handed to the NGO. */
+  earned: string
+  paidOut: string
+  /** Principal a venue did not return. */
+  lost: string
+}
+
 export type TimelineEventType =
   | 'NeedCreated'
   | 'NeedVerificationRecorded'
@@ -358,6 +380,12 @@ export type TimelineEventType =
   | 'TrancheReleased'
   | 'SettlementRecorded'
   | 'Refunded'
+  | 'YieldEnabled'
+  | 'IdleDeployed'
+  | 'IdleUnwound'
+  | 'YieldHarvested'
+  | 'YieldPaid'
+  | 'SleeveLoss'
   | 'DeliveryOpened'
   | 'DeliveryEvidenceLinked'
   | 'ReceiptConfirmed'

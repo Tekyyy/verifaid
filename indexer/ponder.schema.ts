@@ -124,6 +124,17 @@ export const need = onchainTable(
     totalDonated: t.bigint().notNull(),
     totalReleased: t.bigint().notNull(),
     totalRefunded: t.bigint().notNull(),
+    // ── idle capital: what is lent, what it earned, and what it lost ──
+    /** The ERC-4626 venue this need's escrow waits in, or null while it holds none. */
+    yieldVenue: t.hex(),
+    /** Whether the NGO opted this need in, which it could only do before the need could take a donation. */
+    yieldEnabled: t.boolean().notNull(),
+    /** Lent out right now, at cost. */
+    deployedPrincipal: t.bigint().notNull(),
+    /** Earned and brought home, handed on to the NGO, and principal a venue did not return. */
+    yieldRealised: t.bigint().notNull(),
+    yieldPaid: t.bigint().notNull(),
+    yieldLost: t.bigint().notNull(),
     /** Fees intermediaries kept, as attested in FundingRecorded and Settlement. */
     fundingFees: t.bigint().notNull(),
     settlementFees: t.bigint().notNull(),

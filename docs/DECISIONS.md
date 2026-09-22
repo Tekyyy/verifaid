@@ -633,3 +633,55 @@ mode where the recipient of record is a US 501(c)(3) and the field NGO is a paye
 
 The wording of the acknowledgment and of the receipt has **not** been reviewed by a US tax professional. That
 review is a release gate before this is offered to a real donor.
+
+## 19. Money that waits (idle capital, v6)
+
+A need whose deliveries run over a year holds escrow that nobody can spend yet. Until now it sat still. It can
+now wait in an ERC-4626 vault instead — Morpho's curated vaults on Base are the intended venue, and coupling to
+the standard rather than to Morpho keeps the choice reviewable and replaceable.
+
+**Only the window where the money genuinely cannot move.** Deployment is refused until funding closes. While
+funding is open a donor can call `withdrawDonation` at any moment (§16), and money that can be recalled has no
+business in a lending market. That one rule removes most of the complexity: the withdrawal path and the sleeve
+can never race each other.
+
+**Donors are repaid principal, never yield.** A refund is computed from what was donated and released, never
+from the vault's balance, so nothing the venue does changes what a donor is owed. This is not only tidiness: a
+donor credited with yield has received income, which would make the receipt in §18 wrong.
+
+**The accounting identity grows four terms and still closes.**
+
+```
+balance + deployedPrincipal + totalReleased + totalRefunded + lossRealised
+    == totalDonated + totalHeld + yieldRealised - yieldPaid
+```
+
+Principal is tracked at cost — what the vault put in — never as `convertToAssets`. Yield never enters
+`totalDonated`, which drives the cost cap, the refund pro-rata and every donor's `shareBps`.
+
+**Liquidity is a rule, not a hope.** Money a payee could claim this instant never leaves: the deployable amount
+excludes held payments and every tranche a verified delivery has already unlocked. Beyond that, `releaseTranche`,
+`claimRefund`, `claimRefundByRef` and `claimHeldPayment` each pull back from the venue before paying, and refuse
+to pay a part of a tranche while the rest is still lent — a supplier paid late is a problem, a supplier paid a
+part while the rest sits in a lending market is a worse one. Being short with *nothing* lent is a different
+thing: that is a loss the need has already taken, and the held-payment path carries it honestly.
+
+**Who decides.** One venue per deployment, the platform admin's to approve, with a cap in basis points; never an
+address an NGO picks. A need opts in through its NGO while it is still `Pending` — before it can take a single
+donation — because this changes what a donation is exposed to and that belongs on the page beforehand, not
+switched on over the heads of people who already gave.
+
+**Where the earnings go.** To the NGO, once the need is over and the position is closed, under its own event. A
+loss is charged against them first. If a loss exceeds everything earned, the need is short the difference and
+says so: `SleeveLoss` is on the timeline and on the need page, because a need that lost donors' money has to
+state it.
+
+**What a position being "closed" means.** Value, not share count. Redeeming everything a venue will part with
+routinely leaves a share or two behind worth nothing, and a position that can never be called closed is one
+whose loss is never recognised and whose earnings can never be handed on. The tests found this; it is why
+`previewRedeem(balanceOf) == 0` is the test rather than `balanceOf == 0`.
+
+**Still to come.** A first-loss reserve absorbing before the need's budget, a keeper that deploys after close and
+unwinds ahead of each tranche rather than relying on the on-demand pull, more than one venue with per-venue
+caps, and an allowlist that expires rather than persists — a vault approved in 2026 is not the same vault in
+2028.

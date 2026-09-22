@@ -81,6 +81,15 @@ export const toNeedSummary = (row: NeedRow): Omit<NeedSummary, 'badges' | 'prese
   totalReleased: row.totalReleased.toString(),
   totalRefunded: row.totalRefunded.toString(),
   fundingGap: fundingGapOf(row).toString(),
+  idleCapital: row.yieldEnabled
+    ? {
+        venue: (row.yieldVenue as Address | null) ?? null,
+        deployed: row.deployedPrincipal.toString(),
+        earned: row.yieldRealised.toString(),
+        paidOut: row.yieldPaid.toString(),
+        lost: row.yieldLost.toString(),
+      }
+    : null,
   status: row.status as NeedStatus,
   custodyMode: row.custodyMode as CustodyMode,
   vault: (row.vault as Address | null) ?? null,

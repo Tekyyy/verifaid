@@ -10,6 +10,7 @@ import { DonationList } from '@/components/DonationList'
 import { ExpireButton } from '@/components/ExpireButton'
 import { ExplorerLink } from '@/components/ExplorerLink'
 import { GiveFiatPanel } from '@/components/GiveFiatPanel'
+import { IdleCapitalNote } from '@/components/IdleCapitalNote'
 import { NeedBadgeRow } from '@/components/NeedBadgeRow'
 import { NeedPresentation } from '@/components/NeedPresentation'
 import { IndexerNotice, Notice } from '@/components/Notice'
@@ -280,6 +281,8 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
             thirdPartyCostBps={data.thirdPartyCostBps}
             taxStatus={data.taxStatus}
           />
+
+          <IdleCapitalNote need={data} />
 
           <section className="card" aria-labelledby="donations">
             <h2 id="donations" className="section-title">

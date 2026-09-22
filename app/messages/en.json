@@ -504,7 +504,9 @@
     "presentationGalleryHint": "Optional. Photos of the plan, the site or the goods — never of people.",
     "presentationPublish": "Publish the presentation",
     "presentationReplaces": "Publishing again replaces what donors see; every version stays on chain as an attestation you signed.",
-    "presentationErrorTags": "At most {max} tags."
+    "presentationErrorTags": "At most {max} tags.",
+    "idleTitle": "Let the money earn while it waits",
+    "idleHint": "Only after funding closes, and never money a supplier can claim. Donors see this on the need before they give, and are always repaid what they gave. It needs a second signature right after the need is created."
   },
   "verifier": {
     "title": "Verifier queue",
@@ -1047,5 +1049,16 @@
     "assessReturned": "Not deductible: this donation came back to you.",
     "assessChannel": "Not deductible in Singapore: tokens sent from a wallet or an exchange are not a qualifying donation type. Only money given by card or bank transfer counts.",
     "assessNone": "This organisation is not a platform-verified US 501(c)(3) or Singapore IPC, so this receipt makes no statement that the donation is deductible."
+  },
+  "idle": {
+    "title": "What the money does while it waits",
+    "body": "Deliveries on this need run for months, and the escrow behind them would otherwise sit still. It waits in a lending vault instead, and what it earns belongs to the need.",
+    "deployed": "Waiting in the vault",
+    "earned": "Earned so far",
+    "paidOut": "Handed to the organisation",
+    "lost": "The vault gave back {amount} {unit} less than it was given. The need carries the difference.",
+    "venue": "Where it waits:",
+    "idleNow": "Nothing is lent right now; all of it is back in escrow.",
+    "donorPromise": "If you take your donation back or the need is called off, you are repaid what you gave — never less because of this, and never a share of what it earned."
   }
 }

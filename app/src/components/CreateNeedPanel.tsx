@@ -4,7 +4,8 @@ import { CATEGORIES, CUSTODY_MODE, type CustodyMode, categoryHash, needsRegistry
 import { useQuery } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
-import { type Address, type Hex, isAddress, keccak256, stringToHex, zeroAddress } from 'viem'
+import { type Address, type Hex, isAddress, keccak256, parseEventLogs, stringToHex, zeroAddress } from 'viem'
+import { useReadContract } from 'wagmi'
 import { CustodianPicker } from '@/components/CustodianPicker'
 import { Advanced, DateField, FormError, Panel, SelectField, TextArea, TextField } from '@/components/form'
 import {
@@ -79,6 +80,7 @@ export function CreateNeedPanel() {
   const tErrors = useTranslations('errors')
   const tCustody = useTranslations('custody')
   const tx = useTx()
+  const optIn = useTx()
 
   // ── what the NGO fills in ──────────────────────────────────────────────────
   const [programId, setProgramId] = useState('')
@@ -90,6 +92,19 @@ export function CreateNeedPanel() {
   const [supplier, setSupplier] = useState('')
   const [keepPercent, setKeepPercent] = useState('0')
   const [timeline, setTimeline] = useState<Timeline>(DEFAULTS.timeline)
+
+  /**
+   * Whether this deployment approves a venue at all. With none, there is nothing to offer, so the option is
+   * not shown rather than shown and broken.
+   */
+  const { data: venue } = useReadContract({
+    address: deployment?.contracts.NeedsRegistry as Address | undefined,
+    abi: needsRegistryAbi,
+    functionName: 'yieldVenue',
+    query: { enabled: Boolean(deployment?.contracts.NeedsRegistry) },
+  })
+  const venueApproved = Boolean(venue && venue !== zeroAddress)
+  const [earnWhileWaiting, setEarnWhileWaiting] = useState(false)
 
   // ── advanced: empty means "use the value derived above" ────────────────────
   const [tranches, setTranches] = useState(DEFAULTS.tranches)
@@ -212,7 +227,7 @@ export function CreateNeedPanel() {
     if (problem) return setError(problem)
     setError(null)
 
-    await tx.run({
+    const created = await tx.run({
       address: deployment?.contracts.NeedsRegistry as Address,
       abi: needsRegistryAbi,
       functionName: 'createNeed',
@@ -239,6 +254,20 @@ export function CreateNeedPanel() {
         },
       ],
     })
+
+    // A second signature, and deliberately not bundled into the first: opting in only works while the need is
+    // Pending, which is exactly the window where a donor can still be told about it before giving.
+    if (created && earnWhileWaiting) {
+      const [event] = parseEventLogs({ abi: needsRegistryAbi, eventName: 'NeedCreated', logs: created.logs })
+      if (event) {
+        await optIn.run({
+          address: deployment?.contracts.NeedsRegistry as Address,
+          abi: needsRegistryAbi,
+          functionName: 'enableYield',
+          args: [event.args.needId],
+        })
+      }
+    }
   }
 
   const unit = tCommon('amountUnit')
@@ -383,6 +412,21 @@ export function CreateNeedPanel() {
 
       {/* ── everything an NGO should not have to decide ────────────────────── */}
       <Advanced title={t('advancedTitle')} hint={t('advancedHint')}>
+        {venueApproved && onChain ? (
+          <label className="flex items-start gap-2 rounded-md border border-slate-200 p-3 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={earnWhileWaiting}
+              onChange={(event) => setEarnWhileWaiting(event.target.checked)}
+            />
+            <span>
+              <span className="font-medium">{t('idleTitle')}</span>
+              <span className="mt-0.5 block text-xs text-slate-600">{t('idleHint')}</span>
+            </span>
+          </label>
+        ) : null}
+
         <div className="grid gap-3 sm:grid-cols-2">
           <TextField
             label={t('tranchePlan')}
@@ -529,6 +573,7 @@ export function CreateNeedPanel() {
         {t('createNeed')}
       </button>
       <TxStatus state={tx} />
+      <TxStatus state={optIn} />
     </Panel>
   )
 }

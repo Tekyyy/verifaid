@@ -280,6 +280,23 @@ gets stuck between the two.*
   identified by correlating a public donation with an off-chain disclosure they make themselves. Nothing here
   establishes that a contribution is deductible, and the UI is written so that no reader could think it does.
 
+### 3.18 Idle capital in a lending venue (v6)
+
+*The venue loses the money, or cannot return it when a supplier is owed.*
+
+- **Mitigation.** Deployment only after funding closes, so no donor withdrawal can race it. Money a payee can
+  claim this instant never leaves, and every payout path pulls back from the venue before paying and refuses to
+  pay a part of a tranche while the rest is lent. Principal is tracked at cost, so a rising share price never
+  lets the vault believe it has more than it was given; a falling one is recorded as `lossRealised` and charged
+  against earnings before anything is handed on. A donor's refund is computed from what was donated and
+  released, never from the balance, so nothing the venue does changes what a donor is owed.
+- **Residual risk.** This adds a third party the escrow did not have: the venue's curator chooses which markets
+  the money is lent into, and their oracles and liquidations are outside this system entirely. A loss larger
+  than everything earned leaves the need short, and the last claimants feel it. The platform admin's allowlist
+  is the only thing standing between an NGO and a bad venue, which makes that key as important as the pause.
+  Disclosure is the compensating control: the need page states the venue, the amounts and the promise to the
+  donor before anyone gives, and the NGO's opt-in is only possible before the need can be funded.
+
 ### 3.10 GDPR versus immutability
 
 - **Mitigation.** Personal data is only ever in the PII vault, encrypted with a per-record data key. Erasure is

@@ -218,6 +218,8 @@ const summary = (
     totalReleased: released,
     totalRefunded: terms.totalRefunded ?? '0',
     fundingGap: OPEN_STATUSES.includes(status) ? (BigInt(target) - BigInt(donated)).toString() : '0',
+    // No sample need lends its idle escrow: it is off by default, and a need opts in before it can be funded.
+    idleCapital: null,
     status,
     custodyMode: terms.custodyMode ?? 'OnChain',
     vault,

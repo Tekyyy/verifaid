@@ -42,6 +42,12 @@ ponder.on('NeedsRegistry:NeedCreated', async ({ event, context }) => {
     totalDonated: 0n,
     totalReleased: 0n,
     totalRefunded: 0n,
+    yieldVenue: null,
+    yieldEnabled: false,
+    deployedPrincipal: 0n,
+    yieldRealised: 0n,
+    yieldPaid: 0n,
+    yieldLost: 0n,
     fundingFees: 0n,
     settlementFees: 0n,
     trancheCount: trancheBps.length,
@@ -200,4 +206,16 @@ ponder.on('NeedsRegistry:VerificationRevokedAfterFunding', async ({ event, conte
     data: { verifier: event.args.verifier, honored: false },
     attestationUID: event.args.attestationUID,
   })
+})
+
+/**
+ * The NGO let this need's committed money earn while it waits. It could only do this while the need was still
+ * Pending — before it could take a single donation — so anyone who gave saw it on the page first.
+ */
+ponder.on('NeedsRegistry:YieldEnabled', async ({ event, context }) => {
+  const { needId, venue } = event.args
+
+  await context.db.update(schema.need, { id: needId }).set({ yieldEnabled: true })
+
+  await appendTimeline(context, event, { needId, type: 'YieldEnabled', data: { venue } })
 })
