@@ -13,7 +13,7 @@ export function SiteHeader() {
   const tCommon = useTranslations('common')
 
   return (
-    <header className="sticky top-0 z-40 border-b border-teal-150 bg-teal-100/50 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-teal-200 bg-teal-100/50 backdrop-blur">
       <div className="mx-auto max-w-6xl px-4">
         {/* Fila 1: logo + wallet */}
         <div className="flex items-center justify-between gap-4 py-3">

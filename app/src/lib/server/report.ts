@@ -30,12 +30,12 @@ const eventDetails = (event: TimelineEvent): string =>
 
 export const renderNeedReport = async (need: NeedDetail, timeline: TimelineEvent[]): Promise<Uint8Array> => {
   const report = await PdfReport.create({
-    title: `Proof of Aid - Need #${need.id}`,
+    title: `VerifAid - Need #${need.id}`,
     subject: 'Donor, funder and audit report',
   })
 
   report.title(
-    `Proof of Aid - Need #${need.id}`,
+    `VerifAid - Need #${need.id}`,
     `${need.categoryLabel} - ${need.regionLabel}${need.ngoName ? ` - ${need.ngoName}` : ''}`,
   )
   report.keyValues([
@@ -220,5 +220,5 @@ export const renderNeedReport = async (need: NeedDetail, timeline: TimelineEvent
     'No events indexed yet.',
   )
 
-  return report.finish(`Proof of Aid - Need #${need.id} - Every figure is verifiable on-chain`)
+  return report.finish(`VerifAid - Need #${need.id} - Every figure is verifiable on-chain`)
 }

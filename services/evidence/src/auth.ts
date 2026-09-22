@@ -27,7 +27,7 @@ declare module 'fastify' {
 }
 
 const NONCE_TTL_MS = 10 * 60 * 1000
-const STATEMENT = 'Sign in to the Proof of Aid evidence service.'
+const STATEMENT = 'Sign in to the VerifAid evidence service.'
 
 const AddressSchema = z.string().refine(isAddress, 'must be a checksummed or lowercase 0x address')
 

@@ -220,12 +220,12 @@ export const renderTaxReceipt = async (input: TaxReceiptInput): Promise<Uint8Arr
       ...(walletRows
         ? ([
             ['Receipt contract', input.explorerReceiptReadUrl],
-            ['  ownerOf(' + receiptId + ')', 'the wallet holding this receipt today'],
+            [`  ownerOf(${receiptId})`, 'the wallet holding this receipt today'],
             [
-              '  receiptOf(' + receiptId + ')',
+              `  receiptOf(${receiptId})`,
               'the need id, the amount still standing behind this receipt, and the donor',
             ],
-            ['  locked(' + receiptId + ')', 'true - the token cannot be transferred or sold'],
+            [`  locked(${receiptId})`, 'true - the token cannot be transferred or sold'],
           ] as [string, string][])
         : []),
       ...(vaultRows
@@ -253,7 +253,7 @@ export const renderTaxReceipt = async (input: TaxReceiptInput): Promise<Uint8Arr
       'professional.',
   )
 
-  return report.finish('Proof of Aid - every figure in this document is verifiable on-chain')
+  return report.finish('VerifAid - every figure in this document is verifiable on-chain')
 }
 
 const renderUnitedStates = (

@@ -65,7 +65,7 @@ export const buildApp = async (config: BankConfig = loadConfig()): Promise<Fasti
   await app.register(swagger, {
     openapi: {
       info: {
-        title: 'Proof of Aid — payment provider (bank connector)',
+        title: 'VerifAid — payment provider (bank connector)',
         description:
           'Mock payment provider. Records fiat funding for a need — from a SEPA webhook, a card/bank checkout ' +
           'sandbox or a CSV import — as a `FundingRecorded` attestation (plus a stablecoin deposit when the need ' +

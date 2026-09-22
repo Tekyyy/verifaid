@@ -1,9 +1,9 @@
 import { keccak256, stringToHex } from 'viem'
 import { describe, expect, it } from 'vitest'
+import { DONOR_STAGES, trackingRefKind } from '../src/api.js'
 import { createSessionToken, verifySessionToken, verifyWebhookSignature } from '../src/auth.js'
 import { hmac, open, openEnvelope, seal, sealEnvelope } from '../src/crypto.js'
 import { getDeployment, hasDeployment } from '../src/deployment.js'
-import { DONOR_STAGES, trackingRefKind } from '../src/api.js'
 import {
   categoryHash,
   categoryLabel,

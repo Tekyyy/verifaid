@@ -1,18 +1,21 @@
 import type schema from 'ponder:schema'
 import {
-  categoryLabel,
   type ConversionView,
   type CustodyMode,
-  type DepositAddressView,
+  categoryLabel,
   type DeliveryStatus,
   type DeliveryView,
+  type DepositAddressView,
+  type DonationAcknowledgmentView,
   type DonationKind,
   type DonationView,
   type DonorTrancheSlice,
   getDeployment,
   type ImpactReportView,
+  type NeedPresentationView,
   type NeedStatus,
   type NeedSummary,
+  type OrgTaxStatusView,
   type PayeeChangeStatus,
   type PayeeChangeView,
   type PayeePaymentView,
@@ -20,16 +23,13 @@ import {
   regionLabel,
   resolveNetwork,
   type SettlementView,
-  type DonationAcknowledgmentView,
-  type NeedPresentationView,
-  type OrgTaxStatusView,
   type SupplierApplicationView,
   type SupplierView,
   type TimelineEvent,
   type TimelineEventType,
   type TrancheStatus,
-  tokenSymbolOf,
   type TrancheView,
+  tokenSymbolOf,
   type WorkPhotoView,
 } from '@poa/shared'
 import { type Address, type Hex, zeroAddress } from 'viem'
@@ -65,9 +65,7 @@ const deployment = getDeployment(resolveNetwork(process.env.PONDER_NETWORK ?? 'a
 export const fundingGapOf = (row: NeedRow): bigint =>
   row.status === 'Funding' && row.targetAmount > row.totalDonated ? row.targetAmount - row.totalDonated : 0n
 
-export const toNeedSummary = (
-  row: NeedRow,
-): Omit<NeedSummary, 'badges' | 'presentation' | 'taxStatus'> => ({
+export const toNeedSummary = (row: NeedRow): Omit<NeedSummary, 'badges' | 'presentation' | 'taxStatus'> => ({
   id: row.id.toString(),
   ngo: row.ngo as Address,
   // The NGO's display name lives in the off-chain profile JSON at metadataURI; only the URI is on-chain.

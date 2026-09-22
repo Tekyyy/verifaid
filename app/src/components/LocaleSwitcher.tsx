@@ -24,7 +24,7 @@ export function LocaleSwitcher() {
     })
   }
 
-    return (
+  return (
     <label className="flex items-center gap-2 text-sm">
       <span className="sr-only sm:not-sr-only sm:text-slate-500">{t('language')}</span>
       <select

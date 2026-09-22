@@ -47,7 +47,7 @@ export const buildApp = async (config: EvidenceConfig = loadConfig()): Promise<F
   await app.register(swagger, {
     openapi: {
       info: {
-        title: 'Proof of Aid — evidence service',
+        title: 'VerifAid — evidence service',
         description:
           'Encrypts delivery evidence, strips image metadata, pins the ciphertext to IPFS and serves it to the ' +
           'NGO, its field agent and independent verifiers. Roles are read from the chain on every request.',

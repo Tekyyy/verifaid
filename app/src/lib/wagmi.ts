@@ -20,7 +20,7 @@ export const wagmiConfig = createConfig({
   chains: [chain],
   multiInjectedProviderDiscovery: true,
   connectors: [
-    coinbaseWallet({ appName: 'Proof of Aid', preference: 'smartWalletOnly' }),
+    coinbaseWallet({ appName: 'VerifAid', preference: 'smartWalletOnly' }),
     injected({ shimDisconnect: true }),
   ],
   transports: { [chain.id]: http(rpcUrl) },

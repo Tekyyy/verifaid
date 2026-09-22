@@ -45,7 +45,7 @@ export const buildApp = async (deps: NotifierDeps = createDeps(loadConfig())): P
   await app.register(swagger, {
     openapi: {
       info: {
-        title: 'Proof of Aid — notifier',
+        title: 'VerifAid — notifier',
         description:
           'Donation alerts keyed by a public tracking reference (no accounts; email addresses envelope-encrypted ' +
           'and crypto-shredded on unsubscribe) and HMAC-signed outbound webhooks on timeline events for integrators.',

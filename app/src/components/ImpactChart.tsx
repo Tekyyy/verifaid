@@ -38,10 +38,7 @@ export function ImpactChart({
 
           <div className="mt-2 space-y-1" aria-hidden="true">
             <div className="h-3 w-full rounded-sm bg-slate-100">
-              <div
-                className="h-full rounded-sm bg-teal-600"
-                style={{ width: `${width(bucket.donated)}%` }}
-              />
+              <div className="h-full rounded-sm bg-teal-600" style={{ width: `${width(bucket.donated)}%` }} />
             </div>
             <div className="h-3 w-full rounded-sm bg-slate-100">
               <div

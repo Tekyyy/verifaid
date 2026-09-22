@@ -27,7 +27,7 @@ export function SiteNav() {
   const pathname = usePathname()
   const isCurrent = (href: string) => pathname === href || pathname.startsWith(`${href}/`)
 
-      return (
+  return (
     <nav
       aria-label={tCommon('mainNavigation')}
       className="flex w-full flex-wrap items-center justify-between gap-x-2 gap-y-1"
@@ -66,7 +66,9 @@ function NavLink({
       className={`rounded-md px-3 py-1.5 text-sm no-underline transition-all ${
         current
           ? 'bg-teal-600 font-semibold text-white shadow'
-          : 'bg-white font-medium text-slate-500 shadow-sm hover:bg-slate-50 hover:shadow'
+          : muted
+            ? 'bg-white/60 font-normal text-slate-400 hover:bg-white hover:text-slate-600 hover:shadow-sm'
+            : 'bg-white font-medium text-slate-500 shadow-sm hover:bg-slate-50 hover:shadow'
       }`}
     >
       {children}

@@ -77,8 +77,8 @@ export class PdfReport {
     const doc = await PDFDocument.create()
     doc.setTitle(ascii(meta.title))
     doc.setSubject(ascii(meta.subject))
-    doc.setCreator('Proof of Aid')
-    doc.setProducer('Proof of Aid dashboard (pdf-lib)')
+    doc.setCreator('VerifAid')
+    doc.setProducer('VerifAid dashboard (pdf-lib)')
     doc.setCreationDate(new Date())
     const [regular, bold, mono] = await Promise.all([
       doc.embedFont(StandardFonts.Helvetica),

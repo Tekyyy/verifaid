@@ -64,7 +64,8 @@ ponder.on('NeedsRegistry:NeedCreated', async ({ event, context }) => {
         refHash: planned.refHash,
         shareBps: planned.shareBps.map(Number),
         needShareBps: Math.floor(
-          planned.shareBps.reduce((sum, share, t) => sum + Number(share) * Number(trancheBps[t] ?? 0), 0) / 10_000,
+          planned.shareBps.reduce((sum, share, t) => sum + Number(share) * Number(trancheBps[t] ?? 0), 0) /
+            10_000,
         ),
         paid: 0n,
         held: 0n,

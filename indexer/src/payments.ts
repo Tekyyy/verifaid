@@ -59,9 +59,7 @@ const recordPayment = async (
   if (row) {
     await context.db
       .update(schema.payee, { needId, index: row.index })
-      .set((current) =>
-        held ? { held: current.held + amount } : { paid: current.paid + amount },
-      )
+      .set((current) => (held ? { held: current.held + amount } : { paid: current.paid + amount }))
   }
   if (!held && !toNgo) await creditSupplier(context, payee, amount)
 

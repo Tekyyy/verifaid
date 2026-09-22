@@ -49,7 +49,7 @@ const EnvSchema = z.object({
   NOTIFIER_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   EMAIL_API_URL: z.url().optional(),
   EMAIL_API_KEY: z.string().optional(),
-  EMAIL_FROM: z.string().default('Proof of Aid <alerts@proof-of-aid.local>'),
+  EMAIL_FROM: z.string().default('VerifAid <alerts@verifaid.local>'),
 })
 
 export interface NotifierConfig {

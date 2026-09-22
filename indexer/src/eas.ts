@@ -2,10 +2,10 @@ import { ponder } from 'ponder:registry'
 import schema from 'ponder:schema'
 import {
   type CommunitySchemaName,
+  currencyLabel,
   type DeliveryEvidenceData,
   type DeliveryVerifiedData,
   decodeSchemaData,
-  currencyLabel,
   easAbi,
   type FundingRecordedData,
   getDeployment,

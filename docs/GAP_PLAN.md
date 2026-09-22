@@ -1,4 +1,4 @@
-# Gap-closing plan: aligning with the Proof of Aid proposal
+# Gap-closing plan: aligning with the VerifAid proposal
 
 Source of the gaps: https://proof-of-aid.lovable.app (the public proposal), compared against this repository on
 2026-09-16.

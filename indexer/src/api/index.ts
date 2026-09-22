@@ -1,10 +1,10 @@
 import { db, publicClients } from 'ponder:api'
 import schema from 'ponder:schema'
 import {
-  categoryHash,
-  categoryLabel,
   CUSTODY_MODE,
   type CustodyMode,
+  categoryHash,
+  categoryLabel,
   type DeliveryView,
   type DepositAddressView,
   type DonationTrack,
@@ -14,27 +14,27 @@ import {
   type ImpactBucket,
   type ImpactSummary,
   NEED_SORTS,
+  type NeedBadges,
   type NeedDetail,
+  type NeedPresentationView,
   type NeedSort,
   type NeedStatus,
   type NeedSummary,
+  type OrgTaxStatusView,
   type ProgramMembersResponse,
+  type ProgramView,
   type ProviderView,
-  type SupplierDetail,
-  type SupplierView,
+  payeeChangeApprovalsRequired,
   regionCode as regionCodeOf,
   regionLabel,
   resolveNetwork,
+  type SupplierApplicationView,
+  type SupplierDetail,
+  type SupplierView,
   semaphoreAbi,
   type TimelineEvent,
   type TimelinePage,
   trackingRefKind,
-  type NeedBadges,
-  type NeedPresentationView,
-  type OrgTaxStatusView,
-  payeeChangeApprovalsRequired,
-  type ProgramView,
-  type SupplierApplicationView,
 } from '@poa/shared'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
@@ -53,19 +53,18 @@ import {
   toDonationView,
   toDonorTrancheSlice,
   toImpactReportView,
+  toNeedPresentationView,
   toNeedSummary,
+  toOrgTaxStatusView,
   toPayeeChangeView,
   toPayeePaymentView,
   toPayeeView,
-  toAcknowledgmentView,
-  toNeedPresentationView,
-  toOrgTaxStatusView,
-  toSupplierApplicationView,
-  toWorkPhotoView,
   toSettlementView,
+  toSupplierApplicationView,
   toSupplierView,
   toTimelineEvent,
   toTrancheView,
+  toWorkPhotoView,
 } from './views.js'
 
 /**
@@ -208,7 +207,12 @@ const presentationsFor = async (rows: NeedRow[]): Promise<Map<bigint, NeedPresen
   const found = await db
     .select()
     .from(schema.needPresentation)
-    .where(inArray(schema.needPresentation.needId, rows.map((row) => row.id)))
+    .where(
+      inArray(
+        schema.needPresentation.needId,
+        rows.map((row) => row.id),
+      ),
+    )
   return new Map(found.map((row) => [row.needId, toNeedPresentationView(row)]))
 }
 
@@ -229,10 +233,7 @@ const badgesFor = async (rows: NeedRow[]): Promise<Map<bigint, NeedBadges>> => {
   if (rows.length === 0) return new Map()
   const ngos = [...new Set(rows.map((row) => row.ngo.toLowerCase() as Address))]
 
-  const theirNeeds = await db
-    .select()
-    .from(schema.need)
-    .where(inArray(schema.need.ngo, ngos))
+  const theirNeeds = await db.select().from(schema.need).where(inArray(schema.need.ngo, ngos))
   const needIds = theirNeeds.map((need) => need.id)
   const held = needIds.length
     ? await db.select().from(schema.payee).where(inArray(schema.payee.needId, needIds))
@@ -240,7 +241,15 @@ const badgesFor = async (rows: NeedRow[]): Promise<Map<bigint, NeedBadges>> => {
   const photos = await db
     .select()
     .from(schema.workPhotos)
-    .where(and(inArray(schema.workPhotos.needId, rows.map((row) => row.id)), eq(schema.workPhotos.revoked, false)))
+    .where(
+      and(
+        inArray(
+          schema.workPhotos.needId,
+          rows.map((row) => row.id),
+        ),
+        eq(schema.workPhotos.revoked, false),
+      ),
+    )
 
   const heldByNeed = new Map<bigint, bigint>()
   for (const payee of held) {
@@ -270,9 +279,7 @@ const badgesFor = async (rows: NeedRow[]): Promise<Map<bigint, NeedBadges>> => {
         {
           workPhotos: photoCount.get(row.id) ?? 0,
           payoutAccuracyBps:
-            reached === null || !record?.released
-              ? null
-              : Number((reached * 10_000n) / record.released),
+            reached === null || !record?.released ? null : Number((reached * 10_000n) / record.released),
           needsCompleted: record?.completed ?? 0,
           needsTotal: record?.total ?? 0,
         },
@@ -288,32 +295,41 @@ app.get('/needs/:id', async (c) => {
   const [row] = await db.select().from(schema.need).where(eq(schema.need.id, id)).limit(1)
   if (!row) return c.json({ error: 'need not found' }, 404)
 
-  const [tranches, deliveries, donations, settlements, reports, payees, payments, changes] = await Promise.all([
-    db.select().from(schema.tranche).where(eq(schema.tranche.needId, id)).orderBy(asc(schema.tranche.index)),
-    db.select().from(schema.delivery).where(eq(schema.delivery.needId, id)).orderBy(asc(schema.delivery.id)),
-    db
-      .select()
-      .from(schema.donation)
-      .where(eq(schema.donation.needId, id))
-      .orderBy(asc(schema.donation.timestamp)),
-    db
-      .select()
-      .from(schema.settlement)
-      .where(eq(schema.settlement.needId, id))
-      .orderBy(asc(schema.settlement.trancheIndex)),
-    db.select().from(schema.impactReport).where(eq(schema.impactReport.needId, id)),
-    db.select().from(schema.payee).where(eq(schema.payee.needId, id)).orderBy(asc(schema.payee.index)),
-    db
-      .select()
-      .from(schema.payeePayment)
-      .where(eq(schema.payeePayment.needId, id))
-      .orderBy(asc(schema.payeePayment.timestamp)),
-    db
-      .select()
-      .from(schema.payeeChange)
-      .where(eq(schema.payeeChange.needId, id))
-      .orderBy(desc(schema.payeeChange.changeId)),
-  ])
+  const [tranches, deliveries, donations, settlements, reports, payees, payments, changes] =
+    await Promise.all([
+      db
+        .select()
+        .from(schema.tranche)
+        .where(eq(schema.tranche.needId, id))
+        .orderBy(asc(schema.tranche.index)),
+      db
+        .select()
+        .from(schema.delivery)
+        .where(eq(schema.delivery.needId, id))
+        .orderBy(asc(schema.delivery.id)),
+      db
+        .select()
+        .from(schema.donation)
+        .where(eq(schema.donation.needId, id))
+        .orderBy(asc(schema.donation.timestamp)),
+      db
+        .select()
+        .from(schema.settlement)
+        .where(eq(schema.settlement.needId, id))
+        .orderBy(asc(schema.settlement.trancheIndex)),
+      db.select().from(schema.impactReport).where(eq(schema.impactReport.needId, id)),
+      db.select().from(schema.payee).where(eq(schema.payee.needId, id)).orderBy(asc(schema.payee.index)),
+      db
+        .select()
+        .from(schema.payeePayment)
+        .where(eq(schema.payeePayment.needId, id))
+        .orderBy(asc(schema.payeePayment.timestamp)),
+      db
+        .select()
+        .from(schema.payeeChange)
+        .where(eq(schema.payeeChange.needId, id))
+        .orderBy(desc(schema.payeeChange.changeId)),
+    ])
 
   const live = liveReport(reports)
 
@@ -340,7 +356,9 @@ app.get('/needs/:id', async (c) => {
     impactReport: live ? toImpactReportView(live) : null,
     payees: payees.map(toPayeeView),
     payments: payments.map(toPayeePaymentView),
-    payeeChanges: changes.map((change) => toPayeeChangeView(change, payeeChangeApprovalsRequired(row.verificationsRequired))),
+    payeeChanges: changes.map((change) =>
+      toPayeeChangeView(change, payeeChangeApprovalsRequired(row.verificationsRequired)),
+    ),
     photos: photos.map(toWorkPhotoView),
   } satisfies NeedDetail)
 })
@@ -365,7 +383,7 @@ app.get('/needs/:id/feed.rss', async (c) => {
   return rss(
     c,
     renderRss({
-      title: `Proof of Aid: need #${id} (${categoryLabel(need.category as Hex)}, ${regionLabel(need.regionCode as Hex)})`,
+      title: `VerifAid: need #${id} (${categoryLabel(need.category as Hex)}, ${regionLabel(need.regionCode as Hex)})`,
       link,
       description: 'Every verified step of this need, from verification to impact, as it happens on-chain.',
       selfUrl: new URL(c.req.url).toString(),
@@ -439,7 +457,7 @@ app.get('/donations/:ref/feed.rss', async (c) => {
   return rss(
     c,
     renderRss({
-      title: `Proof of Aid: your donation to need #${needId}`,
+      title: `VerifAid: your donation to need #${needId}`,
       link,
       description: 'Where this donation is: verified, funded, settled, delivered and impact confirmed.',
       selfUrl: new URL(c.req.url).toString(),
@@ -548,7 +566,9 @@ app.get('/supplier-applications', async (c) => {
     .where(eq(schema.supplierApplication.revoked, false))
     .orderBy(desc(schema.supplierApplication.timestamp))
   const registered = new Set(
-    (await db.select().from(schema.supplier)).filter((row) => row.active).map((row) => row.address.toLowerCase()),
+    (await db.select().from(schema.supplier))
+      .filter((row) => row.active)
+      .map((row) => row.address.toLowerCase()),
   )
 
   return c.json(
@@ -897,30 +917,39 @@ const loadTrack = async (ref: string, provider: string | undefined): Promise<Loa
       )
     : and(eq(schema.refund.needId, needId), eq(schema.refund.donorRefHash, donation.donorRefHash as Hex))
 
-  const [sameDonorDonations, tranches, deliveries, settlements, reports, refunds, timeline, payees, payments] =
-    await Promise.all([
-      db.select().from(schema.donation).where(sameDonor),
-      db
-        .select()
-        .from(schema.tranche)
-        .where(eq(schema.tranche.needId, needId))
-        .orderBy(asc(schema.tranche.index)),
-      db
-        .select()
-        .from(schema.delivery)
-        .where(eq(schema.delivery.needId, needId))
-        .orderBy(asc(schema.delivery.id)),
-      db.select().from(schema.settlement).where(eq(schema.settlement.needId, needId)),
-      db.select().from(schema.impactReport).where(eq(schema.impactReport.needId, needId)),
-      db.select().from(schema.refund).where(refundsOfDonor),
-      needTimeline(needId),
-      db.select().from(schema.payee).where(eq(schema.payee.needId, needId)).orderBy(asc(schema.payee.index)),
-      db
-        .select()
-        .from(schema.payeePayment)
-        .where(eq(schema.payeePayment.needId, needId))
-        .orderBy(asc(schema.payeePayment.timestamp)),
-    ])
+  const [
+    sameDonorDonations,
+    tranches,
+    deliveries,
+    settlements,
+    reports,
+    refunds,
+    timeline,
+    payees,
+    payments,
+  ] = await Promise.all([
+    db.select().from(schema.donation).where(sameDonor),
+    db
+      .select()
+      .from(schema.tranche)
+      .where(eq(schema.tranche.needId, needId))
+      .orderBy(asc(schema.tranche.index)),
+    db
+      .select()
+      .from(schema.delivery)
+      .where(eq(schema.delivery.needId, needId))
+      .orderBy(asc(schema.delivery.id)),
+    db.select().from(schema.settlement).where(eq(schema.settlement.needId, needId)),
+    db.select().from(schema.impactReport).where(eq(schema.impactReport.needId, needId)),
+    db.select().from(schema.refund).where(refundsOfDonor),
+    needTimeline(needId),
+    db.select().from(schema.payee).where(eq(schema.payee.needId, needId)).orderBy(asc(schema.payee.index)),
+    db
+      .select()
+      .from(schema.payeePayment)
+      .where(eq(schema.payeePayment.needId, needId))
+      .orderBy(asc(schema.payeePayment.timestamp)),
+  ])
 
   return {
     value: buildDonationTrack({

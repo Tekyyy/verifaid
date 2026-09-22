@@ -2,19 +2,19 @@ import {
   AID_RECEIVED_MESSAGE,
   aidVaultAbi,
   beneficiaryGroupsAbi,
-  categoryHash,
   CUSTODY_MODE,
-  conversionRouterAbi,
   type CustodyMode,
+  categoryHash,
+  conversionRouterAbi,
   deliveryManagerAbi,
   donationForwarderAbi,
   donationForwarderFactoryAbi,
   encodeSchemaData,
   formatAmount,
   mockEURCAbi,
+  NATIVE_TOKEN,
   NEED_STATUS_VALUE,
   needStatusName,
-  NATIVE_TOKEN,
   needsRegistryAbi,
   nonCustodialLedgerAbi,
   proofOfAidResolverAbi,
@@ -45,7 +45,7 @@ import { buildGroup, type DemoIdentity, loadDemoIdentities } from './identities.
 import { attestation, fail, heading, info, note, step, tx } from './log.js'
 
 /**
- * Runs the Proof of Aid lifecycle against a live chain and prints an explorer link for every step, so a judge
+ * Runs the VerifAid lifecycle against a live chain and prints an explorer link for every step, so a judge
  * can follow a need from "a verifier said this need is real" to "beneficiaries confirmed they received the aid,
  * and here is the money that moved because of it".
  *
@@ -95,7 +95,7 @@ const main = async (): Promise<void> => {
   const ctx = createContext(networkArg)
   const { contracts, external } = ctx.deployment
 
-  heading('Proof of Aid v4 — lifecycle demo')
+  heading('VerifAid v4 — lifecycle demo')
   info('network', ctx.network)
   info('rpc', ctx.rpcUrl)
   info('NeedsRegistry', contracts.NeedsRegistry)
@@ -780,7 +780,7 @@ const releaseOnChain = async (ctx: DemoContext, vault: Address, index: number): 
         : 'NGO operations share'
     info(`paid to ${who}`, `${formatAmount(paid.args.amount)} units`)
   }
-  note('the NGO never holds the suppliers\' money: the vault pays them directly')
+  note("the NGO never holds the suppliers' money: the vault pays them directly")
   tx(ctx.network, 'tx', hash)
 }
 

@@ -40,7 +40,7 @@ export const buildApp = async (config: VaultConfig = loadConfig()): Promise<Fast
   await app.register(swagger, {
     openapi: {
       info: {
-        title: 'Proof of Aid — PII vault',
+        title: 'VerifAid — PII vault',
         description:
           'Envelope-encrypted beneficiary records and needs assessments. Personal data never reaches the chain; ' +
           'erasure is performed by destroying a record’s data key.',

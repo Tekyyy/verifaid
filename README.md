@@ -1,4 +1,4 @@
-# Proof of Aid
+# VerifAid
 
 **The public chain holds flows and proofs. It never holds people.**
 

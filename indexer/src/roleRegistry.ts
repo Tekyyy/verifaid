@@ -78,7 +78,14 @@ ponder.on('RoleRegistry:SupplierRegistered', async ({ event, context }) => {
   const { supplier, credentialHash, metadataURI } = event.args
   await context.db
     .insert(schema.supplier)
-    .values({ address: supplier, credentialHash, metadataURI, active: true, registeredAt: seconds(event), totalPaid: 0n })
+    .values({
+      address: supplier,
+      credentialHash,
+      metadataURI,
+      active: true,
+      registeredAt: seconds(event),
+      totalPaid: 0n,
+    })
     .onConflictDoUpdate({ credentialHash, metadataURI, active: true })
   await context.db
     .insert(schema.roleAccount)

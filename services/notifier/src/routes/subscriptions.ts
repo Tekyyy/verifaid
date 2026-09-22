@@ -4,8 +4,8 @@ import { prisma } from '@poa/shared/db'
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { bearerToken } from '../auth.js'
 import { type Channel, contextFromNeed, contextFromTrack, subscribedDelivery } from '../alerts.js'
+import { bearerToken } from '../auth.js'
 import {
   alertWebhookSecret,
   hashToken,
@@ -259,6 +259,6 @@ const sendPage = (reply: FastifyReply, status: number, title: string, text: stri
 /** Static text only: nothing from the request is reflected into the page. */
 const page = (title: string, text: string): string =>
   `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title} · Proof of Aid</title>
+<title>${title} · VerifAid</title>
 <style>body{font-family:system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem;line-height:1.5;color:#1a1a1a;background:#fff}h1{font-size:1.4rem}@media (prefers-color-scheme:dark){body{color:#eee;background:#111}}</style>
-</head><body><h1>${title}</h1><p>${text}</p><p>Proof of Aid</p></body></html>`
+</head><body><h1>${title}</h1><p>${text}</p><p>VerifAid</p></body></html>`

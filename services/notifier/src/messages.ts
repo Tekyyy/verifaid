@@ -171,7 +171,7 @@ export const subscribedEmail = (
   ].join('\n')
   return {
     template: 'subscribed',
-    subject: `Proof of Aid · ${refLabel(target)}: alerts are on`,
+    subject: `VerifAid · ${refLabel(target)}: alerts are on`,
     text,
     needId: target.needId,
     trackingRef: target.trackingRef,
@@ -203,7 +203,7 @@ export const milestoneEmail = (
   const label = milestone.kind === 'stage' ? STAGE_LABEL[milestone.stage.stage] : milestone.outcome
   return {
     template: milestone.kind,
-    subject: `Proof of Aid · ${refLabel(target)}: ${label}`,
+    subject: `VerifAid · ${refLabel(target)}: ${label}`,
     text: [
       headline.charAt(0).toUpperCase() + headline.slice(1),
       '',

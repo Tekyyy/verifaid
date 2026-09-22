@@ -1,15 +1,16 @@
+import schema from 'ponder:schema'
 import {
   type CommunitySchemaName,
   type DonationAcknowledgedData,
   decodeCommunityData,
+  getDeployment,
   type NeedPresentationData,
   type OrgTaxStatusData,
+  resolveNetwork,
   type SupplierApplicationData,
   type WorkPhotosData,
 } from '@poa/shared'
-import { getDeployment, resolveNetwork } from '@poa/shared'
 import { eq } from 'ponder'
-import schema from 'ponder:schema'
 import type { Address, Hex } from 'viem'
 
 /**
@@ -103,7 +104,10 @@ export const recordCommunityAttestation = async (
       timestamp: ctx.timestamp,
     }
     // Publishing again replaces what donors see; the attestations remain as the history of what changed.
-    await ctx.db.insert(schema.needPresentation).values({ needId, ...row }).onConflictDoUpdate(row)
+    await ctx.db
+      .insert(schema.needPresentation)
+      .values({ needId, ...row })
+      .onConflictDoUpdate(row)
     return needId
   }
 
@@ -133,7 +137,10 @@ export const recordCommunityAttestation = async (
         verifiedAt: null,
         verifiedUid: null,
       }
-      await ctx.db.insert(schema.orgTaxStatus).values({ org, ...claim }).onConflictDoUpdate(claim)
+      await ctx.db
+        .insert(schema.orgTaxStatus)
+        .values({ org, ...claim })
+        .onConflictDoUpdate(claim)
       return null
     }
     // The admin can only confirm a claim the organisation actually made.
@@ -167,7 +174,10 @@ export const recordCommunityAttestation = async (
       timestamp: ctx.timestamp,
       txHash: ctx.txHash,
     }
-    await ctx.db.insert(schema.donationAcknowledgment).values({ receiptId, ...row }).onConflictDoUpdate(row)
+    await ctx.db
+      .insert(schema.donationAcknowledgment)
+      .values({ receiptId, ...row })
+      .onConflictDoUpdate(row)
     return needId
   }
 
