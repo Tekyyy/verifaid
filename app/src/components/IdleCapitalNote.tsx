@@ -55,7 +55,9 @@ export function IdleCapitalNote({ need }: { need: NeedDetail }) {
         </p>
       ) : null}
 
-      {idle.venue ? (
+      {/* The venue stays on the record after the position closes, but "where it waits" is only true while
+          something is actually lent — so the line follows the money, not the address. */}
+      {idle.venue && deployed > 0n ? (
         <p className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-600">
           <span>{t('venue')}</span>
           <ExplorerLink kind="address" value={idle.venue} />
