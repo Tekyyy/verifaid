@@ -7,7 +7,6 @@ import type {
   NeedDetail,
   NeedSort,
   NeedSummary,
-  ProgramMembersResponse,
   ProgramView,
   SupplierApplicationView,
   SupplierDetail,
@@ -134,11 +133,6 @@ export const getDonorTrace = async (address: string): Promise<Result<DonorTrace>
 
 export const getImpactSummary = async (): Promise<Result<ImpactSummary>> =>
   useFixtures ? { ok: true, data: fixtures.impactSummary } : get<ImpactSummary>('/impact/summary')
-
-export const getProgramMembers = async (programId: string): Promise<Result<ProgramMembersResponse>> =>
-  useFixtures
-    ? fixtures.programMembers(programId)
-    : get<ProgramMembersResponse>(`/programs/${encodeURIComponent(programId)}/members`)
 
 export const getDeliveries = async (status?: string): Promise<Result<DeliveryView[]>> =>
   useFixtures

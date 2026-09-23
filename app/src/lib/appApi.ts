@@ -136,3 +136,18 @@ export const relayDepositRefund = (
     `/api/deposits/${encodeURIComponent(address)}/refund`,
     input,
   )
+
+// ─── v9: votes signed for free, relayed by the platform ─────────────────────────
+
+export interface RelayedVote {
+  txHash: string
+}
+
+/** Sends a vote the donor or verifier signed (the EIP-712 Vote message) to the relayer, which pays the gas. */
+export const relayVote = (input: {
+  deliveryId: string
+  voter: string
+  approve: boolean
+  deadline: string
+  signature: string
+}): Promise<AppResult<RelayedVote>> => postJson<RelayedVote>('/api/relay/vote', input)

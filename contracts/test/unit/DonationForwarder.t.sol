@@ -28,7 +28,7 @@ contract DonationForwarderTest is PoATest {
     function setUp() public override {
         super.setUp();
         refundSigner = vm.addr(refundKey);
-        programId = _createProgram(ngo, 10);
+        programId = _createProgram(ngo);
         needId = _verifiedNeedWith(_costedNeed(TARGET, COST_CAP_BPS));
         vault = AidVault(registry.vaultOf(needId));
     }

@@ -6,10 +6,10 @@ export function ProgressBar({
   /** 0-100. */
   value: number
   label: string
-  tone?: 'teal' | 'emerald'
+  tone?: 'teal' | 'emerald' | 'red'
 }) {
   const clamped = Math.max(0, Math.min(100, value))
-  const fill = tone === 'emerald' ? 'bg-emerald-600' : 'bg-teal-600'
+  const fill = tone === 'emerald' ? 'bg-emerald-600' : tone === 'red' ? 'bg-red-600' : 'bg-teal-600'
 
   return (
     <div

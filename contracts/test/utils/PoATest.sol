@@ -5,22 +5,23 @@ import {SystemDeployer} from "../../script/lib/SystemDeployer.sol";
 import {RoleRegistry} from "../../src/access/RoleRegistry.sol";
 import {ConversionRouter} from "../../src/conversion/ConversionRouter.sol";
 import {DeliveryManager} from "../../src/delivery/DeliveryManager.sol";
+import {ReleasePolicy} from "../../src/delivery/ReleasePolicy.sol";
 import {AidVault} from "../../src/funds/AidVault.sol";
 import {AidVaultFactory} from "../../src/funds/AidVaultFactory.sol";
 import {DonationForwarderFactory} from "../../src/funds/DonationForwarderFactory.sol";
 import {DonationReceipt} from "../../src/funds/DonationReceipt.sol";
-import {BeneficiaryGroups} from "../../src/identity/BeneficiaryGroups.sol";
 import {IAidVault} from "../../src/interfaces/IAidVault.sol";
 import {IDeliveryManager} from "../../src/interfaces/IDeliveryManager.sol";
 import {INeedsRegistry} from "../../src/interfaces/INeedsRegistry.sol";
+import {IReleasePolicy} from "../../src/interfaces/IReleasePolicy.sol";
 import {ITrancheLedger} from "../../src/interfaces/ITrancheLedger.sol";
 import {MockEURC} from "../../src/mocks/MockEURC.sol";
-import {MockSemaphore} from "../../src/mocks/MockSemaphore.sol";
 import {MockSwapRouter} from "../../src/mocks/MockSwapRouter.sol";
 import {MockUSDC} from "../../src/mocks/MockUSDC.sol";
 import {MockV3Aggregator} from "../../src/mocks/MockV3Aggregator.sol";
 import {MockWETH9} from "../../src/mocks/MockWETH9.sol";
 import {NeedsRegistry} from "../../src/needs/NeedsRegistry.sol";
+import {ProgramRegistry} from "../../src/programs/ProgramRegistry.sol";
 import {ProofOfAidResolver} from "../../src/resolvers/ProofOfAidResolver.sol";
 import {
     AttestationRequest,
@@ -31,16 +32,17 @@ import {
 } from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
 import {ISchemaRegistry} from "@ethereum-attestation-service/eas-contracts/contracts/ISchemaRegistry.sol";
 import {ISchemaResolver} from "@ethereum-attestation-service/eas-contracts/contracts/resolver/ISchemaResolver.sol";
-import {ISemaphore} from "@semaphore-protocol/contracts/interfaces/ISemaphore.sol";
 import {Test} from "forge-std/Test.sol";
 
 /// @title PoATest
-/// @notice Shared fixture: deploys the full Proof of Aid system (local EAS + MockSemaphore), registers the three
+/// @notice Shared fixture: deploys the full Proof of Aid system (with a local EAS), registers the three
 ///         schemas and provides helpers for the recurring flows (needs, donations, deliveries, attestations).
 abstract contract PoATest is Test, SystemDeployer {
     // ─── protocol parameters used in tests ─────────────────────────────────────
     uint256 internal constant HIGH_VALUE_THRESHOLD = 10_000e6;
     uint16 internal constant DONOR_APPROVAL_BPS = 3000;
+    uint16 internal constant DONOR_REJECTION_BPS = 5000;
+    uint8 internal constant REJECTION_RETRIES = 1;
     uint32 internal constant MIN_BENEFICIARIES_SERVED = 5;
     string internal constant DASHBOARD_BASE_URI = "https://proofofaid.example/needs/";
 
@@ -52,7 +54,7 @@ abstract contract PoATest is Test, SystemDeployer {
     bytes32 internal constant SHELTER = keccak256("SHELTER");
     bytes32 internal constant REGION = bytes32("ES-CM");
     bytes32 internal constant DOSSIER_HASH = keccak256("encrypted-needs-assessment-1");
-    bytes32 internal constant POLICY_HASH = keccak256("enrollment-policy-v1");
+    bytes32 internal constant ELIGIBILITY_HASH = keccak256("eligibility-rules-v1");
     bytes32 internal constant REPORT_HASH = keccak256("verifier-report");
     bytes32 internal constant EVIDENCE_HASH = keccak256("ciphertext");
     bytes32 internal constant KPI_HASH = keccak256("kpis");
@@ -84,10 +86,13 @@ abstract contract PoATest is Test, SystemDeployer {
     NeedsRegistry internal registry;
     AidVaultFactory internal factory;
     DonationReceipt internal receipt;
-    BeneficiaryGroups internal groups;
+    ProgramRegistry internal programs;
     DeliveryManager internal deliveryManager;
+    /// @dev The built-in release policies; needs use `donorPolicy` unless a test picks another.
+    ReleasePolicy internal donorPolicy;
+    ReleasePolicy internal verifierPolicy;
+    ReleasePolicy internal bothPolicy;
     MockEURC internal token;
-    MockSemaphore internal semaphore;
     IEAS internal eas;
     ISchemaRegistry internal schemaRegistry;
 
@@ -117,13 +122,6 @@ abstract contract PoATest is Test, SystemDeployer {
     bytes32 internal needVerifiedSchema;
     bytes32 internal settlementSchema;
     bytes32 internal impactReportSchema;
-
-    /// @dev Which Semaphore implementation the system is deployed against. Overridden by the integration test
-    ///      that runs against real Semaphore v4 contracts with real proofs.
-    function _setUpSemaphore() internal virtual returns (address) {
-        semaphore = new MockSemaphore();
-        return address(semaphore);
-    }
 
     /// @dev Hooks for tests that run against a fork with real DeFi instead of the local mocks.
     ///      By default the fixture holds euros (a MockEURC vault, USDC and ETH converted into it), which exercises
@@ -159,7 +157,6 @@ abstract contract PoATest is Test, SystemDeployer {
 
     function setUp() public virtual {
         _beforeDeploy();
-        address semaphoreAddress = _setUpSemaphore();
         (address schemaRegistry_, address eas_) = _deployLocalEAS();
         schemaRegistry = ISchemaRegistry(schemaRegistry_);
         eas = IEAS(eas_);
@@ -170,9 +167,10 @@ abstract contract PoATest is Test, SystemDeployer {
                 admin: admin,
                 token: _tokenAddress(),
                 eas: eas_,
-                semaphore: semaphoreAddress,
                 highValueThreshold: HIGH_VALUE_THRESHOLD,
                 donorApprovalBps: DONOR_APPROVAL_BPS,
+                donorRejectionBps: DONOR_REJECTION_BPS,
+                rejectionRetries: REJECTION_RETRIES,
                 minBeneficiariesServed: MIN_BENEFICIARIES_SERVED,
                 dashboardBaseURI: DASHBOARD_BASE_URI,
                 yieldVenue: address(0),
@@ -186,8 +184,11 @@ abstract contract PoATest is Test, SystemDeployer {
         registry = sys.registry;
         factory = sys.factory;
         receipt = sys.receipt;
-        groups = sys.groups;
+        programs = sys.programs;
         deliveryManager = sys.deliveryManager;
+        donorPolicy = sys.donorPolicy;
+        verifierPolicy = sys.verifierPolicy;
+        bothPolicy = sys.donorAndVerifierPolicy;
         token = MockEURC(sys.token);
         resolver = sys.resolver;
         router = sys.router;
@@ -233,18 +234,10 @@ abstract contract PoATest is Test, SystemDeployer {
 
     // ─── programs & needs ──────────────────────────────────────────────────────
 
-    /// @dev Creates a program owned by `owner` with `members` enrolled identity commitments.
-    function _createProgram(address owner, uint256 members) internal returns (uint256 programId) {
+    /// @dev Creates a programme owned by `owner`.
+    function _createProgram(address owner) internal returns (uint256 programId) {
         vm.prank(owner);
-        programId = groups.createProgram(POLICY_HASH, "ipfs://program");
-        if (members > 0) {
-            uint256[] memory commitments = new uint256[](members);
-            for (uint256 i; i < members; ++i) {
-                commitments[i] = uint256(keccak256(abi.encode(owner, programId, i)));
-            }
-            vm.prank(owner);
-            groups.addMembers(programId, commitments);
-        }
+        programId = programs.createProgram(ELIGIBILITY_HASH, "ipfs://program");
     }
 
     function _threeTrancheBps() internal pure returns (uint16[] memory bps) {
@@ -284,7 +277,8 @@ abstract contract PoATest is Test, SystemDeployer {
             thirdPartyCostBps: 0,
             expectedOutcomeHash: OUTCOME_HASH,
             costDisclosureHash: bytes32(0),
-            payees: _singlePayee(supplierA, bps.length)
+            payees: _singlePayee(supplierA, bps.length),
+            releasePolicy: address(0) // the default: donors decide
         });
     }
 
@@ -321,7 +315,7 @@ abstract contract PoATest is Test, SystemDeployer {
     ///      Above the high-value threshold the need needs two independent verifiers, so both attest.
     function _verifiedNeed(uint256 target) internal returns (uint256 needId, uint256 programId, AidVault vault) {
         uint8 verificationsRequired = target > HIGH_VALUE_THRESHOLD ? 2 : 1;
-        programId = _createProgram(ngo, 10);
+        programId = _createProgram(ngo);
         needId = _createNeed(ngo, programId, target, verificationsRequired);
         _attestNeedVerified(verifier1, needId, true);
         if (verificationsRequired > 1) _attestNeedVerified(verifier2, needId, true);
@@ -456,23 +450,39 @@ abstract contract PoATest is Test, SystemDeployer {
         deliveryId = deliveryManager.submitEvidence(needId, MANIFEST);
     }
 
-    /// @dev Every fixture address that gave to the need approves, in turn, until the delivery is approved.
+    /// @dev Every fixture address with a say on the need approves, in turn, until the delivery is approved.
     function _approveByDonors(uint256 deliveryId) internal {
+        _voteUntilDecided(deliveryId, true);
+        assertEq(
+            uint8(deliveryManager.getDelivery(deliveryId).status),
+            uint8(IDeliveryManager.DeliveryStatus.Approved),
+            "the voters did not reach the approval threshold"
+        );
+    }
+
+    /// @dev The same, rejecting.
+    function _rejectByDonors(uint256 deliveryId) internal {
+        _voteUntilDecided(deliveryId, false);
+        assertEq(
+            uint8(deliveryManager.getDelivery(deliveryId).status),
+            uint8(IDeliveryManager.DeliveryStatus.Rejected),
+            "the voters did not reach the rejection threshold"
+        );
+    }
+
+    function _voteUntilDecided(uint256 deliveryId, bool approve) internal {
         uint256 needId = deliveryManager.getDelivery(deliveryId).needId;
         address[7] memory candidates = [donor1, donor2, outsider, relayer, verifier1, verifier2, verifier3];
         for (uint256 i; i < candidates.length; ++i) {
             if (deliveryManager.getDelivery(deliveryId).status != IDeliveryManager.DeliveryStatus.Open) break;
             address candidate = candidates[i];
-            if (deliveryManager.approvalWeight(needId, candidate) == 0) continue;
-            if (deliveryManager.hasApproved(deliveryId, candidate)) continue;
+            (IReleasePolicy.Voice voice,) = deliveryManager.voiceOf(needId, candidate);
+            if (voice == IReleasePolicy.Voice.None) continue;
+            if (deliveryManager.hasVoted(deliveryId, candidate)) continue;
             vm.prank(candidate);
-            deliveryManager.approve(deliveryId);
+            if (approve) deliveryManager.approve(deliveryId);
+            else deliveryManager.reject(deliveryId);
         }
-        assertEq(
-            uint8(deliveryManager.getDelivery(deliveryId).status),
-            uint8(IDeliveryManager.DeliveryStatus.Approved),
-            "donors did not reach the approval threshold"
-        );
     }
 
     // ─── assertions ────────────────────────────────────────────────────────────

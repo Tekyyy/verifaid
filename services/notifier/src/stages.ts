@@ -115,10 +115,10 @@ export const needProgress = (need: NeedDetail): Progress => {
         txHash: settlement?.txHash,
         attestationUID: settlement?.uid,
       }),
-      // The approval that crossed the threshold is the last one recorded.
+      // The approving vote that crossed the threshold is the last approving vote recorded.
       stageView('Delivered', Boolean(delivered), {
-        at: delivered?.approvedAt ?? undefined,
-        txHash: delivered?.approvals.at(-1)?.txHash,
+        at: delivered?.decidedAt ?? undefined,
+        txHash: delivered?.votes.filter((vote) => vote.approve).at(-1)?.txHash,
       }),
       stageView('ImpactConfirmed', Boolean(impact), { at: impact?.timestamp, attestationUID: impact?.uid }),
     ],

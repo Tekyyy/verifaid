@@ -1,7 +1,8 @@
 # pii-vault service
 
 The only place in the system that holds a name. Beneficiary records and needs assessments are envelope-encrypted
-under a per-NGO key; the chain sees an unlinkable Semaphore commitment and a ciphertext hash, and nothing else.
+under a per-NGO key, next to the NGO's own reference for the household. Nothing about a beneficiary reaches the
+chain: since v9 programmes are on chain and people are not.
 Runs on **port 4002**; OpenAPI at [`/docs`](http://localhost:4002/docs).
 
 ## Endpoints
@@ -10,7 +11,7 @@ Runs on **port 4002**; OpenAPI at [`/docs`](http://localhost:4002/docs).
 |---|---|---|---|
 | `POST` | `/auth/nonce` | — | Single-use nonce + the SIWE message to sign |
 | `POST` | `/auth/verify` | — | Verifies the signature, returns a bearer session token |
-| `POST` | `/beneficiaries` | session, owning NGO | Encrypts a profile, stores it with the identity commitment |
+| `POST` | `/beneficiaries` | session, owning NGO | Encrypts a profile, stores it under the NGO's reference (`commitment`) |
 | `GET` | `/beneficiaries?programId=` | session, owning NGO | Ids, commitments, timestamps, shredded flag — **no personal data** |
 | `GET` | `/beneficiaries/:id` | session, owning NGO | Decrypted profile |
 | `DELETE` | `/beneficiaries/:id` | session, owning NGO | Crypto-shredding; returns the commitment |
@@ -26,16 +27,14 @@ The row and its ciphertext stay — nothing that an on-chain hash refers to is d
 the master KEK can ever open the box again. A later `GET` returns **410** with
 `"record was crypto-shredded"`.
 
-The response carries the `commitment`, which is what the frontend passes to
-`BeneficiaryGroups.removeMember(programId, commitment, merkleProofSiblings)` so the identity can no longer
-confirm a delivery. Erasure works even if the NGO has been deactivated: the right to erasure is not the NGO's to
+Nothing on chain refers to a beneficiary, so the record is all there is to erase. Erasure works even if the NGO has been deactivated: the right to erasure is not the NGO's to
 lose.
 
 ## Authorization
 
 Every decision is a chain read, never a column:
 
-- **enrolling / listing** — `RoleRegistry.isActiveNgo(caller)` **and** `BeneficiaryGroups.programNgo(programId) == caller`
+- **enrolling / listing** — `RoleRegistry.isActiveNgo(caller)` **and** `ProgramRegistry.programNgo(programId) == caller`
 - **reading a profile** — the record's NGO **and** still an active NGO
 - **erasing** — the record's NGO
 - **reading a dossier** — the owning NGO, or any address with `VERIFIER_ROLE`

@@ -1,9 +1,14 @@
 #!/usr/bin/env node
 /**
- * Deploys the whole system to Base Sepolia and seeds the demo data:
- *   Deploy.s.sol → RegisterSchemas.s.sol → SeedDemo.s.sol → VerifyDemoNeeds.s.sol → SeedLiquidity.s.sol
+ * Deploys the whole system to Base Sepolia, seeds the demo data and hands the admin role over:
+ *   Deploy → RegisterSchemas → RegisterCommunitySchemas → SeedDemo → VerifyDemoNeeds → SeedLiquidity
+ *   → RegisterNgos (EXTRA_NGOS) → Handover (the Safe + timelock become the admin; the deployer keeps nothing)
  *
- *   pnpm deploy:sepolia
+ *   pnpm deploy:sepolia                 everything
+ *   pnpm deploy:sepolia seed verify     just those steps
+ *
+ * Every step until the handover needs the deployer to be the admin, so the handover is last, and once it has run
+ * admin actions go through `pnpm admin` (scripts/admin.mjs): a Safe proposal that waits out the timelock.
  *
  * Reads the repo-root .env explicitly and passes it to forge, because Foundry looks for .env in the directory
  * you run it from — which would be contracts/, not the repo root.
@@ -88,6 +93,10 @@ console.log('Deploying Proof of Aid to Base Sepolia')
 console.log(`  rpc              ${rpcUrl}`)
 console.log(`  verify on scan   ${verify ? 'yes' : 'no'}`)
 console.log(`  donor approval   ${Number(env.DONOR_APPROVAL_BPS ?? '3000') / 100}% of the raised amount`)
+console.log(`  donor rejection  ${Number(env.DONOR_REJECTION_BPS ?? '5000') / 100}%, ${env.REJECTION_RETRIES ?? '1'} retry`)
+console.log(
+  `  admin after      ${env.ADMIN_SAFE_OWNERS ? `a ${env.ADMIN_SAFE_THRESHOLD ?? '2'}-of-${env.ADMIN_SAFE_OWNERS.split(',').length} Safe, ${env.ADMIN_TIMELOCK_DELAY ?? '172800'}s timelock` : 'the deployer (ADMIN_SAFE_OWNERS is empty: no handover)'}`,
+)
 console.log(
   '  cost             ~0.0005 ETH to deploy, plus up to 0.0035 ETH to top the demo role wallets up\n',
 )
@@ -128,11 +137,19 @@ if (wanted('deploy') && existsSync(deployment)) {
 
 if (wanted('deploy')) run('Deploy.s.sol', verify ? ['--verify'] : [])
 if (wanted('schemas')) run('RegisterSchemas.s.sol')
+if (wanted('community')) run('RegisterCommunitySchemas.s.sol')
 if (wanted('seed')) run('SeedDemo.s.sol')
 // Seeding registers the needs; this is what opens them for donations. Re-run alone: `pnpm deploy:sepolia verify`.
 if (wanted('verify')) run('VerifyDemoNeeds.s.sol')
 // Also a keeper: re-run `pnpm deploy:sepolia liquidity` to put the pool back at the oracle price.
 if (wanted('liquidity')) run('SeedLiquidity.s.sol')
+// Wallets people bring to the demo, registered as NGOs while the deployer can still do it in one transaction.
+if (wanted('ngos')) run('RegisterNgos.s.sol')
+// Last: from here on the deployer is only the guardian (pause), and every admin action is a timelocked Safe proposal.
+if (wanted('handover')) {
+  if (env.ADMIN_SAFE_OWNERS?.trim()) run('Handover.s.sol')
+  else console.warn('\n  ADMIN_SAFE_OWNERS is empty: the deployer stays the admin (no multisig, no timelock).')
+}
 
 // The app's server cache outlives restarts, and its first render after one would show the previous release's needs.
 if (wanted('deploy'))

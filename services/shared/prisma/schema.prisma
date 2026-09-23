@@ -15,13 +15,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// An enrolled beneficiary. The only field that ever reaches the chain is `commitment`,
-/// an unlinkable Semaphore identity commitment.
+/// An enrolled beneficiary. Nothing about it reaches the chain: programmes are on chain, people are not.
 model Beneficiary {
   id          String    @id @default(uuid())
   ngoAddress  String
   programId   String
-  /// Semaphore identity commitment, decimal string.
+  /// The NGO's own reference for the household, a decimal string unique within the programme.
   commitment  String
   /// iv ‖ authTag ‖ AES-256-GCM ciphertext of the personal record.
   ciphertext  Bytes

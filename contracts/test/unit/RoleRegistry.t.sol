@@ -257,7 +257,7 @@ contract RoleRegistryTest is PoATest {
     }
 
     function test_pause_revertsForNonAdmin() public {
-        _expectNotAdmin(ngo);
+        vm.expectRevert(Errors.Unauthorized.selector);
         vm.prank(ngo);
         roles.pause();
 
@@ -266,6 +266,57 @@ contract RoleRegistryTest is PoATest {
         _expectNotAdmin(ngo);
         vm.prank(ngo);
         roles.unpause();
+    }
+
+    // ─── guardian ──────────────────────────────────────────────────────────────
+
+    /// @dev The guardian can stop everything at once, and nothing else: lifting the pause, and every registration,
+    ///      stay with the admin (the timelocked multisig in production).
+    function test_guardian_canPauseButNotUnpauseOrAdminister() public {
+        address guardian = makeAddr("guardian");
+        vm.prank(admin);
+        roles.grantRole(Roles.GUARDIAN_ROLE, guardian);
+        assertTrue(roles.isGuardian(guardian));
+        assertFalse(roles.isAdmin(guardian));
+
+        vm.prank(guardian);
+        roles.pause();
+        assertTrue(roles.paused());
+
+        vm.startPrank(guardian);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, guardian, bytes32(0))
+        );
+        roles.unpause();
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, guardian, bytes32(0))
+        );
+        roles.registerVerifier(outsider);
+        vm.stopPrank();
+
+        vm.prank(admin);
+        roles.unpause();
+        assertFalse(roles.paused());
+    }
+
+    function test_guardian_isGrantedAndRevokedByTheAdmin_andCanStepDown() public {
+        address guardian = makeAddr("guardian");
+        vm.prank(outsider);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, outsider, bytes32(0))
+        );
+        roles.grantRole(Roles.GUARDIAN_ROLE, guardian);
+
+        vm.startPrank(admin);
+        roles.grantRole(Roles.GUARDIAN_ROLE, guardian);
+        roles.revokeRole(Roles.GUARDIAN_ROLE, guardian);
+        assertFalse(roles.isGuardian(guardian));
+        roles.grantRole(Roles.GUARDIAN_ROLE, guardian);
+        vm.stopPrank();
+
+        vm.prank(guardian);
+        roles.renounceRole(Roles.GUARDIAN_ROLE, guardian);
+        assertFalse(roles.isGuardian(guardian));
     }
 
     function test_supportsInterface() public view {

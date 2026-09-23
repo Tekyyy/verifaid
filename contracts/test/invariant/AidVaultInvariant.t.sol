@@ -373,7 +373,7 @@ contract AidVaultInvariantTest is PoATest {
     function setUp() public override {
         super.setUp();
         // Above the high-value threshold (two verifiers), with deadlines and a 60% partial-execution threshold.
-        uint256 programId = _createProgram(ngo, 10);
+        uint256 programId = _createProgram(ngo);
         INeedsRegistry.CreateNeedParams memory p = _needParams(programId, 50_000e6, 2, _threeTrancheBps());
         p.fundingDeadline = uint64(block.timestamp + 30 days);
         p.executionDeadline = uint64(block.timestamp + 90 days);

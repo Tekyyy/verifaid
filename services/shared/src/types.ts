@@ -18,8 +18,13 @@ export interface Deployment {
     AidVaultImplementation: Address
     AidVaultFactory: Address
     DonationReceipt: Address
-    BeneficiaryGroups: Address
+    /** v9: the NGOs' programmes (Semaphore groups until v8). */
+    ProgramRegistry: Address
     DeliveryManager: Address
+    /** v9: the built-in release policies a need chooses from when it is created. */
+    ReleasePolicyDonors: Address
+    ReleasePolicyVerifier: Address
+    ReleasePolicyDonorsAndVerifier: Address
     ProofOfAidResolver: Address
     /** v3: oracle-bounded swaps into the vault token. */
     ConversionRouter?: Address
@@ -30,8 +35,6 @@ export interface Deployment {
   external: {
     EAS: Address
     SchemaRegistry: Address
-    Semaphore: Address
-    SemaphoreVerifier: Address
     /** The currency the vaults hold, and the unit of every published figure: this chain's USDC or EURC. */
     Token: Address
     /** v3 conversion path; on local chains these are mocks. */
@@ -48,8 +51,12 @@ export interface Deployment {
     YieldVenue?: Address
   }
   params: {
-    /** v8: share of the raised amount whose donors must approve a delivery to unlock the next tranche. */
+    /** Share of the raised amount whose donors must approve a delivery to unlock the next tranche. */
     donorApprovalBps: number
+    /** v9: share of the raised amount whose donors must reject a delivery to send the NGO back. */
+    donorRejectionBps: number
+    /** v9: fresh starts an NGO gets on rejected or contested evidence before a rejection cancels the need. */
+    rejectionRetries: number
     highValueThreshold: string | number
     /** v8: the k-anonymity floor an impact report's "people served" must reach. */
     minBeneficiariesServed: number
@@ -64,6 +71,17 @@ export interface Deployment {
     mockSwapRouter?: boolean
     /** v3: true when an ETH → vault token route is configured (it needs WETH liquidity on the chain). */
     ethDonations?: boolean
+  }
+  /** v9: who holds the admin role once Handover.s.sol has run. Zero addresses until then. */
+  governance?: {
+    /** The multisig that proposes every admin action. */
+    Safe: Address
+    /** The TimelockController that is the admin: proposals wait `delay` seconds before anyone may execute them. */
+    Timelock: Address
+    /** May pause the system at once, and nothing else. */
+    Guardian: Address
+    threshold: number
+    delay: number
   }
   schemas: Record<SchemaName, Hex>
   /** Resolver-less schemas: work photos and supplier applications. Absent on deployments that predate them. */
@@ -93,10 +111,15 @@ export const NEED_STATUS = [
 ] as const
 export type NeedStatus = (typeof NEED_STATUS)[number]
 
-/** Delivery lifecycle, mirroring IDeliveryManager.DeliveryStatus: under review by donors, approved (its tranche
- *  became releasable), or replaced by newer evidence before that. */
-export const DELIVERY_STATUS = ['Open', 'Approved', 'Superseded'] as const
+/** Delivery lifecycle, mirroring IDeliveryManager.DeliveryStatus: under review, approved (its tranche became
+ *  releasable), replaced by newer evidence before it was decided, or voted down. */
+export const DELIVERY_STATUS = ['Open', 'Approved', 'Superseded', 'Rejected'] as const
 export type DeliveryStatus = (typeof DELIVERY_STATUS)[number]
+
+/** In which capacity someone votes on evidence, mirroring IReleasePolicy.Voice. */
+export const VOICES = ['None', 'Donor', 'Verifier'] as const
+export type Voice = (typeof VOICES)[number]
+export const voiceName = (value: number): Voice => VOICES[value] ?? 'None'
 
 /** Tranche lifecycle, mirroring ITrancheLedger.TrancheStatus. */
 export const TRANCHE_STATUS = ['Locked', 'Releasable', 'Released'] as const

@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {RoleRegistry} from "../../src/access/RoleRegistry.sol";
 import {ConversionRouter} from "../../src/conversion/ConversionRouter.sol";
 import {DeliveryManager} from "../../src/delivery/DeliveryManager.sol";
+import {ReleasePolicy} from "../../src/delivery/ReleasePolicy.sol";
 import {IV3SwapRouter} from "../../src/external/IV3SwapRouter.sol";
 import {IWETH9} from "../../src/external/IWETH9.sol";
 import {AidVault} from "../../src/funds/AidVault.sol";
@@ -11,7 +12,6 @@ import {AidVaultFactory} from "../../src/funds/AidVaultFactory.sol";
 import {DonationForwarder} from "../../src/funds/DonationForwarder.sol";
 import {DonationForwarderFactory} from "../../src/funds/DonationForwarderFactory.sol";
 import {DonationReceipt} from "../../src/funds/DonationReceipt.sol";
-import {BeneficiaryGroups} from "../../src/identity/BeneficiaryGroups.sol";
 import {IAidVaultFactory} from "../../src/interfaces/IAidVaultFactory.sol";
 import {IConversionRouter} from "../../src/interfaces/IConversionRouter.sol";
 import {IDonationForwarderFactory} from "../../src/interfaces/IDonationForwarderFactory.sol";
@@ -26,10 +26,10 @@ import {MockV3Aggregator} from "../../src/mocks/MockV3Aggregator.sol";
 import {MockWETH9} from "../../src/mocks/MockWETH9.sol";
 import {MockYieldVault} from "../../src/mocks/MockYieldVault.sol";
 import {NeedsRegistry} from "../../src/needs/NeedsRegistry.sol";
+import {ProgramRegistry} from "../../src/programs/ProgramRegistry.sol";
 import {ProofOfAidResolver} from "../../src/resolvers/ProofOfAidResolver.sol";
 import {IEAS} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ISemaphore} from "@semaphore-protocol/contracts/interfaces/ISemaphore.sol";
 import {CommonBase} from "forge-std/Base.sol";
 
 /// @title SystemDeployer
@@ -57,9 +57,12 @@ abstract contract SystemDeployer is CommonBase {
         address yieldVenue;
         uint16 yieldCapBps; // share of a need's pot allowed there at once; zero → 8000
         address eas;
-        address semaphore;
         uint256 highValueThreshold;
         uint16 donorApprovalBps; // share of the raised amount whose donors must approve a delivery; zero → 3000
+        uint16 donorRejectionBps; // share whose donors must reject it; zero → 5000
+        // Fresh starts an NGO gets on rejected or contested evidence before a rejection cancels the need; the
+        // deployer passes it as-is, so 0 (no second chance) is a real choice. The scripts default to 1.
+        uint8 rejectionRetries;
         uint32 minBeneficiariesServed; // k-anonymity floor for impact reports
         string dashboardBaseURI;
         ConversionParams conversion;
@@ -92,15 +95,18 @@ abstract contract SystemDeployer is CommonBase {
         AidVault vaultImplementation;
         AidVaultFactory factory;
         DonationReceipt receipt;
-        BeneficiaryGroups groups;
+        ProgramRegistry programs;
         DeliveryManager deliveryManager;
+        /// @notice The built-in release policies: donors decide (the default), a verifier checks, or both.
+        ReleasePolicy donorPolicy;
+        ReleasePolicy verifierPolicy;
+        ReleasePolicy donorAndVerifierPolicy;
         ProofOfAidResolver resolver;
         ConversionRouter router;
         DonationForwarder forwarderImplementation;
         DonationForwarderFactory forwarderFactory;
         address token;
         address eas;
-        address semaphore;
         /// @notice The ERC-4626 vault approved for idle capital, or zero where none is.
         address yieldVenue;
         Conversion conversion;
@@ -125,16 +131,13 @@ abstract contract SystemDeployer is CommonBase {
     function _deploySystem(Params memory p) internal returns (System memory s) {
         _requireRealDependencies(p);
         s.eas = p.eas;
-        s.semaphore = p.semaphore;
         // A deployment holds one currency. USD by default: donors give USDC, which needs no conversion at all.
         s.token = p.token == address(0) ? address(new MockUSDC()) : p.token;
         IRoleRegistry roles = IRoleRegistry(address(s.roles = new RoleRegistry(p.admin)));
 
         s.registry = new NeedsRegistry(roles, p.highValueThreshold);
-        s.groups = new BeneficiaryGroups(roles, ISemaphore(p.semaphore));
-        s.deliveryManager = new DeliveryManager(
-            roles, INeedsRegistry(address(s.registry)), p.donorApprovalBps == 0 ? 3000 : p.donorApprovalBps
-        );
+        s.programs = new ProgramRegistry(roles);
+        s.deliveryManager = new DeliveryManager(roles, INeedsRegistry(address(s.registry)));
         s.resolver =
             new ProofOfAidResolver(IEAS(p.eas), roles, INeedsRegistry(address(s.registry)), p.minBeneficiariesServed);
         s.factory = new AidVaultFactory(roles);
@@ -153,10 +156,29 @@ abstract contract SystemDeployer is CommonBase {
             IFeeRecorder(address(s.resolver))
         );
 
-        s.registry.wire(address(s.factory), address(s.groups), address(s.deliveryManager), address(s.resolver));
+        s.registry.wire(address(s.factory), address(s.programs), address(s.deliveryManager), address(s.resolver));
         _approveYieldVenue(s, p);
+        _deployReleasePolicies(s, p);
         s.factory.wire(address(s.registry), s.token, address(s.vaultImplementation));
-        s.groups.wire(address(s.deliveryManager));
+    }
+
+    /// @dev The three built-in rules for releasing a tranche, all approved, donors-decide as the default. Donors
+    ///      need more agreement to reject than to approve: approval releases one tranche, while rejections can end
+    ///      the whole need.
+    function _deployReleasePolicies(System memory s, Params memory p) internal {
+        IRoleRegistry roles = IRoleRegistry(address(s.roles));
+        INeedsRegistry registry = INeedsRegistry(address(s.registry));
+        uint16 approval = p.donorApprovalBps == 0 ? 3000 : p.donorApprovalBps;
+        uint16 rejection = p.donorRejectionBps == 0 ? 5000 : p.donorRejectionBps;
+        uint8 retries = p.rejectionRetries;
+        s.donorPolicy = new ReleasePolicy(roles, registry, "Donors decide", approval, rejection, false, retries);
+        s.verifierPolicy = new ReleasePolicy(roles, registry, "A verifier checks", 0, 0, true, retries);
+        s.donorAndVerifierPolicy =
+            new ReleasePolicy(roles, registry, "Donors and a verifier", approval, rejection, true, retries);
+        s.registry.setReleasePolicy(address(s.donorPolicy), true);
+        s.registry.setReleasePolicy(address(s.verifierPolicy), true);
+        s.registry.setReleasePolicy(address(s.donorAndVerifierPolicy), true);
+        s.registry.setDefaultReleasePolicy(address(s.donorPolicy));
     }
 
     /// @dev The router, the forwarder implementation and its factory, configured with feeds and routes.

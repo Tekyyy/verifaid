@@ -19,7 +19,7 @@ contract V4ReviewFindingsTest is PoATest {
         super.setUp();
         vm.prank(admin);
         roles.registerSupplier(supplierC, keccak256("supplierC-registration"), "ipfs://supplierC");
-        programId = _createProgram(ngo, 10);
+        programId = _createProgram(ngo);
     }
 
     function _approve(uint256 needId, uint256 changeId) internal {
@@ -176,7 +176,7 @@ contract V4HeldPaymentTest is PoATest {
 
     function setUp() public override {
         super.setUp();
-        uint256 programId = _createProgram(ngo, 10);
+        uint256 programId = _createProgram(ngo);
         INeedsRegistry.CreateNeedParams memory p = _needParams(programId, TARGET, 1, _threeTrancheBps());
         p.payees = new INeedsRegistry.Payee[](2);
         p.payees[0] = _payee(supplierA, _uniformShares(3, 7000));

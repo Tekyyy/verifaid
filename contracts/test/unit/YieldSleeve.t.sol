@@ -32,7 +32,7 @@ contract YieldSleeveTest is PoATest {
 
     /// @dev A need whose NGO opted in while it was still Pending, funded to its target so funding is closed.
     function _fundedOptedInNeed() internal returns (AidVault v) {
-        programId = _createProgram(ngo, 10);
+        programId = _createProgram(ngo);
         needId = _createNeed(ngo, programId, TARGET, 1);
         vm.prank(ngo);
         registry.enableYield(needId);
@@ -55,7 +55,7 @@ contract YieldSleeveTest is PoATest {
     // ─── opting in ─────────────────────────────────────────────────────────────
 
     function test_optIn_isTheNgoDecisionAndOnlyBeforeAnyoneCanDonate() public {
-        programId = _createProgram(ngo, 10);
+        programId = _createProgram(ngo);
         needId = _createNeed(ngo, programId, TARGET, 1);
 
         vm.prank(donor1);
@@ -77,7 +77,7 @@ contract YieldSleeveTest is PoATest {
     function test_optIn_needsAnApprovedVenue() public {
         vm.prank(admin);
         registry.setYieldVenue(address(0), 0);
-        programId = _createProgram(ngo, 10);
+        programId = _createProgram(ngo);
         needId = _createNeed(ngo, programId, TARGET, 1);
         vm.prank(ngo);
         vm.expectRevert(Errors.YieldNotEnabled.selector);
@@ -92,8 +92,32 @@ contract YieldSleeveTest is PoATest {
 
     // ─── deploying ─────────────────────────────────────────────────────────────
 
+    /// @dev The first-depositor attack: someone takes the one share of an empty venue and donates assets to it, so
+    ///      the next deposit rounds down to almost nothing and the difference is theirs. Anyone may call deployIdle,
+    ///      so anyone could time it; the vault refuses shares worth less than it paid.
+    function test_deploy_refusesSharesWorthLessThanTheDeposit() public {
+        MockYieldVault empty = new MockYieldVault(IERC20(address(token)));
+        vm.prank(admin);
+        registry.setYieldVenue(address(empty), CAP_BPS);
+        vault = _waitingNeed();
+
+        address attacker = makeAddr("attacker");
+        token.mint(attacker, TARGET + 1);
+        vm.startPrank(attacker);
+        token.approve(address(empty), 1);
+        empty.deposit(1, attacker);
+        token.transfer(address(empty), TARGET);
+        vm.stopPrank();
+
+        uint256 amount = vault.deployableAmount();
+        assertGt(amount, 0);
+        vm.expectRevert(Errors.DepositShortfall.selector);
+        vault.deployIdle(amount);
+        assertEq(vault.deployedPrincipal(), 0);
+    }
+
     function test_deploy_refusesWhileADonorCouldStillTakeTheirMoneyBack() public {
-        programId = _createProgram(ngo, 10);
+        programId = _createProgram(ngo);
         needId = _createNeed(ngo, programId, TARGET, 1);
         vm.prank(ngo);
         registry.enableYield(needId);

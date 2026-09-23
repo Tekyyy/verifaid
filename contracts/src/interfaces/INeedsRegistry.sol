@@ -47,7 +47,7 @@ interface INeedsRegistry is IRoleAware {
     /// @dev Fields marked "event only" are commitments nothing on-chain reads, so they are logged rather than
     ///      stored: an event log is as immutable as storage and far cheaper.
     struct CreateNeedParams {
-        uint256 programId; // BeneficiaryGroups program whose members confirm deliveries
+        uint256 programId; // the NGO's ProgramRegistry programme this need is part of
         bytes32 category; // event only, e.g. keccak256("FOOD")
         uint256 targetAmount; // stablecoin base units
         bytes32 regionCode; // coarse region only (ISO 3166-2 subdivision), never GPS
@@ -62,6 +62,7 @@ interface INeedsRegistry is IRoleAware {
         bytes32 expectedOutcomeHash; // event only: expected outcome and partial-execution terms
         bytes32 costDisclosureHash; // event only: the third-party cost disclosure document
         Payee[] payees; // required: who the vault pays, and how much of each tranche
+        address releasePolicy; // an approved IReleasePolicy judging its evidence; zero = the platform default
     }
 
     /// @notice Stored view of a need.
@@ -81,9 +82,16 @@ interface INeedsRegistry is IRoleAware {
         uint64 executionDeadline;
         uint16 minFundingBps;
         uint16 thirdPartyCostBps;
+        address releasePolicy; // fixed at creation
     }
 
-    event NeedCreated(uint256 indexed needId, address indexed ngo, uint256 indexed programId, CreateNeedParams params);
+    event NeedCreated(
+        uint256 indexed needId,
+        address indexed ngo,
+        uint256 indexed programId,
+        address releasePolicy,
+        CreateNeedParams params
+    );
     event NeedVerificationRecorded(
         uint256 indexed needId, address indexed verifier, bool approved, bytes32 attestationUID, uint8 verificationCount
     );
@@ -96,7 +104,11 @@ interface INeedsRegistry is IRoleAware {
         uint256 indexed needId, address indexed verifier, bytes32 attestationUID, uint8 verificationCount
     );
     event VerificationRevokedAfterFunding(uint256 indexed needId, address indexed verifier, bytes32 attestationUID);
-    event Wired(address vaultFactory, address beneficiaryGroups, address deliveryManager, address resolver);
+    event Wired(address vaultFactory, address programs, address deliveryManager, address resolver);
+    /// @notice The platform approved (or withdrew) a release policy new needs may choose.
+    event ReleasePolicySet(address indexed policy, bool allowed);
+    /// @notice The policy a need gets when it names none.
+    event DefaultReleasePolicySet(address indexed policy);
     /// @notice The platform approved (or withdrew) the one venue where idle capital may wait.
     event YieldVenueSet(address indexed venue, uint16 capBps);
     /// @notice An NGO opted a need in, before it could take a single donation.
@@ -116,7 +128,8 @@ interface INeedsRegistry is IRoleAware {
     event PayeeChanged(uint256 indexed needId, uint256 indexed changeId, uint8 index, address from, address to);
     event PayeeChangeCancelled(uint256 indexed needId, uint256 indexed changeId);
 
-    /// @notice Creates a need in `Pending` status. Caller must be an active NGO that owns `p.programId`.
+    /// @notice Creates a need in `Pending` status. Caller must be an active NGO that owns `p.programId`, which must be
+    ///         open, and `p.releasePolicy` (or the default, when zero) must be an approved policy.
     function createNeed(CreateNeedParams calldata p) external returns (uint256 needId);
 
     /// @notice Records a NeedVerified attestation. Callable only by the resolver.
@@ -130,6 +143,25 @@ interface INeedsRegistry is IRoleAware {
 
     /// @notice Cancels a need. The NGO may cancel before `Funded`; the admin at any time before it ends.
     function cancelNeed(uint256 needId) external;
+
+    /// @notice Cancels a need in delivery whose evidence was rejected once more than its policy allows, opening
+    ///         refunds. Callable only by the DeliveryManager.
+    function onEvidenceRejected(uint256 needId) external;
+
+    /// @notice Approves or withdraws a release policy for new needs. Needs that already chose it keep it. Admin only.
+    function setReleasePolicy(address policy, bool allowed) external;
+
+    /// @notice Sets the policy a need gets when it names none; it must be approved. Admin only.
+    function setDefaultReleasePolicy(address policy) external;
+
+    function isReleasePolicy(address policy) external view returns (bool);
+    function defaultReleasePolicy() external view returns (address);
+
+    /// @notice The release policy the need chose when it was created.
+    function releasePolicyOf(uint256 needId) external view returns (address);
+
+    /// @notice How many independent verifications the need required to open.
+    function verificationsRequiredOf(uint256 needId) external view returns (uint8);
 
     /// @notice Applies the need's deadlines. Callable by anyone once a deadline has passed:
     ///         - `Pending` after the funding deadline → `Expired`.

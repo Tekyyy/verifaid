@@ -12,9 +12,10 @@ import { conflict, forbidden, gone, notFound } from './errors.js'
 import { ngoContext } from './keys.js'
 
 /**
- * Beneficiary records: the one place in the system where a name exists. The chain only ever sees the Semaphore
- * `commitment`, which is unlinkable; everything else is sealed under a per-NGO key and can be destroyed on
- * request without touching any on-chain state (spec §8.2, right to erasure).
+ * Beneficiary records: the one place in the system where a name exists, and since v9 the only place a beneficiary
+ * exists at all — the chain holds programmes, never people. `commitment` is the NGO's own opaque reference for a
+ * household (a card number, a random id), unique within its programme; the profile is sealed under a per-NGO key
+ * and can be destroyed on request (spec §8.2, right to erasure).
  */
 
 const DecimalSchema = z.string().regex(/^\d+$/, 'must be a decimal integer string')
@@ -51,7 +52,7 @@ export const registerBeneficiaryRoutes = (app: FastifyInstance, deps: RouteDeps)
         tags: ['beneficiaries'],
         summary: 'Enrol a beneficiary (owning NGO)',
         description:
-          'Encrypts the profile under the NGO key and stores it next to the Semaphore identity commitment. ' +
+          'Encrypts the profile under the NGO key and stores it under the NGO\'s own reference for the household. ' +
           'The profile is never returned by any list endpoint.',
         security: [{ bearerAuth: [] }],
         body: z.object({
@@ -211,8 +212,7 @@ export const registerBeneficiaryRoutes = (app: FastifyInstance, deps: RouteDeps)
         summary: 'Erase a beneficiary by destroying its data key',
         description:
           'Crypto-shredding: the wrapped DEK is deleted, which makes the stored ciphertext permanently ' +
-          'unreadable. The returned commitment is what the frontend passes to `BeneficiaryGroups.removeMember` ' +
-          'so the identity can no longer confirm a delivery.',
+          'unreadable. Nothing on chain refers to the beneficiary, so nothing else needs to change.',
         security: [{ bearerAuth: [] }],
         params: z.object({ id: z.uuid() }),
         response: {
@@ -222,7 +222,6 @@ export const registerBeneficiaryRoutes = (app: FastifyInstance, deps: RouteDeps)
             programId: z.string(),
             shreddedAt: z.string(),
             alreadyShredded: z.boolean(),
-            nextStep: z.string(),
           }),
         },
       },
@@ -257,7 +256,6 @@ export const registerBeneficiaryRoutes = (app: FastifyInstance, deps: RouteDeps)
         programId: updated.programId,
         shreddedAt: (updated.shreddedAt ?? new Date()).toISOString(),
         alreadyShredded,
-        nextStep: 'Call BeneficiaryGroups.removeMember(programId, commitment, merkleProofSiblings)',
       }
     },
   )

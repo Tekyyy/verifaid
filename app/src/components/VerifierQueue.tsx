@@ -1,6 +1,6 @@
 'use client'
 
-import type { NeedSummary } from '@poa/shared'
+import type { DeliveryView, NeedSummary } from '@poa/shared'
 import { easAbi, needsRegistryAbi } from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
@@ -22,10 +22,11 @@ const ZERO_BYTES32 = `0x${'00'.repeat(32)}` as Hex
 const hashOf = (text: string): Hex => (text ? keccak256(toHex(text)) : ZERO_BYTES32)
 
 /**
- * What a verifier signs: that a need is real, before it may raise a cent, and a supplier change on a need. How the
- * money was spent is for the donors to approve, on the need's own page.
+ * What a verifier signs: that a need is real, before it may raise a cent, a supplier change on a need, and — on the
+ * needs whose release rule gives verifiers a say — the NGO's account of how a tranche was spent. That last vote
+ * happens on the need's own page, next to the evidence; this lists where it is waiting.
  */
-export function VerifierQueue({ needs }: { needs: NeedSummary[] }) {
+export function VerifierQueue({ needs, evidence }: { needs: NeedSummary[]; evidence: DeliveryView[] }) {
   const t = useTranslations('verifier')
 
   if (!deployment) return <MissingDeployment />
@@ -40,6 +41,29 @@ export function VerifierQueue({ needs }: { needs: NeedSummary[] }) {
           <EmptyState title={t('emptyNeeds')} />
         ) : (
           needs.map((need) => <NeedRow key={need.id} need={need} />)
+        )}
+      </section>
+
+      <section aria-labelledby="evidence-queue" className="space-y-3">
+        <h2 id="evidence-queue" className="section-title">
+          {t('evidenceQueue')}
+        </h2>
+        <p className="text-sm text-slate-700">{t('evidenceQueueNote')}</p>
+        {evidence.length === 0 ? (
+          <EmptyState title={t('emptyEvidence')} />
+        ) : (
+          <ul className="space-y-2">
+            {evidence.map((delivery) => (
+              <li key={delivery.id} className="card flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm">
+                  {t('evidenceRow', { need: delivery.needId, spent: delivery.trancheIndex - 1 })}
+                </span>
+                <Link className="btn-secondary text-sm" href={`/needs/${delivery.needId}#review`}>
+                  {t('evidenceOpen')}
+                </Link>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 

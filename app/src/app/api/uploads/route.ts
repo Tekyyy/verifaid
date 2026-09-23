@@ -1,8 +1,9 @@
-import { mkdir, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { MAX_EVIDENCE_FILES } from '@poa/shared'
 import { type NextRequest, NextResponse } from 'next/server'
 import { MAX_FILE_BYTES, safeFileName, sha256Hex, sniffType, stripMetadata } from '@/lib/server/evidenceFiles'
+import { isCid, pinFile } from '@/lib/server/ipfs'
 import { badRequest } from '@/lib/server/proxy'
 import { clientIp, createRateLimiter } from '@/lib/server/rateLimit'
 import { uploadDir } from '@/lib/server/uploadDir'
@@ -12,6 +13,10 @@ import { uploadDir } from '@/lib/server/uploadDir'
  * (JPEG, PNG, WebP or PDF, whatever the browser says), stripped of photo metadata, and stored under its SHA-256,
  * which is what the NGO then commits to on chain. Anyone can read them back at `/api/files/<sha256>`: they are
  * shown to every donor, which is the point — so the NGO is told to redact account numbers and names first.
+ *
+ * With `PINATA_JWT` set, each file is also pinned to IPFS and its CID returned with it, so the manifest can name
+ * where the file lives beyond this server; the file link then carries the CID too, so this server can fetch the
+ * file back from IPFS if it ever loses its own copy.
  *
  * Nothing here is signed or trusted: until the NGO submits a manifest naming these hashes, a file is just bytes.
  */
@@ -26,8 +31,22 @@ export interface UploadedFile {
   type: string
   size: number
   sha256: string
+  /** IPFS content identifier, when the file was pinned. */
+  cid?: string
   url: string
 }
+
+interface Sidecar {
+  type: string
+  name: string
+  cid?: string
+}
+
+const readSidecar = async (path: string): Promise<Sidecar | null> =>
+  readFile(`${path}.json`, 'utf8').then(
+    (text) => JSON.parse(text) as Sidecar,
+    () => null,
+  )
 
 export async function POST(request: NextRequest) {
   let form: FormData
@@ -61,21 +80,25 @@ export async function POST(request: NextRequest) {
     const bytes = stripMetadata(raw, type)
     const sha256 = sha256Hex(bytes)
     const path = join(dir, sha256)
-    // Content-addressed: the same bytes are the same file, so an existing one is left as it is.
-    const exists = await stat(path).then(
-      () => true,
-      () => false,
-    )
-    if (!exists) {
+    const name = safeFileName(file.name)
+    // Content-addressed: the same bytes are the same file, so an existing one is kept, and so is its CID.
+    const existing = await readSidecar(path)
+    let cid = existing?.cid && isCid(existing.cid) ? existing.cid : undefined
+    if (!cid) cid = (await pinFile(bytes, name, type)) ?? undefined
+    if (!existing || existing.cid !== cid) {
       await writeFile(path, bytes)
-      await writeFile(`${path}.json`, JSON.stringify({ type, name: safeFileName(file.name) }))
+      await writeFile(
+        `${path}.json`,
+        JSON.stringify({ type, name, ...(cid ? { cid } : {}) } satisfies Sidecar),
+      )
     }
     stored.push({
-      name: safeFileName(file.name),
+      name,
       type,
       size: bytes.length,
       sha256,
-      url: `/api/files/${sha256}`,
+      ...(cid ? { cid } : {}),
+      url: cid ? `/api/files/${sha256}?cid=${cid}` : `/api/files/${sha256}`,
     })
   }
 

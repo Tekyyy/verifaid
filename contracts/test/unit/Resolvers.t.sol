@@ -22,7 +22,7 @@ contract ResolversTest is PoATest {
 
     function setUp() public override {
         super.setUp();
-        programId = _createProgram(ngo, 10);
+        programId = _createProgram(ngo);
         needId = _createNeed(ngo, programId, TARGET, 1);
     }
 

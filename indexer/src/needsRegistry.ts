@@ -1,7 +1,9 @@
 import { ponder } from 'ponder:registry'
 import schema from 'ponder:schema'
 import { countryOf, needStatusName, regionLabel } from '@poa/shared'
+import { eq } from 'ponder'
 import { type Hex, zeroAddress, zeroHash } from 'viem'
+import { ensurePolicy } from './lib/releasePolicy.js'
 import { appendTimeline, seconds } from './lib/timeline.js'
 
 /**
@@ -13,8 +15,9 @@ import { appendTimeline, seconds } from './lib/timeline.js'
 const orNull = (value: bigint): number | null => (value === 0n ? null : Number(value))
 
 ponder.on('NeedsRegistry:NeedCreated', async ({ event, context }) => {
-  const { needId, ngo, programId, params } = event.args
+  const { needId, ngo, programId, releasePolicy, params } = event.args
   const { trancheBps } = params
+  await ensurePolicy(context, releasePolicy, seconds(event))
 
   await context.db.insert(schema.need).values({
     id: needId,
@@ -30,6 +33,8 @@ ponder.on('NeedsRegistry:NeedCreated', async ({ event, context }) => {
     verificationCount: 0,
     status: 'Pending',
     vault: null,
+    releasePolicy,
+    strikes: 0,
     fundingDeadline: orNull(params.fundingDeadline),
     executionDeadline: orNull(params.executionDeadline),
     minFundingBps: params.minFundingBps,
@@ -97,6 +102,7 @@ ponder.on('NeedsRegistry:NeedCreated', async ({ event, context }) => {
     data: {
       ngo,
       programId: programId.toString(),
+      releasePolicy,
       category: params.category,
       regionCode: params.regionCode,
       targetAmount: params.targetAmount.toString(),
@@ -214,4 +220,30 @@ ponder.on('NeedsRegistry:YieldEnabled', async ({ event, context }) => {
   await context.db.update(schema.need, { id: needId }).set({ yieldEnabled: true })
 
   await appendTimeline(context, event, { needId, type: 'YieldEnabled', data: { venue } })
+})
+
+// ─── release policies ────────────────────────────────────────────────────────
+
+/** The platform approved or withdrew a rule new needs may choose; needs that chose it keep it either way. */
+ponder.on('NeedsRegistry:ReleasePolicySet', async ({ event, context }) => {
+  const { policy, allowed } = event.args
+  await ensurePolicy(context, policy, seconds(event))
+  await context.db
+    .update(schema.releasePolicy, { address: policy })
+    .set({ allowed, updatedAt: seconds(event) })
+})
+
+ponder.on('NeedsRegistry:DefaultReleasePolicySet', async ({ event, context }) => {
+  const { policy } = event.args
+  await ensurePolicy(context, policy, seconds(event))
+  const previous = await context.db.sql
+    .select()
+    .from(schema.releasePolicy)
+    .where(eq(schema.releasePolicy.isDefault, true))
+  for (const row of previous) {
+    await context.db.update(schema.releasePolicy, { address: row.address }).set({ isDefault: false })
+  }
+  await context.db
+    .update(schema.releasePolicy, { address: policy })
+    .set({ isDefault: true, updatedAt: seconds(event) })
 })

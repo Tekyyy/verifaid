@@ -25,7 +25,7 @@ contract UsdcVaultTest is PoATest {
 
     function setUp() public override {
         super.setUp();
-        programId = _createProgram(ngo, 10);
+        programId = _createProgram(ngo);
     }
 
     function _need(uint16 capBps) internal returns (uint256 needId, AidVault vault) {

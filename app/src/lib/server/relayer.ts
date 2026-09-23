@@ -21,7 +21,7 @@ import { publicClient } from './chain'
 
 /**
  * The app's relayer: one server-held key (`RELAYER_PRIVATE_KEY`) that pays gas for writes a user should not or
- * cannot send themselves — anonymous beneficiary confirmations, deposit-address deploys and sweeps, refunds signed
+ * cannot send themselves — votes on deliveries signed for free, deposit-address deploys and sweeps, refunds signed
  * with a donor's refund key, and sandbox on-ramp mints.
  *
  * Every route writes through one queue, because two routes sending at once would race for the same nonce, and the

@@ -23,7 +23,7 @@ contract LifecycleTest is PoATest {
 
     function test_fullLifecycle_threeTranches() public {
         // ── NGO creates a program and the need, with a 30/40/30 tranche plan ──
-        uint256 programId = _createProgram(ngo, 10);
+        uint256 programId = _createProgram(ngo);
         vm.prank(ngo);
         uint256 needId = registry.createNeed(_needParams(programId, TARGET, 2, _threeTrancheBps()));
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Pending);
@@ -86,7 +86,7 @@ contract LifecycleTest is PoATest {
     // ─── failure paths ─────────────────────────────────────────────────────────
 
     function test_nonIndependentVerifierCannotVerifyANeed() public {
-        uint256 programId = _createProgram(ngo, 10);
+        uint256 programId = _createProgram(ngo);
         uint256 needId = _createNeed(ngo, programId, 5000e6, 1);
 
         // The NGO cannot verify its own need…
@@ -142,7 +142,7 @@ contract LifecycleTest is PoATest {
     }
 
     function test_cancellationRefundsEveryDonorProRata() public {
-        uint256 programId = _createProgram(ngo, 10);
+        uint256 programId = _createProgram(ngo);
         vm.prank(ngo);
         uint256 needId = registry.createNeed(_needParams(programId, 20_000e6, 2, _threeTrancheBps()));
         _attestNeedVerified(verifier1, needId, true);

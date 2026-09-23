@@ -1,9 +1,10 @@
 import type { DeliveryView, EvidenceFile } from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import { ExplorerLink } from '@/components/ExplorerLink'
-import { ProgressBar } from '@/components/ProgressBar'
 import { DeliveryStatusBadge } from '@/components/StatusBadge'
-import { amount, percent, timestamp } from '@/lib/format'
+import { VoteProgress } from '@/components/VoteProgress'
+import { ipfsGateway } from '@/lib/config'
+import { timestamp } from '@/lib/format'
 
 const isImage = (file: EvidenceFile) => file.type.startsWith('image/')
 
@@ -12,13 +13,12 @@ const kb = (size: number) =>
 
 /**
  * One delivery: how the NGO accounted for a tranche it was paid — its note and the files, each committed on chain
- * by hash — and how far the donors' approval has got towards unlocking the next tranche.
+ * by hash, and pinned to IPFS where the platform could — and how far the votes on it have got.
  */
 export function DeliveryCard({ delivery }: { delivery: DeliveryView }) {
   const t = useTranslations('need')
   const tCommon = useTranslations('common')
   const unit = tCommon('amountUnit')
-  const progress = Math.min(100, percent(delivery.approvedAmount, delivery.requiredAmount))
   const files = delivery.manifest?.files ?? []
   const photos = files.filter(isImage)
   const documents = files.filter((file) => !isImage(file))
@@ -49,7 +49,7 @@ export function DeliveryCard({ delivery }: { delivery: DeliveryView }) {
                   <a href={file.url || undefined} target="_blank" rel="noreferrer noopener" title={file.name}>
                     {/* biome-ignore lint/performance/noImgElement: user evidence served by hash; no optimisation wanted */}
                     <img
-                      src={file.url}
+                      src={file.url || (file.cid ? `${ipfsGateway}${file.cid}` : '')}
                       alt={t(`evidenceKind.${file.kind}`)}
                       loading="lazy"
                       className="aspect-square w-full rounded border border-slate-200 object-cover"
@@ -75,6 +75,7 @@ export function DeliveryCard({ delivery }: { delivery: DeliveryView }) {
                     <span className="break-all">{file.name}</span>
                   )}
                   <span className="text-xs text-slate-500">{kb(file.size)}</span>
+                  {file.cid ? <IpfsLink cid={file.cid} /> : null}
                 </li>
               ))}
             </ul>
@@ -89,27 +90,19 @@ export function DeliveryCard({ delivery }: { delivery: DeliveryView }) {
         </div>
       )}
 
-      <div className="mt-4">
-        <ProgressBar
-          tone="emerald"
-          value={progress}
-          label={t('approvalProgress', {
-            approved: amount(delivery.approvedAmount),
-            required: amount(delivery.requiredAmount),
-            unit,
-          })}
-        />
-        <p className="mt-1 text-xs text-slate-700">
-          {t('approvalProgress', {
-            approved: amount(delivery.approvedAmount),
-            required: amount(delivery.requiredAmount),
-            unit,
-          })}{' '}
-          {t('approvalCount', { count: delivery.approvals.length })}
-        </p>
+      <div className="mt-4 space-y-1">
+        <VoteProgress delivery={delivery} unit={unit} />
+        <p className="text-xs text-slate-600">{t('voteCount', { count: delivery.votes.length })}</p>
         {delivery.status === 'Superseded' && delivery.supersededBy ? (
-          <p className="mt-1 text-xs text-slate-600">
-            {t('evidenceSuperseded', { id: delivery.supersededBy })}
+          <p className="text-xs text-slate-600">
+            {t(delivery.contested ? 'evidenceContested' : 'evidenceSuperseded', {
+              id: delivery.supersededBy,
+            })}
+          </p>
+        ) : null}
+        {delivery.status === 'Rejected' ? (
+          <p className="text-xs font-medium text-red-800">
+            {t(delivery.cancelledNeed ? 'evidenceRejectedFinal' : 'evidenceRejected')}
           </p>
         ) : null}
       </div>
@@ -129,5 +122,21 @@ export function DeliveryCard({ delivery }: { delivery: DeliveryView }) {
         </div>
       </dl>
     </article>
+  )
+}
+
+/** The same file on IPFS, where it outlives this server. Any gateway serves the bytes the sha256 above commits to. */
+function IpfsLink({ cid }: { cid: string }) {
+  const t = useTranslations('need')
+  return (
+    <a
+      className="text-xs text-teal-800 underline"
+      href={`${ipfsGateway}${cid}`}
+      target="_blank"
+      rel="noreferrer noopener"
+      title={cid}
+    >
+      {t('evidenceIpfs')}
+    </a>
   )
 }

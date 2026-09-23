@@ -44,28 +44,25 @@ capability for the configured chain (Coinbase Smart Wallet does), `useTx` sends 
 "Gas sponsored" badge. Any other wallet falls back to a normal transaction. Role checks are unaffected: the smart
 account is still `msg.sender`.
 
-## The beneficiary page
+## Voting on evidence
 
-`/confirm/[deliveryId]` is the one page that must work on a cheap phone, so it has its own layout: no wallet
-provider, no navigation, and only the `common` and `confirm` message namespaces are serialized into the HTML.
+The review panel on a need page is where donors (and, under the rules that give them one, verifiers) approve or
+reject the NGO's account of a tranche. Who has a say, and what it weighs, is asked of the contract
+(`DeliveryManager.voiceOf`), never decided here.
 
-- The Semaphore identity is generated in the browser and kept in `localStorage` under `poa.identity.v1`. The
-  secret is never sent anywhere — not to the relayer, not into a URL, not into a log.
-- The commitment is shown as selectable text and, on demand, as a QR code rendered by a small dependency-free
-  encoder in `src/lib/qr.ts` (byte mode, EC level L, versions 1-9; its output was diffed module-for-module
-  against `qrcode@1.5.3`).
-- `@semaphore-protocol/identity`, `@semaphore-protocol/group`, `@semaphore-protocol/proof` (and snarkjs) are
-  **dynamically imported** — the identity when the page mounts, the proof machinery only when the user taps
-  confirm. The first proof downloads the SNARK artifacts from the public `@zk-kit/artifacts` CDN, so that tap
-  needs a connection.
-- The proof is submitted through `POST /api/relay/confirm`, which signs with `RELAYER_PRIVATE_KEY`. This is
-  not a convenience: if the beneficiary sent the transaction themselves, their address would be linked on
-  chain to the delivery they confirmed, which is exactly the link the proof exists to break. The route
-  validates the proof shape, enforces `scope == deliveryId` and the expected `AID_RECEIVED` message,
-  rate-limits per delivery, serializes sends so concurrent confirmations cannot collide on the nonce, and
-  never logs the nullifier.
-- **Card mode** (paste a secret from a QR/NFC card, used once and never stored) is available under "other
-  options" and is labelled as lower security than using your own phone, per spec §8.3.
+- **For free by default.** The voter signs an EIP-712 `Vote` (the type is `voteTypedData` in `@poa/shared`) and
+  `POST /api/relay/vote` puts it on chain with `RELAYER_PRIVATE_KEY`. The route checks the signature against the
+  voter's address — so a passkey Smart Wallet's ERC-1271 signature counts too — and simulates the call before
+  spending gas; a vote the contract would refuse comes back as its reason. Unticking "vote for free" sends an
+  ordinary transaction instead.
+- **Rejecting asks twice.** It can end the need, so the panel says what a rejection does under the need's rule and
+  how many second chances are left before it takes the vote.
+
+## Evidence files
+
+`POST /api/uploads` stores each file under its SHA-256 (photo metadata stripped) and, with `PINATA_JWT` set, pins it
+to IPFS and returns its CID. `GET /api/files/<sha256>?cid=…` serves the local copy, or fetches the file back from IPFS
+when there is none and serves it only if it hashes to the SHA-256 in the link.
 
 ## Environment
 
@@ -77,6 +74,8 @@ See `.env.example`. Everything has a working default except the relayer key.
 | `NEXT_PUBLIC_RPC_URL` | the chain's public RPC | Override for a private RPC |
 | `NEXT_PUBLIC_INDEXER_URL` | `http://localhost:42069` | Ponder API base, used server side and by the proxy |
 | `NEXT_PUBLIC_USE_FIXTURES` | unset | `1` renders `src/lib/fixtures.ts` instead of calling the indexer |
+| `PINATA_JWT` | unset | Pins every evidence upload to IPFS; without it files stay on this server |
+| `NEXT_PUBLIC_IPFS_GATEWAY` | `https://ipfs.io/ipfs/` | Where pinned evidence is linked to (and read back from, as `IPFS_GATEWAY` server side) |
 | `NEXT_PUBLIC_PII_VAULT_URL` | `http://localhost:4002` | Dossier storage and decryption links |
 | `BANK_CONNECTOR_URL` | `http://localhost:4003` | Server only (the `NEXT_PUBLIC_` name is also read). Sandbox checkout |
 | `NOTIFIER_URL` | `http://localhost:4004` | Server only (the `NEXT_PUBLIC_` name is also read). Alert subscriptions |

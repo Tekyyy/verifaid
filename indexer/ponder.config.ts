@@ -1,7 +1,6 @@
 import {
   aidVaultAbi,
   aidVaultFactoryAbi,
-  beneficiaryGroupsAbi,
   chainFor,
   deliveryManagerAbi,
   donationForwarderAbi,
@@ -10,9 +9,9 @@ import {
   easAbi,
   getDeployment,
   needsRegistryAbi,
+  programRegistryAbi,
   resolveNetwork,
   roleRegistryAbi,
-  semaphoreAbi,
 } from '@poa/shared'
 import { createConfig, factory } from 'ponder'
 import { parseAbiItem, zeroAddress } from 'viem'
@@ -34,7 +33,7 @@ const rpc = process.env.PONDER_RPC_URL ?? chainFor(network).rpcUrls.default.http
 const forwarderFactory = contracts.DonationForwarderFactory ?? zeroAddress
 
 /**
- * The schema UIDs this deployment cares about: the six the resolver gates, plus the resolver-less ones an NGO
+ * The schema UIDs this deployment cares about: the three the resolver gates, plus the resolver-less ones an NGO
  * and a supplier can write to (work photos, supplier applications). Every other attestation on the chain is
  * ignored.
  */
@@ -93,10 +92,10 @@ export default createConfig({
       address: contracts.DonationReceipt,
       startBlock,
     },
-    BeneficiaryGroups: {
-      abi: beneficiaryGroupsAbi,
+    ProgramRegistry: {
+      abi: programRegistryAbi,
       chain: network,
-      address: contracts.BeneficiaryGroups,
+      address: contracts.ProgramRegistry,
       startBlock,
     },
     DeliveryManager: {
@@ -105,8 +104,6 @@ export default createConfig({
       address: contracts.DeliveryManager,
       startBlock,
     },
-    // Semaphore is a shared deployment on public chains: the handlers drop events for groups we did not create.
-    Semaphore: { abi: semaphoreAbi, chain: network, address: external.Semaphore, startBlock },
     EAS: {
       abi: easAbi,
       chain: network,

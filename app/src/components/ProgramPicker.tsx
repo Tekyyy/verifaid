@@ -48,10 +48,8 @@ export function ProgramPicker({ value, onChange }: { value: string; onChange: (v
   }
 
   const label = (program: ProgramView) => {
-    const name = programPolicyLabel(program.enrollmentPolicyHash)
-    return name
-      ? t('programOptionNamed', { id: program.id, name, members: program.memberCount })
-      : t('programOption', { id: program.id, members: program.memberCount })
+    const name = programPolicyLabel(program.eligibilityHash)
+    return name ? t('programOptionNamed', { id: program.id, name }) : t('programOption', { id: program.id })
   }
 
   return (

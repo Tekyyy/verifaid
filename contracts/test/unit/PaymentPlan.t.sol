@@ -21,7 +21,7 @@ contract PaymentPlanTest is PoATest {
         super.setUp();
         vm.prank(admin);
         roles.registerSupplier(supplierC, keccak256("supplierC-registration"), "ipfs://supplierC");
-        programId = _createProgram(ngo, 10);
+        programId = _createProgram(ngo);
     }
 
     // ─── helpers ───────────────────────────────────────────────────────────────
@@ -394,7 +394,7 @@ contract HeldPaymentTest is PoATest {
     }
 
     function test_aFrozenPayeeIsHeldAndClaimsLater() public {
-        uint256 programId = _createProgram(ngo, 10);
+        uint256 programId = _createProgram(ngo);
         INeedsRegistry.CreateNeedParams memory p = _needParams(programId, 1000e6, 1, _threeTrancheBps());
         p.payees = new INeedsRegistry.Payee[](2);
         p.payees[0] = _payee(supplierA, _uniformShares(3, 5000));

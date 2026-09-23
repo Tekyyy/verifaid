@@ -17,6 +17,7 @@ import { IndexerNotice, Notice } from '@/components/Notice'
 import { PaymentPlanPanel } from '@/components/PaymentPlanPanel'
 import { ProgressBar } from '@/components/ProgressBar'
 import { RefundPanel } from '@/components/RefundPanel'
+import { ReleasePolicyNote } from '@/components/ReleasePolicyNote'
 import { SettlementList } from '@/components/SettlementList'
 import { NeedStatusBadge } from '@/components/StatusBadge'
 import { TaxDeductionNotice } from '@/components/TaxDeductionNotice'
@@ -218,6 +219,13 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
               {t('deliveriesTitle')}
             </h2>
             <p className="mt-1 text-sm text-slate-700">{t('deliveriesNote')}</p>
+            <div className="mt-2">
+              <ReleasePolicyNote
+                policy={data.releasePolicy}
+                verifiers={data.verificationsRequired}
+                strikes={data.strikes}
+              />
+            </div>
             <div className="mt-3 space-y-3">
               {data.deliveries.length > 0 ? (
                 data.deliveries.map((delivery) => <DeliveryCard key={delivery.id} delivery={delivery} />)
@@ -247,7 +255,15 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
         </div>
 
         <aside className="min-w-0 space-y-6">
-          {underReview ? <DeliveryReviewPanel needId={data.id} delivery={underReview} /> : null}
+          {underReview ? (
+            <DeliveryReviewPanel
+              needId={data.id}
+              delivery={underReview}
+              policy={data.releasePolicy}
+              verifications={data.verificationsRequired}
+              strikes={data.strikes}
+            />
+          ) : null}
           {deadlineReached ? <ExpireButton needId={data.id} /> : null}
           {refundable ? <RefundPanel vault={data.vault} /> : null}
           <WithdrawDonationPanel need={data} />

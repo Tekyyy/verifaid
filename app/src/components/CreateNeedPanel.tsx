@@ -15,6 +15,7 @@ import {
   type PlanRow,
 } from '@/components/PaymentPlanEditor'
 import { ProgramPicker } from '@/components/ProgramPicker'
+import { ReleasePolicyNote } from '@/components/ReleasePolicyNote'
 import { TxStatus } from '@/components/TxStatus'
 import { deployment } from '@/lib/config'
 import {
@@ -28,6 +29,7 @@ import {
 } from '@/lib/format'
 import { useTx } from '@/lib/hooks'
 import { getSuppliers } from '@/lib/indexer'
+import { builtInPolicies } from '@/lib/policies'
 import { storeDossier } from '@/lib/services'
 
 /** Contract bounds (NeedsRegistry): at most 5 tranches, cost cap at most 20%. */
@@ -77,6 +79,7 @@ export function CreateNeedPanel() {
   const t = useTranslations('ngo')
   const tCommon = useTranslations('common')
   const tErrors = useTranslations('errors')
+  const tPolicy = useTranslations('policy')
   const tx = useTx()
   const optIn = useTx()
 
@@ -90,6 +93,10 @@ export function CreateNeedPanel() {
   const [supplier, setSupplier] = useState('')
   const [keepPercent, setKeepPercent] = useState('0')
   const [timeline, setTimeline] = useState<Timeline>(DEFAULTS.timeline)
+  /** Who approves each tranche after the first. Donors decide unless the NGO picks otherwise. */
+  const policies = builtInPolicies()
+  const [policyAddress, setPolicyAddress] = useState<string>(policies[0]?.address ?? '')
+  const policy = policies.find((one) => one.address === policyAddress) ?? policies[0]
 
   /**
    * Whether this deployment approves a venue at all. With none, there is nothing to offer, so the option is
@@ -240,6 +247,8 @@ export function CreateNeedPanel() {
           expectedOutcomeHash: outcomeHash,
           costDisclosureHash: disclosureHash,
           payees: planCheck.payees ?? [],
+          // Zero asks for the platform default, which a deployment without the built-ins still has.
+          releasePolicy: (policy?.address ?? zeroAddress) as Address,
         },
       ],
     })
@@ -390,6 +399,38 @@ export function CreateNeedPanel() {
         </>
       ) : null}
 
+      {/* ── who approves each tranche ─────────────────────────────────────── */}
+      {policies.length > 0 ? (
+        <fieldset className="space-y-2 rounded-md border border-slate-200 p-3">
+          <legend className="px-1 text-sm font-semibold text-slate-900">{t('policyLabel')}</legend>
+          <p className="text-xs text-slate-700">{t('policyHint')}</p>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {policies.map((option) => (
+              <label
+                key={option.address}
+                className={`flex cursor-pointer gap-2 rounded-md border p-3 text-sm ${
+                  policyAddress === option.address
+                    ? 'border-teal-700 bg-teal-50'
+                    : 'border-slate-300 bg-white'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="release-policy"
+                  value={option.address}
+                  checked={policyAddress === option.address}
+                  onChange={() => setPolicyAddress(option.address)}
+                />
+                <span className="font-semibold">{tPolicy(`name.${option.kind}`)}</span>
+              </label>
+            ))}
+          </div>
+          {policy ? (
+            <ReleasePolicyNote policy={policy} verifiers={Number(verificationsRequired) || 1} compact />
+          ) : null}
+        </fieldset>
+      ) : null}
+
       {/* ── the assessment a verifier will check ───────────────────────────── */}
       <TextArea
         label={t('dossier')}
@@ -516,6 +557,7 @@ export function CreateNeedPanel() {
               : t('summaryPartial', { percent: bpsPercent(minFundingBps) })}
           </li>
           <li>{t('summaryVerifications', { count: verificationsRequired })}</li>
+          {policy ? <li>{t('summaryPolicy', { name: tPolicy(`name.${policy.kind}`) })}</li> : null}
           <li>{costBps ? t('summaryCosts', { percent: bpsPercent(costBps) }) : t('summaryNoCosts')}</li>
           <li>{t('summaryOutcome', { hash: shorten(outcomeHash, 10, 6) })}</li>
         </ul>

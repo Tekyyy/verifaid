@@ -16,7 +16,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 /// @title AidVault
 /// @notice Escrow for a single need. Holds stablecoin until tranches are unlocked by
-///         verified deliveries, then pays each tranche straight to the suppliers of the need's payment plan.
+///         approved deliveries, then pays each tranche straight to the suppliers of the need's payment plan.
 /// @dev There is intentionally no admin withdrawal path: funds leave only as tranche payments to the payees the
 ///      plan names (the NGO only for its disclosed share) or as pro-rata refunds.
 ///      Invariant, with the idle capital a need may let wait in an ERC-4626 venue:
@@ -35,6 +35,9 @@ contract AidVault is TrancheLedger, IAidVault {
 
     /// @notice A donation can be taken back until this long before the funding deadline.
     uint256 public constant WITHDRAW_LOCK_PERIOD = 2 days;
+
+    /// @notice The most a deposit into the venue may lose to its rounding, in basis points of the deposit.
+    uint16 public constant MAX_DEPOSIT_LOSS_BPS = 10;
 
     /// @notice The ERC-4626 venue this vault's idle capital is waiting in, or 0 while it holds none.
     /// @dev Read from the registry on the first deployment and then fixed until the position is fully closed, so
@@ -248,6 +251,13 @@ contract AidVault is TrancheLedger, IAidVault {
         deployedPrincipal += assets;
         token.forceApprove(venue, assets);
         shares = IERC4626(venue).deposit(assets, address(this));
+        // The shares must be worth what they cost, give or take the venue's rounding. Anyone may call this, so
+        // anyone could call it at the moment somebody has pushed the share price up (a donation to the venue ahead
+        // of a first deposit, say): the vault would get too few shares and the difference would go to the pusher.
+        uint256 worth = IERC4626(venue).previewRedeem(shares);
+        if ((worth + 1) * BPS_DENOMINATOR < assets * (BPS_DENOMINATOR - MAX_DEPOSIT_LOSS_BPS)) {
+            revert Errors.DepositShortfall();
+        }
         emit IdleDeployed(id, venue, assets, shares);
     }
 

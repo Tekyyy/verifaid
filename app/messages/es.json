@@ -81,9 +81,10 @@
     "Expired": "Caducada"
   },
   "deliveryStatus": {
-    "Open": "En revisión por donantes",
-    "Approved": "Aprobada por donantes",
-    "Superseded": "Sustituida"
+    "Open": "En revisión",
+    "Approved": "Aprobada",
+    "Superseded": "Sustituida",
+    "Rejected": "Rechazada"
   },
   "trancheStatus": {
     "Locked": "Bloqueado",
@@ -123,8 +124,9 @@
     "NeedPresentationPublished": "Presentación publicada por la ONG",
     "DeliverySubmitted": "Justificación presentada a quienes donaron",
     "DeliverySuperseded": "Justificación sustituida",
-    "DeliveryApprovalAdded": "Una persona donante aprobó la justificación",
-    "DeliveryApproved": "Aprobada por donantes: siguiente tramo desbloqueado"
+    "DeliveryApproved": "Justificación aprobada: siguiente tramo desbloqueado",
+    "DeliveryVoteCast": "Un voto sobre la justificación",
+    "DeliveryRejected": "Justificación rechazada"
   },
   "home": {
     "title": "Ayuda auditable, personas no identificables",
@@ -138,7 +140,7 @@
     "needs": "Necesidades registradas",
     "completed": "Necesidades completadas",
     "deliveries": "Entregas aprobadas por donantes",
-    "confirmations": "Aprobaciones de donantes",
+    "confirmations": "Votos de aprobación",
     "beneficiaries": "Personas atendidas",
     "flowTitle": "Cómo se mueve el dinero",
     "flow1Title": "Se verifica una necesidad",
@@ -194,11 +196,11 @@
     "fundingTitle": "Recaudación",
     "raisedOfTarget": "{raised} de {target} {unit}",
     "trancheTitle": "Plan de tramos",
-    "trancheNote": "El tramo 0 prefinancia el trabajo. Cada tramo posterior se desbloquea solo cuando su entrega se finaliza. Cada uno se paga directamente al plan de pagos de la necesidad.",
+    "trancheNote": "El tramo 0 prefinancia el trabajo. Cada tramo posterior se desbloquea solo cuando se aprueba la justificación del anterior. Cada uno se paga directamente al plan de pagos de la necesidad.",
     "trancheLabel": "Tramo {index}",
     "trancheShare": "{bps}% de lo recaudado",
     "deliveriesTitle": "Entregas",
-    "deliveriesNote": "Tras cobrar cada tramo, la ONG muestra en qué lo gastó —fotos, facturas, extractos bancarios— y el siguiente tramo solo se desbloquea cuando quienes aportaron el 30 % del dinero lo aprueban.",
+    "deliveriesNote": "Tras cobrar cada tramo, la ONG muestra en qué lo gastó —fotos, facturas, extractos bancarios— y el siguiente tramo solo se desbloquea cuando esa justificación se aprueba según la regla de la necesidad:",
     "expected": "Personas previstas",
     "noDeliveries": "Aún no se ha presentado ninguna justificación.",
     "donationsTitle": "Donaciones",
@@ -267,11 +269,17 @@
       "other": "Documento"
     },
     "evidenceUnreadable": "Esta justificación no tiene el formato esperado. Su texto, tal como se presentó:",
-    "approvalProgress": "Han aprobado quienes aportaron {approved} de los {required} {unit} necesarios.",
-    "approvalCount": "{count, plural, =0 {Aún sin aprobaciones.} one {# donante.} other {# donantes.}}",
-    "evidenceSuperseded": "Sustituida por una justificación más reciente (n.º {id}); sus aprobaciones no se trasladan.",
+    "approvalProgress": "Han aprobado {approved} de los {required} {unit} necesarios.",
+    "evidenceSuperseded": "Sustituida por una justificación más reciente (n.º {id}); sus votos no se trasladan.",
     "evidenceTx": "Presentada en",
-    "evidenceHash": "Hash en cadena"
+    "evidenceHash": "Hash en cadena",
+    "rejectionProgress": "Han rechazado {rejected} de los {required} {unit} necesarios.",
+    "verifierProgress": "Verificadores: {approved} de {required} han aprobado, {rejected} han rechazado.",
+    "voteCount": "{count, plural, =0 {Aún sin votos.} one {# voto.} other {# votos.}}",
+    "evidenceContested": "Sustituida (n.º {id}) cuando ya había quien la había rechazado, lo que le costó a la ONG su segunda oportunidad.",
+    "evidenceRejected": "Rechazada. La ONG puede presentar una justificación mejor para este tramo.",
+    "evidenceRejectedFinal": "Rechazada por segunda vez: la necesidad se canceló y quienes donaron pueden reclamar lo que no se liberó.",
+    "evidenceIpfs": "en IPFS"
   },
   "donor": {
     "title": "Mis donaciones",
@@ -302,17 +310,13 @@
     "notNgoTitle": "Esta cartera no es una ONG registrada",
     "notNgoBody": "Solo las organizaciones que el administrador de la plataforma ha registrado pueden crear programas y necesidades o gestionarlos; los contratos rechazan cualquier otra cartera, por eso tu cartera avisa de que la transacción probablemente fallará. Conecta la cartera de la ONG o pide al administrador que registre {address}.",
     "programTitle": "1. A quién atiendes",
-    "programBody": "Un programa es el grupo de personas al que sirve una necesidad. Describe quién cumple los requisitos; el texto se resume (hash) en tu navegador y a la cadena solo va el hash, así puedes publicar las reglas después y cualquiera puede comprobar que no se reescribieron.",
+    "programBody": "Un programa es a quién sirve una necesidad. Describe quién cumple los requisitos; el texto se resume (hash) en tu navegador y a la cadena solo va el hash, así puedes publicar las reglas después y cualquiera puede comprobar que no se reescribieron. Las personas nunca van a la cadena.",
     "policyHash": "Hash de la política de inscripción",
     "policyText": "Reglas de elegibilidad (se hashean en tu navegador)",
     "metadataUri": "URI de metadatos públicos",
     "createProgram": "Crear programa",
-    "membersTitle": "2. Inscribe a las personas a las que atiendes",
-    "membersBody": "Pega los compromisos que te enseñaron, uno por línea. Un compromiso es un número no enlazable: no es un dato personal y no se envía nada más sobre la persona.",
     "programId": "Id del programa",
-    "commitments": "Compromisos de identidad, uno por línea",
-    "addMembers": "Inscribir compromisos",
-    "needTitle": "3. Pide financiación",
+    "needTitle": "2. Pide el dinero",
     "needBody": "Qué necesitas, cuánto y quién cobra. Todo lo demás tiene un valor razonable por defecto que puedes cambiar en Avanzado. Estos términos se muestran a quien dona y no se pueden cambiar después.",
     "category": "Categoría",
     "targetAmount": "Importe objetivo en {unit}",
@@ -454,8 +458,8 @@
     "programLabel": "Programa",
     "programLoading": "Cargando tus programas…",
     "programNone": "Aún no tienes ningún programa: crea uno arriba primero.",
-    "programOption": "n.º {id} — {members} inscritas",
-    "programOptionNamed": "n.º {id} · {name} ({members} inscritas)",
+    "programOption": "n.º {id}",
+    "programOptionNamed": "n.º {id} · {name}",
     "programNoneOption": "Todavía no hay programas",
     "programPick": "Elige un programa…",
     "errorProgram": "Elige el programa al que pertenece esta necesidad.",
@@ -513,11 +517,14 @@
     "presentationReplaces": "Publicar de nuevo reemplaza lo que ve quien dona; cada versión queda en cadena como una atestación que firmaste.",
     "presentationErrorTags": "Como mucho {max} etiquetas.",
     "idleTitle": "Deja que el dinero gane mientras espera",
-    "idleHint": "Solo después de cerrar la ronda, y nunca dinero que un proveedor pueda reclamar. Quien dona lo ve en la necesidad antes de dar, y siempre recupera lo que dio. Requiere una segunda firma justo después de crear la necesidad."
+    "idleHint": "Solo después de cerrar la ronda, y nunca dinero que un proveedor pueda reclamar. Quien dona lo ve en la necesidad antes de dar, y siempre recupera lo que dio. Requiere una segunda firma justo después de crear la necesidad.",
+    "policyLabel": "Quién aprueba cada tramo",
+    "policyHint": "Queda fijada al crear la necesidad: quienes donan la ven antes de dar, y no se puede cambiar después.",
+    "summaryPolicy": "Cada tramo después del primero se libera con la regla «{name}»."
   },
   "verifier": {
     "title": "Cola del verificador",
-    "subtitle": "Necesidades pendientes de verificar y cambios de proveedor pendientes de aprobar. Debes ser independiente de la ONG. En qué se gastó el dinero lo aprueban quienes donaron.",
+    "subtitle": "Necesidades pendientes de verificar, cambios de proveedor pendientes de aprobar y —en las necesidades cuya regla da voto a los verificadores— justificaciones pendientes de un verificador. Debes ser independiente de la ONG.",
     "needsQueue": "Necesidades pendientes de verificación",
     "openDossier": "Abrir el expediente cifrado",
     "reportHash": "Hash de tu informe",
@@ -531,7 +538,12 @@
     "changeNone": "No hay nada pendiente de ti en esta necesidad.",
     "changeApprove": "Aprobar la sustitución",
     "changeErrorNeed": "Introduce primero el id de la necesidad.",
-    "needId": "Id de la necesidad"
+    "needId": "Id de la necesidad",
+    "evidenceQueue": "Justificaciones pendientes de un verificador",
+    "evidenceQueueNote": "En estas necesidades el siguiente tramo también espera a un verificador independiente. Abre la necesidad, lee la justificación y vota a su lado.",
+    "emptyEvidence": "No hay justificaciones pendientes de un verificador.",
+    "evidenceRow": "Necesidad n.º {need}: en qué se gastó el tramo {spent}",
+    "evidenceOpen": "Revisarla"
   },
   "impact": {
     "title": "Impacto",
@@ -1057,21 +1069,22 @@
       "Verified": "Verificada: la recaudación se abre en cuanto su bóveda está lista.",
       "Funding": "Recaudando hasta el {date}. Se cierra sola al alcanzar el objetivo; puedes cerrarla antes cuando tenga el mínimo de {minimum} {unit}.",
       "release": "El tramo {index} ({amount} {unit}) está listo: libéralo abajo y la bóveda paga directamente a los proveedores.",
-      "openDelivery": "Siguiente paso: justifica abajo el tramo {spent} —fotos, facturas y extractos bancarios—. Cuando quienes aportaron el 30 % del dinero lo aprueben, el tramo {index} se desbloquea aquí.",
-      "deliveryUnderway": "Quienes donaron están revisando tu justificación del tramo {spent}: han aprobado {approved} de los {required} {unit} necesarios.",
+      "openDelivery": "Siguiente paso: justifica abajo el tramo {spent} —fotos, facturas y extractos bancarios—. Cuando se apruebe según la regla de la necesidad, el tramo {index} se desbloquea aquí.",
+      "deliveryUnderway": "Tu justificación del tramo {spent} está en revisión: han aprobado {approved} de los {required} {unit} necesarios.",
       "Completed": "Se han pagado todos los tramos. Publica el informe de impacto para cerrar la historia.",
       "Done": "Completada e informada. No queda nada por hacer.",
-      "Closed": "Esta necesidad está {status}: quienes donaron pueden recuperar lo que no se liberó."
+      "Closed": "Esta necesidad está {status}: quienes donaron pueden recuperar lo que no se liberó.",
+      "deliveryUnderwayVerifier": "Tu justificación del tramo {spent} espera a un verificador: han aprobado {approved} de {required}."
     },
     "actionsTitle": "Acciones sobre esta necesidad",
     "noActions": "No hay nada que hacer con esta necesidad en su estado actual."
   },
   "evidence": {
     "submitTitle": "Justifica el tramo {spent}",
-    "submitBody": "Muestra en qué se gastó el tramo {spent} ({amount} {unit}): fotos del trabajo, facturas de proveedores, extractos bancarios. El tramo {next} se podrá liberar cuando quienes aportaron el {threshold} % del dinero lo aprueben.",
+    "submitBody": "Muestra en qué se gastó el tramo {spent} ({amount} {unit}): fotos del trabajo, facturas de proveedores, extractos bancarios. El tramo {next} se libera cuando esta justificación se aprueba según la regla de la necesidad.",
     "publicWarning": "Todo lo que subas es público, para cada donante y para cualquiera. Antes de subirlo, tacha los números de cuenta y los nombres, direcciones y caras de las personas a las que ayudas. A las fotos se les quita la ubicación automáticamente.",
-    "underReview": "Quienes donaron están revisando la justificación n.º {id}: han aprobado {approved} de los {required} {unit} necesarios.",
-    "replaceHint": "Si presentas una nueva, la sustituye y las aprobaciones empiezan de cero.",
+    "underReview": "La justificación n.º {id} está en revisión.",
+    "replaceHint": "Presentar una nueva justificación la sustituye, y la votación empieza de cero.",
     "filesLabel": "Archivos",
     "filesHint": "JPEG, PNG, WebP o PDF, hasta 10 MB cada uno, {max} como máximo.",
     "kindLabel": "Qué es {name}",
@@ -1092,13 +1105,42 @@
     "errorNoNote": "Explica en qué se gastó el dinero.",
     "errorUpload": "No se han podido subir los archivos: {detail}",
     "errorTooLong": "Demasiados archivos o una nota demasiado larga para caber en cadena: quita un archivo o acorta la nota.",
-    "reviewTitle": "Aprueba en qué se gastó el tramo {spent}",
-    "reviewBody": "La ONG ha presentado su justificación. El tramo {next} solo se paga cuando quienes aportaron el {threshold} % del dinero la aprueban. Tu voto pesa lo que donaste.",
+    "reviewTitle": "Valora en qué se gastó el tramo {spent}",
+    "reviewBody": "La ONG ha presentado su justificación. Apruébala si te convence; recházala si no. El tramo {next} solo se paga cuando se aprueba.",
     "reviewSee": "{count, plural, =0 {Ver la justificación ↓} one {Ver la justificación (# archivo) ↓} other {Ver la justificación (# archivos) ↓}}",
-    "reviewProgress": "Han aprobado quienes aportaron {approved} de los {required} {unit} necesarios.",
-    "reviewConnect": "Conecta la cartera con la que donaste para aprobar.",
-    "reviewDone": "Ya has aprobado esta justificación.",
-    "reviewNoSay": "Esta cartera no tiene voto en esta necesidad: solo quienes donaron, y nunca la ONG, su cuenta de cobro ni sus proveedores.",
-    "reviewApprove": "Aprobar (tu voto: {weight} {unit})"
+    "reviewConnect": "Conecta la cartera con la que donaste, o tu cartera de verificador, para votar.",
+    "reviewDone": "Ya has votado esta justificación.",
+    "reviewNoSay": "Esta cartera no tiene voto en esta necesidad según su regla. Nunca la ONG, su cuenta de cobro ni sus proveedores.",
+    "reviewApprove": "Aprobar",
+    "replaceContestedHint": "Ya hay quien la ha rechazado. Sustituirla ahora gasta tu segunda oportunidad: el siguiente rechazo cancelaría la necesidad.",
+    "contestedLocked": "Hay quien ha rechazado esta justificación y ya no te queda segunda oportunidad, así que no se puede sustituir: la deciden los votos.",
+    "rejectedRetry": "La justificación n.º {id} fue rechazada. Presenta una mejor abajo: un segundo rechazo cancela la necesidad y devuelve el dinero.",
+    "reviewReject": "Rechazar",
+    "reviewWeight": "Tu voto pesa lo que donaste: {weight} {unit}.",
+    "reviewWeightVerifier": "Votas como verificador independiente.",
+    "reviewRejectWarning": "Rechazar devuelve a la ONG a presentar una justificación mejor.",
+    "reviewRejectConfirm": "Sí, rechazarla",
+    "reviewRejectCancel": "Cancelar",
+    "reviewFree": "Vota gratis: solo firmas, y VerifAid paga la comisión de la red.",
+    "reviewSigning": "Firma el voto en tu cartera…",
+    "reviewSending": "Registrando tu voto en la cadena…",
+    "reviewRelayError": "No se pudo registrar el voto: {detail}. Desmarca «vota gratis» para enviarlo tú."
+  },
+  "policy": {
+    "label": "Regla de liberación",
+    "name": {
+      "donors": "Deciden quienes donan",
+      "verifier": "Lo comprueba un verificador",
+      "both": "Donantes y un verificador",
+      "custom": "Regla propia"
+    },
+    "summary": {
+      "donors": "Cada tramo después del primero se paga cuando quienes aportaron el {approve} % del dinero aprueban la justificación de la ONG. Quienes aportaron el {reject} % pueden rechazarla.",
+      "verifier": "Cada tramo después del primero se paga cuando {verifiers, plural, one {un verificador independiente aprueba} other {# verificadores independientes aprueban}} la justificación de la ONG, y otros tantos pueden rechazarla. Quienes donan no votan.",
+      "both": "Cada tramo después del primero se paga cuando quienes aportaron el {approve} % del dinero y {verifiers, plural, one {un verificador independiente} other {# verificadores independientes}} aprueban la justificación de la ONG. Quienes aportaron el {reject} %, o los verificadores, pueden rechazarla.",
+      "custom": "Esta necesidad usa una regla que la plataforma aprobó después; su contrato decide quién aprueba."
+    },
+    "retries": "{retries, plural, =0 {El próximo rechazo cancela la necesidad, y quienes donaron recuperan lo que no se liberó.} one {Tras un rechazo la ONG puede presentar una nueva justificación una vez; el siguiente rechazo cancela la necesidad, y quienes donaron recuperan lo que no se liberó.} other {Tras un rechazo la ONG puede presentar una nueva justificación # veces; el rechazo siguiente cancela la necesidad.}}",
+    "strikes": "{strikes, plural, one {Su justificación se ha rechazado una vez.} other {Su justificación se ha rechazado # veces.}}"
   }
 }

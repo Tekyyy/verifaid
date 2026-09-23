@@ -97,6 +97,16 @@ describe('evidence manifests', () => {
     expect(parseManifest(JSON.stringify({ v: 1, note: '', files: [{ sha256: 'nope' }] }))).toBeNull()
   })
 
+  it('keeps an IPFS address only when the file has one, and only a well-formed one', () => {
+    const cid = 'bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy'
+    expect(buildManifest('x', [file])).not.toContain('cid')
+    const pinned = buildManifest('x', [{ ...file, cid }])
+    expect(pinned).toContain(`"sha256":"${'ab'.repeat(32)}","cid":"${cid}"`)
+    expect(parseManifest(pinned)?.files[0]?.cid).toBe(cid)
+    const forged = JSON.stringify({ v: 1, note: '', files: [{ ...file, cid: 'ipfs://../../etc' }] })
+    expect(parseManifest(forged)?.files[0]?.cid).toBeUndefined()
+  })
+
   it('never hands a script link to the page', () => {
     const text = JSON.stringify({
       v: 1,

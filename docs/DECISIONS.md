@@ -786,3 +786,67 @@ deadline if it is never approved.
 would not change), a "flag" for donors who object rather than only approvals that never come, and letting an NGO
 choose a higher threshold per need.
 
+
+## 22. Rules a need chooses, votes that can say no, and an admin that has to wait (v9)
+
+v8 made the donors the judges of every tranche. v9 keeps that and fixes what a review of it found: the admin was a
+single key, donors could only say yes, the evidence lived on one server, every change to the rule meant a new
+deployment, voting cost gas, and the unused Semaphore groups were still on chain.
+
+**The rule is a policy the need picks.** `DeliveryManager` stays the ballot box and the evidence log; the rule —
+who has a say, what each say weighs, how much agreement approves or rejects — moved into `IReleasePolicy`
+contracts. A need names one when it is created (`CreateNeedParams.releasePolicy`, zero for the platform default)
+and keeps it for life: the admin approves and withdraws policies for *new* needs only, so the rule donors were shown
+is the rule their money is released under. Three built-ins ship, one `ReleasePolicy` contract configured three ways:
+*donors decide* (the default: 30% of the money approves, 50% rejects), *a verifier checks* (as many independent
+verifiers as verified the need, so two for a high-value one), and *donors and a verifier* (both must approve;
+either can reject). A new kind of rule is a new policy contract and an admin approval, with nothing redeployed and
+no existing need affected. We chose this over upgradeable proxies on purpose: a proxy would let the admin change
+the rules under money already in escrow, which is exactly what the escrow exists to prevent. The limit is stated
+plainly: a policy answers questions about donors and verifiers; a rule that needs a new kind of voter needs a new
+ballot box.
+
+**Donors can reject, and the NGO gets one second chance.** `reject(deliveryId)` weighs like `approve`. Rejecting
+takes more agreement than approving (half of the money, against 30%) because it can end the need: the first
+rejection sends the NGO back to file better evidence; the next cancels the need (`NeedsRegistry.onEvidenceRejected`)
+and every donor can claim back what was not released — nothing is releasable at that point, since evidence is only
+filed once the previous tranche has been paid. Strikes count per need. Replacing evidence someone already rejected
+costs the same second chance, and is refused once it is spent: otherwise an NGO watching rejections pile up could
+re-file just before they land and never be rejected at all. Replacing uncontested evidence (a wrong file) stays free.
+The retry count is a policy parameter (`REJECTION_RETRIES`, 1).
+
+**Votes are free.** `voteBySig` takes an EIP-712 `Vote(voter, deliveryId, approve, deadline)` signature, checked with
+OpenZeppelin's `SignatureChecker`, so a passkey smart wallet (ERC-1271) signs as well as a plain key. No nonce is
+needed — a voter votes once per delivery — and the deadline keeps an old signature from being played in later. The
+app signs in the browser and `POST /api/relay/vote` checks the signature and simulates the call before its relayer
+pays for it. Setting `NEXT_PUBLIC_PAYMASTER_URL` (a Coinbase Developer Platform paymaster) makes every other
+transaction from a Smart Wallet free as well; the code for it was already there.
+
+**The admin has to wait.** `Handover.s.sol`, the last deployment step, creates a Safe (canonical v1.4.1 factory) and
+an OpenZeppelin `TimelockController` whose only proposer is that Safe and whose executor is anyone, gives the
+timelock `DEFAULT_ADMIN_ROLE` and has the deployer renounce it. Every admin action — registering an NGO, a verifier
+or a supplier, approving a release policy or a yield venue, cancelling a need — is then signed by the Safe's
+threshold and waits out a public delay (10 minutes on the testnet, two days by default) before anyone executes it;
+the Safe can cancel it meanwhile. A new `GUARDIAN_ROLE` can pause at once and do nothing else; unpausing goes
+through the timelock. On the testnet the Safe is 2-of-3: the user's wallet, the deployer and demo account #6, and
+`pnpm admin` signs with the last two. `SeedDemo` and `RegisterNgos` run before the handover, while one transaction
+still suffices.
+
+**Evidence outlives the server.** With `PINATA_JWT` set, `/api/uploads` pins every file to IPFS and the manifest
+carries its CID next to its SHA-256; the file link carries the CID too, so `/api/files/<sha>` fetches the file back
+from IPFS when its own copy is gone, and serves it only if it hashes to what the chain committed to. Without a key
+nothing changes: files stay on the app's server and the manifest has no CID.
+
+**A deposit must be worth what it cost.** `deployIdle` is permissionless, so anyone could call it at the moment a
+venue's share price is being pushed up (a donation to an empty ERC-4626 ahead of its first deposit): the vault would
+get too few shares and the difference would go to whoever pushed. It now refuses shares worth less than the deposit
+beyond 0.1% of rounding (`DepositShortfall`).
+
+**Semaphore is gone.** Nothing read programme membership since v8, and a beneficiary is safest nowhere on chain at
+all. `BeneficiaryGroups` became `ProgramRegistry`: a programme is an NGO, a hash of its published eligibility rules
+and a description, and needs still point to one. Enrolment lives only in the NGO's encrypted PII vault, whose
+`commitment` field is now the NGO's own reference for a household.
+
+**Not done, on purpose.** The 30% threshold is still a share of everything raised, including money that has no vote
+(the NGO's own gifts, a deposit address that credited itself); a need where most of the money cannot vote can
+therefore stall until its deadline. It was left out of this release by choice and is the next thing to change.

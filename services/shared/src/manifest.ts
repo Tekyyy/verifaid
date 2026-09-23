@@ -5,6 +5,8 @@
  *
  * Files are referenced by their SHA-256, so a file cannot be replaced after the fact without the hash, and with it
  * every approval, no longer matching. Where a file lives (`url`) is a convenience; the hash is the commitment.
+ * Since v9 a file pinned to IPFS also carries its `cid`, so it outlives the server that received it: anyone can
+ * fetch it from any IPFS gateway and check it against `sha256`.
  */
 
 export const EVIDENCE_KINDS = ['photo', 'receipt', 'bank_statement', 'other'] as const
@@ -19,6 +21,8 @@ export interface EvidenceFile {
   size: number
   /** Lowercase hex SHA-256 of the file's bytes. */
   sha256: string
+  /** IPFS content identifier, when the file was pinned. */
+  cid?: string
   /** Where the file can be downloaded. */
   url: string
 }
@@ -36,6 +40,10 @@ export const MAX_EVIDENCE_FILES = 12
 export const MAX_NOTE_LENGTH = 1500
 
 const SHA256 = /^[0-9a-f]{64}$/
+/** CIDv0 (base58, `Qm…`) or CIDv1 in base32 (`b…`), which is what pinning services return. */
+const CID = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{20,100})$/
+
+export const isCid = (value: string): boolean => CID.test(value)
 
 /** Serialises with a fixed key order, so the same evidence always yields the same bytes and the same hash. */
 export const buildManifest = (note: string, files: readonly EvidenceFile[]): string =>
@@ -48,6 +56,8 @@ export const buildManifest = (note: string, files: readonly EvidenceFile[]): str
       type: file.type,
       size: file.size,
       sha256: file.sha256.toLowerCase(),
+      // Only when present, so evidence that was never pinned serialises exactly as it did before v9.
+      ...(file.cid ? { cid: file.cid } : {}),
       url: file.url,
     })),
   })
@@ -79,6 +89,7 @@ export const parseManifest = (text: string): EvidenceManifest | null => {
       type: typeof file.type === 'string' ? file.type.slice(0, 100) : '',
       size: typeof file.size === 'number' && Number.isFinite(file.size) ? file.size : 0,
       sha256: file.sha256.toLowerCase(),
+      ...(typeof file.cid === 'string' && isCid(file.cid) ? { cid: file.cid } : {}),
       // Only links a browser can open safely; anything else is dropped rather than rendered.
       url: typeof file.url === 'string' && /^(https?:\/\/|\/)/.test(file.url) ? file.url : '',
     })

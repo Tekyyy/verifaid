@@ -13,14 +13,15 @@ import {
 import type { Hex } from 'viem'
 import {
   type AcknowledgmentRow,
-  type DeliveryApprovalRow,
   type DeliveryRow,
+  type DeliveryVoteRow,
   type DonationRow,
   type ImpactReportRow,
   liveReport,
   type NeedRow,
   type PayeePaymentRow,
   type PayeeRow,
+  type PolicyIndex,
   type RefundRow,
   type SettlementRow,
   type TimelineRow,
@@ -52,8 +53,10 @@ export interface TrackInputs {
   sameDonorDonations: DonationRow[]
   tranches: TrancheRow[]
   deliveries: DeliveryRow[]
-  /** Donor approvals of those deliveries. */
-  approvals: DeliveryApprovalRow[]
+  /** Votes on those deliveries. */
+  votes: DeliveryVoteRow[]
+  /** Release policies by address, to name the need's own. */
+  policies: PolicyIndex
   settlements: SettlementRow[]
   reports: ImpactReportRow[]
   refunds: RefundRow[]
@@ -149,10 +152,10 @@ export const buildDonationTrack = (inputs: TrackInputs): DonationTrack => {
   )
 
   // ── Delivered ──
-  // The first delivery the donors approved: they have seen, and accepted, how the money was spent.
+  // The first delivery that was approved: its judges have seen, and accepted, how the money was spent.
   const approved = deliveries
-    .filter((delivery) => delivery.status === 'Approved' && delivery.approvedAt !== null)
-    .sort((a, b) => (a.approvedAt ?? 0) - (b.approvedAt ?? 0))[0]
+    .filter((delivery) => delivery.status === 'Approved' && delivery.decidedAt !== null)
+    .sort((a, b) => (a.decidedAt ?? 0) - (b.decidedAt ?? 0))[0]
   const approvedEvent = approved
     ? timeline.find(
         (row) =>
@@ -163,13 +166,15 @@ export const buildDonationTrack = (inputs: TrackInputs): DonationTrack => {
   const active = deliveries.find((delivery) => delivery.status === 'Open')
   const pct = (part: bigint, whole: bigint) => (whole === 0n ? 0 : Number((part * 100n) / whole))
   const deliveredPending = active
-    ? `Delivery #${active.id}: donors who gave ${pct(active.approvedAmount, need.totalDonated)}% of the raised amount have approved; ${pct(active.requiredAmount, need.totalDonated)}% is needed`
+    ? active.requiredAmount > 0n
+      ? `Delivery #${active.id}: donors who gave ${pct(active.approvedAmount, need.totalDonated)}% of the raised amount have approved; ${pct(active.requiredAmount, need.totalDonated)}% is needed${active.requiredVerifiers > 0 ? `, and ${active.requiredVerifiers} verifier sign-off${active.requiredVerifiers > 1 ? 's' : ''}` : ''}`
+      : `Delivery #${active.id}: ${active.verifierApprovals} of ${active.requiredVerifiers} independent verifier sign-offs`
     : null
   const deliveredStage = stage(
     'Delivered',
     approved
       ? {
-          timestamp: approved.approvedAt ?? approvedEvent?.timestamp ?? 0,
+          timestamp: approved.decidedAt ?? approvedEvent?.timestamp ?? 0,
           txHash: approvedEvent?.txHash ?? null,
           attestationUID: null,
         }
@@ -222,7 +227,7 @@ export const buildDonationTrack = (inputs: TrackInputs): DonationTrack => {
     refKind: inputs.refKind,
     donation: toDonationView(donation),
     need: {
-      ...toNeedSummary(need),
+      ...toNeedSummary(need, inputs.policies),
       badges: inputs.badges,
       presentation: inputs.presentation,
       taxStatus: inputs.taxStatus,
@@ -235,7 +240,7 @@ export const buildDonationTrack = (inputs: TrackInputs): DonationTrack => {
     releasedToNgo: releasedToNgo.toString(),
     refunded: refunded.toString(),
     tranches: donorTranches,
-    deliveries: deliveries.map((delivery) => toDeliveryView(delivery, inputs.approvals)),
+    deliveries: deliveries.map((delivery) => toDeliveryView(delivery, inputs.votes)),
     settlements: settlements.map(toSettlementView),
     impactReport: report ? toImpactReportView(report) : null,
     deposit: inputs.deposit,

@@ -21,7 +21,7 @@ contract WithdrawDonationTest is PoATest {
 
     function setUp() public override {
         super.setUp();
-        programId = _createProgram(ngo, 10);
+        programId = _createProgram(ngo);
         needId = _openNeed(0);
         vault = AidVault(registry.vaultOf(needId));
     }

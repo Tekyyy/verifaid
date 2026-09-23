@@ -16,7 +16,9 @@ import { useTranslations } from 'next-intl'
 import { useId, useState } from 'react'
 import type { Address } from 'viem'
 import { FormError, Panel, TextArea } from '@/components/form'
+import { ReleasePolicyNote } from '@/components/ReleasePolicyNote'
 import { TxStatus } from '@/components/TxStatus'
+import { VoteProgress } from '@/components/VoteProgress'
 import { deployment } from '@/lib/config'
 import { amount } from '@/lib/format'
 import { useTx } from '@/lib/hooks'
@@ -48,8 +50,9 @@ export const trancheToAccountFor = (need: NeedDetail) =>
 
 /**
  * The NGO accounts for a tranche it was paid: photos of the work, supplier receipts and bank statements, plus a
- * note. The files are stored by this app under their SHA-256; the manifest listing them is what the NGO signs, and
- * its hash is what the chain keeps. Donors who gave at least the approval threshold then unlock the next tranche.
+ * note. The files are stored by this app under their SHA-256, and pinned to IPFS when the platform has a pinning key;
+ * the manifest listing them is what the NGO signs, and its hash is what the chain keeps. The need's release policy
+ * then decides: approval unlocks the next tranche, rejection sends the NGO back, and past its retries cancels the need.
  */
 export function SubmitEvidencePanel({ need }: { need: NeedDetail }) {
   const t = useTranslations('evidence')
@@ -65,9 +68,13 @@ export function SubmitEvidencePanel({ need }: { need: NeedDetail }) {
   const next = trancheToAccountFor(need)
   if (!next) return null
   const spent = need.tranches[next.index - 1]
-  const open = need.deliveries.find(
-    (delivery) => delivery.status === 'Open' && delivery.trancheIndex === next.index,
-  )
+  const forTranche = need.deliveries.filter((delivery) => delivery.trancheIndex === next.index)
+  const open = forTranche.find((delivery) => delivery.status === 'Open')
+  const lastRejected = !open && forTranche.at(-1)?.status === 'Rejected' ? forTranche.at(-1) : undefined
+  // Replacing evidence someone already rejected costs a retry, and is refused once there are none left.
+  const contested = Boolean(open && (open.rejectedAmount !== '0' || open.verifierRejections > 0))
+  const retriesLeft = Math.max(0, need.releasePolicy.retries - need.strikes)
+  const locked = contested && retriesLeft === 0
   const unit = tCommon('amountUnit')
   const busy = uploading || tx.phase === 'signing' || tx.phase === 'pending'
 
@@ -122,22 +129,32 @@ export function SubmitEvidencePanel({ need }: { need: NeedDetail }) {
         amount: amount(spent?.amount ?? '0'),
         unit,
         next: next.index,
-        threshold: (deployment?.params.donorApprovalBps ?? 3000) / 100,
       })}
     >
+      <ReleasePolicyNote
+        policy={need.releasePolicy}
+        verifiers={need.verificationsRequired}
+        strikes={need.strikes}
+        compact
+      />
+
       <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
         {t('publicWarning')}
       </p>
 
       {open ? (
-        <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
-          {t('underReview', {
-            id: open.id,
-            approved: amount(open.approvedAmount),
-            required: amount(open.requiredAmount),
-            unit,
-          })}{' '}
-          <span className="text-slate-600">{t('replaceHint')}</span>
+        <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+          <p>{t('underReview', { id: open.id })}</p>
+          <VoteProgress delivery={open} unit={unit} />
+          <p className={locked ? 'font-medium text-amber-900' : 'text-slate-600'}>
+            {locked ? t('contestedLocked') : contested ? t('replaceContestedHint') : t('replaceHint')}
+          </p>
+        </div>
+      ) : null}
+
+      {lastRejected ? (
+        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+          {t('rejectedRetry', { id: lastRejected.id })}
         </p>
       ) : null}
 
@@ -208,7 +225,7 @@ export function SubmitEvidencePanel({ need }: { need: NeedDetail }) {
       />
 
       <FormError message={error} />
-      <button type="button" className="btn-primary" disabled={busy} onClick={submit}>
+      <button type="button" className="btn-primary" disabled={busy || locked} onClick={submit}>
         {uploading ? t('uploading') : open ? t('replaceButton') : t('submitButton')}
       </button>
       <TxStatus state={tx} />

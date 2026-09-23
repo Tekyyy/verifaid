@@ -18,7 +18,7 @@ contract NeedTermsTest is PoATest {
 
     function setUp() public override {
         super.setUp();
-        programId = _createProgram(ngo, 10);
+        programId = _createProgram(ngo);
     }
 
     function _terms(uint16 minFundingBps) internal view returns (INeedsRegistry.CreateNeedParams memory p) {
@@ -47,7 +47,7 @@ contract NeedTermsTest is PoATest {
         p.costDisclosureHash = COST_DISCLOSURE_HASH;
 
         vm.expectEmit(true, true, true, true, address(registry));
-        emit INeedsRegistry.NeedCreated(1, ngo, programId, p);
+        emit INeedsRegistry.NeedCreated(1, ngo, programId, address(donorPolicy), p);
         uint256 needId = _create(p);
 
         INeedsRegistry.Need memory n = registry.getNeed(needId);

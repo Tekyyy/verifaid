@@ -3,26 +3,25 @@ pragma solidity ^0.8.24;
 
 import {RoleRegistry} from "../src/access/RoleRegistry.sol";
 import {DonationForwarderFactory} from "../src/funds/DonationForwarderFactory.sol";
-import {BeneficiaryGroups} from "../src/identity/BeneficiaryGroups.sol";
 import {INeedsRegistry} from "../src/interfaces/INeedsRegistry.sol";
 import {MockEURC} from "../src/mocks/MockEURC.sol";
 import {MockUSDC} from "../src/mocks/MockUSDC.sol";
 import {NeedsRegistry} from "../src/needs/NeedsRegistry.sol";
+import {ProgramRegistry} from "../src/programs/ProgramRegistry.sol";
 import {DeploymentIO} from "./lib/DeploymentIO.sol";
 import {Script} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
 
 /// @title SeedDemo
-/// @notice Registers the demo NGO, verifiers and suppliers, enrols the demo beneficiary commitments
-///         and creates three needs that between them show every term a need can carry:
+/// @notice Registers the demo NGO, verifiers and suppliers, sets up the NGO's programme and creates three needs that between them show every term a need can carry:
 ///         - FOOD: deadlines, partial execution above 60%, a disclosed 1.5% cost cap;
-///         - SHELTER: above the high-value threshold (two verifiers), all or nothing, no intermediary costs;
+///         - SHELTER: above the high-value threshold (two verifiers), all or nothing, no intermediary costs, and
+///           released only once the donors *and* the verifiers approve each account;
 ///         - MEDICAL: two tranches, going ahead at half its target, a 2.5% cost cap.
 ///         Every need escrows on chain. No payment provider is registered: money arrives as tokens, and a card
 ///         reaches a need only through the Coinbase on-ramp into the donor's own wallet.
 /// @dev Role wallets are derived from DEMO_MNEMONIC (the anvil default when unset) and topped up from the
-///      deployer on networks where they have no gas. Beneficiary commitments come from
-///      script/fixtures/demo-identities.json, generated from a public seed.
+///      deployer on networks where they have no gas. Run it before Handover.s.sol: it registers as the admin.
 ///
 ///      forge script script/SeedDemo.s.sol --rpc-url base_sepolia --broadcast
 contract SeedDemo is Script, DeploymentIO {
@@ -52,7 +51,8 @@ contract SeedDemo is Script, DeploymentIO {
         string memory deployment = _readDeployment();
         RoleRegistry roles = RoleRegistry(_readAddress(deployment, ".contracts.RoleRegistry"));
         NeedsRegistry registry = NeedsRegistry(_readAddress(deployment, ".contracts.NeedsRegistry"));
-        BeneficiaryGroups groups = BeneficiaryGroups(_readAddress(deployment, ".contracts.BeneficiaryGroups"));
+        ProgramRegistry programs = ProgramRegistry(_readAddress(deployment, ".contracts.ProgramRegistry"));
+        address bothPolicy = _readAddress(deployment, ".contracts.ReleasePolicyDonorsAndVerifier");
         address token = _readAddress(deployment, ".external.Token");
         uint256 highValueThreshold = _readUint(deployment, ".params.highValueThreshold");
 
@@ -86,10 +86,9 @@ contract SeedDemo is Script, DeploymentIO {
         // ── 2. the NGO sets up its programme ──
         vm.startBroadcast(a.ngoKey);
 
-        uint256 programId = groups.createProgram(
-            keccak256("demo-enrollment-policy-v1: households registered by the municipality"), "ipfs://demo-program"
+        uint256 programId = programs.createProgram(
+            keccak256("demo-eligibility-v1: households registered by the municipality"), "ipfs://demo-program"
         );
-        groups.addMembers(programId, _demoCommitments());
 
         // ── 3. three needs covering every funding rule, all escrowed on chain ──
         INeedsRegistry.CreateNeedParams memory food =
@@ -106,6 +105,7 @@ contract SeedDemo is Script, DeploymentIO {
             0
         );
         shelter.payees = _plan(a.shelterSupplier, "Refugio Kits SA: shelter kits", 2, 0);
+        shelter.releasePolicy = bothPolicy;
         uint256 shelterNeed = registry.createNeed(shelter);
         INeedsRegistry.CreateNeedParams memory medical =
             _need(programId, "MEDICAL", 3000e6, 1, _bps(4000, 6000, 0), 5000, 250);
@@ -143,7 +143,7 @@ contract SeedDemo is Script, DeploymentIO {
         a.ngoKey = vm.deriveKey(mnemonic, 1);
         a.ngo = vm.addr(a.ngoKey);
         a.ngoPayout = vm.addr(vm.deriveKey(mnemonic, 2));
-        // Index 3 was the field agent, whose checks donors now make themselves; left unused like index 6.
+        // Index 3 was the field agent, whose checks donors now make themselves; index 6 co-signs the admin Safe.
         a.verifier1 = vm.addr(vm.deriveKey(mnemonic, 4));
         a.verifier2 = vm.addr(vm.deriveKey(mnemonic, 5));
         // Index 6 was the payment provider; it is left unused so every other role keeps its address.
@@ -247,7 +247,8 @@ contract SeedDemo is Script, DeploymentIO {
             costDisclosureHash: thirdPartyCostBps == 0
                 ? bytes32(0)
                 : keccak256(bytes(string.concat("demo-cost-disclosure-", slug))),
-            payees: new INeedsRegistry.Payee[](0)
+            payees: new INeedsRegistry.Payee[](0),
+            releasePolicy: address(0) // the platform default: donors decide
         });
     }
 
@@ -278,11 +279,6 @@ contract SeedDemo is Script, DeploymentIO {
                 label: "NGO operations: transport and distribution staff"
             });
         }
-    }
-
-    function _demoCommitments() internal view returns (uint256[] memory) {
-        string memory json = vm.readFile("script/fixtures/demo-identities.json");
-        return vm.parseJsonUintArray(json, ".commitments");
     }
 
     function _bps(uint16 first, uint16 second, uint16 third) internal pure returns (uint16[] memory out) {

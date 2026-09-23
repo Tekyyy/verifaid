@@ -20,6 +20,8 @@ import {
   type PayeePaymentView,
   type PayeeView,
   parseManifest,
+  type ReleasePolicyKind,
+  type ReleasePolicyView,
   regionLabel,
   resolveNetwork,
   type SettlementView,
@@ -42,7 +44,8 @@ import { type Address, type Hex, zeroAddress } from 'viem'
 export type NeedRow = typeof schema.need.$inferSelect
 export type TrancheRow = typeof schema.tranche.$inferSelect
 export type DeliveryRow = typeof schema.delivery.$inferSelect
-export type DeliveryApprovalRow = typeof schema.deliveryApproval.$inferSelect
+export type DeliveryVoteRow = typeof schema.deliveryVote.$inferSelect
+export type ReleasePolicyRow = typeof schema.releasePolicy.$inferSelect
 export type DonationRow = typeof schema.donation.$inferSelect
 export type SettlementRow = typeof schema.settlement.$inferSelect
 export type RefundRow = typeof schema.refund.$inferSelect
@@ -66,7 +69,27 @@ const deployment = getDeployment(resolveNetwork(process.env.PONDER_NETWORK ?? 'a
 export const fundingGapOf = (row: NeedRow): bigint =>
   row.status === 'Funding' && row.targetAmount > row.totalDonated ? row.targetAmount - row.totalDonated : 0n
 
-export const toNeedSummary = (row: NeedRow): Omit<NeedSummary, 'badges' | 'presentation' | 'taxStatus'> => ({
+/** The rule a need is judged by. A policy the indexer has no row for is shown as custom rather than guessed. */
+export const toReleasePolicyView = (
+  address: Address,
+  row: ReleasePolicyRow | undefined,
+): ReleasePolicyView => ({
+  address,
+  kind: (row?.kind as ReleasePolicyKind | undefined) ?? 'custom',
+  name: row?.name ?? 'Custom policy',
+  donorApprovalBps: row?.donorApprovalBps ?? 0,
+  donorRejectionBps: row?.donorRejectionBps ?? 0,
+  verifiers: row?.verifiers ?? false,
+  retries: row?.retries ?? 0,
+})
+
+/** Policies by lowercase address, for the need mappers. */
+export type PolicyIndex = ReadonlyMap<string, ReleasePolicyRow>
+
+export const toNeedSummary = (
+  row: NeedRow,
+  policies: PolicyIndex,
+): Omit<NeedSummary, 'badges' | 'presentation' | 'taxStatus'> => ({
   id: row.id.toString(),
   ngo: row.ngo as Address,
   // The NGO's display name lives in the off-chain profile JSON at metadataURI; only the URI is on-chain.
@@ -106,6 +129,11 @@ export const toNeedSummary = (row: NeedRow): Omit<NeedSummary, 'badges' | 'prese
   settlementFees: row.settlementFees.toString(),
   createdAt: row.createdAt,
   expiredAt: row.expiredAt,
+  releasePolicy: toReleasePolicyView(
+    row.releasePolicy as Address,
+    policies.get(row.releasePolicy.toLowerCase()),
+  ),
+  strikes: row.strikes,
 })
 
 export const toOrgTaxStatusView = (row: OrgTaxStatusRow): OrgTaxStatusView => ({
@@ -181,11 +209,8 @@ export const toDonorTrancheSlice = (row: TrancheRow, donorShare: bigint): DonorT
   donorShare: donorShare.toString(),
 })
 
-/** A delivery with the donors who approved it, oldest approval first. */
-export const toDeliveryView = (
-  row: DeliveryRow,
-  approvals: readonly DeliveryApprovalRow[],
-): DeliveryView => ({
+/** A delivery with the votes cast on it, oldest first. */
+export const toDeliveryView = (row: DeliveryRow, votes: readonly DeliveryVoteRow[]): DeliveryView => ({
   id: row.id.toString(),
   needId: row.needId.toString(),
   trancheIndex: row.trancheIndex,
@@ -195,19 +220,28 @@ export const toDeliveryView = (
   manifest: parseManifest(row.manifest),
   manifestText: row.manifest,
   approvedAmount: row.approvedAmount.toString(),
+  rejectedAmount: row.rejectedAmount.toString(),
   requiredAmount: row.requiredAmount.toString(),
-  approvals: approvals
-    .filter((approval) => approval.deliveryId === row.id)
+  rejectionAmount: row.rejectionAmount.toString(),
+  verifierApprovals: row.verifierApprovals,
+  verifierRejections: row.verifierRejections,
+  requiredVerifiers: row.requiredVerifiers,
+  votes: votes
+    .filter((vote) => vote.deliveryId === row.id)
     .sort((a, b) => a.timestamp - b.timestamp)
-    .map((approval) => ({
-      donor: approval.donor as Address,
-      weight: approval.weight.toString(),
-      at: approval.timestamp,
-      txHash: approval.txHash as Hex,
+    .map((vote) => ({
+      voter: vote.voter as Address,
+      voice: vote.voice === 'Verifier' ? 'Verifier' : 'Donor',
+      approve: vote.approve,
+      weight: vote.weight.toString(),
+      at: vote.timestamp,
+      txHash: vote.txHash as Hex,
     })),
   submittedAt: row.submittedAt,
-  approvedAt: row.approvedAt,
+  decidedAt: row.decidedAt,
   supersededBy: row.supersededBy?.toString() ?? null,
+  contested: row.contested,
+  cancelledNeed: row.cancelledNeed,
   txHash: row.txHash as Hex,
 })
 

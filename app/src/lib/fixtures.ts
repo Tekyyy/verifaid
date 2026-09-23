@@ -16,7 +16,6 @@ import type {
   OrgTaxStatusView,
   PayeePaymentView,
   PayeeView,
-  ProgramMembersResponse,
   ProgramView,
   SettlementView,
   SupplierApplicationView,
@@ -234,8 +233,21 @@ const summary = (
     settlementFees: terms.settlementFees ?? '0',
     createdAt,
     expiredAt: terms.expiredAt ?? null,
+    releasePolicy: DONOR_POLICY,
+    strikes: 0,
     ...ORG_OVERRIDES[id],
   }
+}
+
+/** The default rule of every sample need: donors decide, 30% to approve, 50% to reject, one second chance. */
+const DONOR_POLICY: NeedSummary['releasePolicy'] = {
+  address: '0x00000000000000000000000000000000000000d4',
+  kind: 'donors',
+  name: 'Donors decide',
+  donorApprovalBps: 3000,
+  donorRejectionBps: 5000,
+  verifiers: false,
+  retries: 1,
 }
 
 const NEEDS: NeedSummary[] = [
@@ -348,11 +360,27 @@ const DELIVERIES: DeliveryView[] = [
     manifest: MANIFEST_1,
     manifestText: JSON.stringify(MANIFEST_1),
     approvedAmount: '4200000000',
+    rejectedAmount: '0',
     requiredAmount: '2745000000',
-    approvals: [{ donor: DONOR, weight: '4200000000', at: 1_757_400_000, txHash: `0x${'c3'.repeat(32)}` }],
+    rejectionAmount: '4575000000',
+    verifierApprovals: 0,
+    verifierRejections: 0,
+    requiredVerifiers: 0,
+    votes: [
+      {
+        voter: DONOR,
+        voice: 'Donor',
+        approve: true,
+        weight: '4200000000',
+        at: 1_757_400_000,
+        txHash: `0x${'c3'.repeat(32)}`,
+      },
+    ],
     submittedAt: 1_757_210_000,
-    approvedAt: 1_757_400_000,
+    decidedAt: 1_757_400_000,
     supersededBy: null,
+    contested: false,
+    cancelledNeed: false,
     txHash: `0x${'d4'.repeat(32)}`,
   },
   {
@@ -365,11 +393,27 @@ const DELIVERIES: DeliveryView[] = [
     manifest: { v: 1, note: 'Tranche 1: second round of kits.', files: [] },
     manifestText: '{"v":1,"note":"Tranche 1: second round of kits.","files":[]}',
     approvedAmount: '900000000',
+    rejectedAmount: '0',
     requiredAmount: '2745000000',
-    approvals: [{ donor: DONOR_2, weight: '900000000', at: 1_757_700_000, txHash: `0x${'e5'.repeat(32)}` }],
+    rejectionAmount: '4575000000',
+    verifierApprovals: 0,
+    verifierRejections: 0,
+    requiredVerifiers: 0,
+    votes: [
+      {
+        voter: DONOR_2,
+        voice: 'Donor',
+        approve: true,
+        weight: '900000000',
+        at: 1_757_700_000,
+        txHash: `0x${'e5'.repeat(32)}`,
+      },
+    ],
     submittedAt: 1_757_600_000,
-    approvedAt: null,
+    decidedAt: null,
     supersededBy: null,
+    contested: false,
+    cancelledNeed: false,
     txHash: `0x${'f6'.repeat(32)}`,
   },
 ]
@@ -753,13 +797,13 @@ const TIMELINES: Record<string, TimelineEvent[]> = {
     event(
       '1',
       9,
-      'DeliveryApprovalAdded',
+      'DeliveryVoteCast',
       {
         deliveryId: '1',
-        donor: DONOR,
+        voter: DONOR,
+        voice: 'Donor',
+        approve: true,
         weight: '4200000000',
-        approvedAmount: '4200000000',
-        requiredAmount: '2745000000',
       },
       250,
       1_757_400_000,
@@ -872,6 +916,7 @@ export const impactSummary: ImpactSummary = {
     released: '7600000000',
     refunded: '400000000',
     deliveriesApproved: 1,
+    deliveriesRejected: 0,
     approvals: 3,
     beneficiariesServed: 340,
   },
@@ -980,18 +1025,6 @@ export const impactSummary: ImpactSummary = {
   ],
 }
 
-/** 8 demo commitments: enough to exceed the minimum group size without bloating the page. */
-const MEMBERS = [
-  '10175086346684478871242894262760765330219553131134272132849394069158901073404',
-  '4996230331519012424958163671242168851089531285172473301335738471387923444195',
-  '11720748509993441551243276848549069024102172026275707413400163767677427364135',
-  '17544178556213330729537477829200478324434021760066274006936651131872246566748',
-  '9216651255216313236112317200612116244146651266118120304115271139206175371224',
-  '13004168302921100416100219116020011291141026019206200510041501610260140118201',
-  '2059817360421012011730120411300119210410730160110011021041111602061103001191',
-  '18446744073709551616123456789012345678901234567890123456789012345678901234567',
-]
-
 const isOpen = (need: NeedSummary, now: number): boolean =>
   need.status === 'Funding' &&
   (need.fundingDeadline === null || need.fundingDeadline > now) &&
@@ -1077,11 +1110,6 @@ export const donorTrace = (address: string): DonorTrace => ({
   ],
 })
 
-export const programMembers = (programId: string): Result<ProgramMembersResponse> => ({
-  ok: true,
-  data: { programId, groupId: '0', memberCount: MEMBERS.length, members: MEMBERS, merkleTreeDepth: 3 },
-})
-
 export const suppliers: SupplierView[] = [
   {
     address: SUPPLIER_FOOD,
@@ -1126,10 +1154,8 @@ export const programs = (ngo: string): ProgramView[] => [
   {
     id: '1',
     ngo: getAddress(ngo) as Address,
-    groupId: '42',
-    enrollmentPolicyHash: uid(87),
+    eligibilityHash: uid(87),
     metadataURI: 'ipfs://bafybeidemoprogram',
-    memberCount: 120,
     active: true,
     createdAt: 1_755_000_000,
   },

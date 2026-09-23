@@ -8,22 +8,15 @@ solc = "0.8.24"
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
-# Deploy scripts write addresses + schema UIDs to ../deployments; tests read the committed Semaphore fixture
-# and the EAS artifacts (EAS pins solc 0.8.29, so we deploy its published bytecode instead of recompiling it).
+# Deploy scripts write addresses + schema UIDs to ../deployments; tests read the EAS artifacts (EAS pins solc
+# 0.8.29, so we deploy its published bytecode instead of recompiling it).
 fs_permissions = [
   { access = "read-write", path = "../deployments" },
-  { access = "read", path = "./test/fixtures" },
-  { access = "read", path = "./script/fixtures" },
   { access = "read", path = "./node_modules/@ethereum-attestation-service/eas-contracts/artifacts" },
 ]
 remappings = [
   "@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/",
   "@ethereum-attestation-service/eas-contracts/=node_modules/@ethereum-attestation-service/eas-contracts/",
-  "@semaphore-protocol/contracts/=node_modules/@semaphore-protocol/contracts/",
-  # NOTE: no explicit entry for "@zk-kit/lean-imt.sol/" — Foundry strips the trailing slash from a remapping
-  # target ending in ".sol" (it reads it as a file), which breaks Semaphore's import. Foundry's auto-detected
-  # "@zk-kit/=node_modules/@zk-kit/" resolves it correctly.
-  "poseidon-solidity/=node_modules/poseidon-solidity/",
   "forge-std/=node_modules/forge-std/src/",
 ]
 
@@ -35,9 +28,9 @@ ignore = ["test/**", "script/**", "src/mocks/**"]
 #  - unsafe-oz-erc721-mint: receipts use _mint on purpose so minting cannot call back into the vault.
 #  - unsafe-typecast: every narrowing cast is bounds-checked at the entry point (packed storage, see NeedsRegistry)
 #    or cannot overflow (uint40 timestamps last ~35,000 years).
-#  - block-timestamp: challenge windows and need deadlines are coarse, minutes-to-months timers.
+#  - block-timestamp: need deadlines and signature deadlines are coarse, minutes-to-months timers.
 #  - unused-return: flagged on partial tuple destructuring of our own views; every ignored value is deliberate.
-#  - calls-loop: the only loop with an external call validates a batch of proofs bounded by expectedRecipients.
+#  - calls-loop: loops with external calls read our own registries over bounded lists (tranches, payees).
 #  - missing-events-access-control / uninitialized-local / require-revert-in-loop: false positives here.
 exclude_lints = [
   "reentrancy-events",

@@ -75,10 +75,9 @@ describe.skipIf(Boolean(skipReason))('beneficiary records', () => {
       headers: bearer(ngoToken),
     })
     expect(deleted.statusCode).toBe(200)
-    const body = deleted.json<{ commitment: string; nextStep: string }>()
-    // The commitment is returned so the frontend can call BeneficiaryGroups.removeMember.
+    const body = deleted.json<{ commitment: string; alreadyShredded: boolean }>()
     expect(body.commitment).toBe(commitment)
-    expect(body.nextStep).toContain('removeMember')
+    expect(body.alreadyShredded).toBe(false)
 
     const afterDelete = await app.inject({
       method: 'GET',

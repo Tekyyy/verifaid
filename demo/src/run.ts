@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto'
 import {
   aidVaultAbi,
-  beneficiaryGroupsAbi,
   buildManifest,
   categoryHash,
   conversionRouterAbi,
@@ -16,10 +15,14 @@ import {
   NEED_STATUS_VALUE,
   needStatusName,
   needsRegistryAbi,
+  programRegistryAbi,
   proofOfAidResolverAbi,
   regionCode,
   roleRegistryAbi,
   tokenSymbolOf,
+  VOTE_SIGNATURE_TTL_SECONDS,
+  voiceName,
+  voteTypedData,
 } from '@poa/shared'
 import {
   type Abi,
@@ -51,17 +54,20 @@ import { attestation, fail, heading, info, note, step, tx } from './log.js'
  *      only ever donate to its need or refund.
  *   4. Idle capital: a programme whose deliveries run for months lets the committed money wait in an ERC-4626
  *      venue, earns on it, pays every supplier out of it, and hands the earnings to the NGO at the end.
+ *   5. Rejection: under the "donors and a verifier" rule, the donor rejects the NGO's evidence, the NGO files again,
+ *      a verifier rejects that too, and the need is cancelled — the donor claims back what was not released.
+ *   (review, opt-in: leaves evidence waiting on a need page for a live audience to vote on.)
  *
- *   pnpm demo:run anvil            all four
+ *   pnpm demo:run anvil            all five
  *   pnpm demo:run base-sepolia onchain idle
  */
 
 const REGION = regionCode('ES-CM')
 const BPS = 10_000n
 
-type Scenario = 'onchain' | 'expiry' | 'conversion' | 'idle' | 'review'
+type Scenario = 'onchain' | 'expiry' | 'conversion' | 'idle' | 'rejection' | 'review'
 /** What runs when no scenario is named. `review` is opt-in: it deliberately leaves evidence waiting. */
-const SCENARIOS: Scenario[] = ['onchain', 'expiry', 'conversion', 'idle']
+const SCENARIOS: Scenario[] = ['onchain', 'expiry', 'conversion', 'idle', 'rejection']
 const ALL_SCENARIOS: Scenario[] = [...SCENARIOS, 'review']
 
 interface NeedSpec {
@@ -74,6 +80,15 @@ interface NeedSpec {
   fundingWindowSeconds: number
   executionWindowSeconds: number
   outcome: string
+  /** The release policy it is judged by; the platform default (donors decide) when unset. */
+  releasePolicy?: Address
+}
+
+/** How one voter casts their vote on a delivery: a transaction, or a free signature a relayer submits. */
+interface Voter {
+  role: RoleName
+  approve: boolean
+  signed?: boolean
 }
 
 const main = async (): Promise<void> => {
@@ -83,7 +98,7 @@ const main = async (): Promise<void> => {
   const ctx = createContext(networkArg)
   const { contracts, external } = ctx.deployment
 
-  heading('VerifAid v8 — lifecycle demo')
+  heading('VerifAid v9 — lifecycle demo')
   info('network', ctx.network)
   info('rpc', ctx.rpcUrl)
   info('NeedsRegistry', contracts.NeedsRegistry)
@@ -113,6 +128,13 @@ const main = async (): Promise<void> => {
     }
   }
 
+  if (selected.includes('rejection')) {
+    if (contracts.ReleasePolicyDonorsAndVerifier) {
+      links.push(...(await rejectionScenario(ctx, programId)))
+    } else {
+      note('skipping the rejection scenario: this deployment predates v9 (no release policies)')
+    }
+  }
   if (selected.includes('review')) links.push(...(await reviewScenario(ctx, programId)))
 
   heading('Done')
@@ -146,9 +168,13 @@ const onChainScenario = async (ctx: DemoContext, programId: bigint): Promise<str
 
   await releaseOnChain(ctx, vault, 0)
 
-  // donor2 (40%) is enough on its own; donor1 is asked only if it is not.
+  // donor2 (40%) is enough on its own; donor1 is asked only if it is not. donor2 signs its vote for free and the
+  // relayer puts it on chain, the way the dashboard does for anyone who ticks "vote for free".
   for (let index = 1; index < spec.trancheBps.length; index += 1) {
-    await runDelivery(ctx, needId, index, ['donor2', 'donor1'])
+    await runDelivery(ctx, needId, index, [
+      { role: 'donor2', approve: true, signed: true },
+      { role: 'donor1', approve: true },
+    ])
     await releaseOnChain(ctx, vault, index)
   }
 
@@ -162,7 +188,56 @@ const onChainScenario = async (ctx: DemoContext, programId: bigint): Promise<str
   ]
 }
 
-// ─── scenario 5: evidence waiting for the donors ──────────────────────────────
+// ─── scenario 5: rejection ────────────────────────────────────────────────────
+
+/**
+ * What happens when the account does not convince. The need is judged by donors and a verifier together: the
+ * donor rejects the first evidence, the NGO gets its one second chance and files again, a verifier rejects that
+ * too — and the need is cancelled on the spot. Tranche 0 was spent; the donor claims back the rest.
+ */
+const rejectionScenario = async (ctx: DemoContext, programId: bigint): Promise<string[]> => {
+  heading('5 · Rejection: evidence voted down twice cancels the need and refunds the donor')
+  const spec: NeedSpec = {
+    label: 'emergency shelter repairs',
+    category: 'SHELTER',
+    target: 1_000_000_000n,
+    trancheBps: [3000, 7000],
+    minFundingBps: 10_000,
+    thirdPartyCostBps: 0,
+    fundingWindowSeconds: 30 * 86_400,
+    executionWindowSeconds: 120 * 86_400,
+    outcome: '40 homes in ES-CM repaired before the rains',
+    releasePolicy: ctx.deployment.contracts.ReleasePolicyDonorsAndVerifier,
+  }
+  const needId = await createNeed(ctx, programId, spec)
+  note('released only when the donors AND an independent verifier approve; either can reject')
+  const vault = await verifyNeed(ctx, needId)
+  const receiptId = await donateDirect(ctx, vault, spec.target)
+  await expectStatus(ctx, needId, 'Funded')
+  await releaseOnChain(ctx, vault, 0)
+
+  await runDelivery(ctx, needId, 1, [{ role: 'donor1', approve: false, signed: true }], 'Rejected')
+  note('the NGO gets one second chance')
+  await runDelivery(ctx, needId, 1, [{ role: 'verifier1', approve: false }], 'Rejected')
+  await expectStatus(ctx, needId, 'Cancelled')
+
+  step('The donor claims back everything that was not released')
+  const refund = await send(ctx, 'donor1', {
+    address: vault,
+    abi: aidVaultAbi as Abi,
+    functionName: 'claimRefund',
+    args: [],
+  })
+  const amount = eventArg<bigint>(refund.receipt, aidVaultAbi as Abi, 'Refunded', 'amount')
+  info('refunded', `${formatAmount(amount)} units — the 70% that tranche 0 did not spend`)
+  tx(ctx.network, 'tx', refund.hash)
+  return [
+    `need ${needId} (rejected twice, cancelled): ${ctx.dashboardUrl}/en/needs/${needId}`,
+    `  donor tracking:           ${ctx.dashboardUrl}/en/track/${receiptId}`,
+  ]
+}
+
+// ─── scenario 6: evidence waiting for the donors ──────────────────────────────
 
 /**
  * Stops halfway on purpose: the NGO has been paid tranche 0 and filed its receipt, and the donors have not voted.
@@ -170,7 +245,7 @@ const onChainScenario = async (ctx: DemoContext, programId: bigint): Promise<str
  * live audience should see happen.
  */
 const reviewScenario = async (ctx: DemoContext, programId: bigint): Promise<string[]> => {
-  heading('5 · Evidence waiting for the donors: approve it from the need page')
+  heading('6 · Evidence waiting for the donors: vote on it from the need page')
   const spec: NeedSpec = {
     label: 'school kits',
     category: 'EDUCATION',
@@ -278,7 +353,7 @@ const idleScenario = async (ctx: DemoContext, programId: bigint): Promise<string
 
   step('Deliveries: each release pulls back from the venue whatever the vault is short of')
   for (let index = 1; index < spec.trancheBps.length; index += 1) {
-    await runDelivery(ctx, needId, index, ['donor1'])
+    await runDelivery(ctx, needId, index, [{ role: 'donor1', approve: true }])
     await releaseOnChain(ctx, vault, index)
   }
   await expectStatus(ctx, needId, 'Completed')
@@ -580,12 +655,12 @@ const preflight = async (ctx: DemoContext): Promise<void> => {
 
 /** The demo NGO's newest active programme: every need it registers belongs to one. */
 const resolveProgram = async (ctx: DemoContext): Promise<bigint> => {
-  step('Beneficiary programme the demo needs belong to')
-  const groups = ctx.deployment.contracts.BeneficiaryGroups
+  step('The programme the demo needs belong to')
+  const programs = ctx.deployment.contracts.ProgramRegistry
   const read = <T>(functionName: string, args: readonly unknown[] = []) =>
     ctx.publicClient.readContract({
-      address: groups,
-      abi: beneficiaryGroupsAbi as Abi,
+      address: programs,
+      abi: programRegistryAbi as Abi,
       functionName,
       args,
     }) as Promise<T>
@@ -595,7 +670,7 @@ const resolveProgram = async (ctx: DemoContext): Promise<bigint> => {
     const owner = await read<Address>('programNgo', [programId])
     if (owner.toLowerCase() !== ctx.accounts.ngo.address.toLowerCase()) continue
     info('program', programId.toString())
-    info('members enrolled', (await read<bigint>('memberCount', [programId])).toString())
+    note('nobody is enrolled on chain: the NGO keeps its beneficiaries in its own encrypted records')
     return programId
   }
   return fail('the demo NGO has no programme on-chain. Re-run the seed script.')
@@ -622,6 +697,7 @@ const createNeed = async (ctx: DemoContext, programId: bigint, spec: NeedSpec): 
     expectedOutcomeHash: keccak256(stringToHex(spec.outcome)),
     costDisclosureHash: spec.thirdPartyCostBps === 0 ? zeroHash : keccak256(stringToHex(costDisclosure)),
     payees: paymentPlan(ctx, spec.trancheBps.length),
+    releasePolicy: spec.releasePolicy ?? zeroAddress,
   }
   const { hash, receipt } = await send(ctx, 'ngo', {
     address: ctx.deployment.contracts.NeedsRegistry,
@@ -776,17 +852,19 @@ const releaseOnChain = async (ctx: DemoContext, vault: Address, index: number): 
 }
 
 /**
- * The NGO accounts for the tranche it was paid — here, one receipt — and the demo donors approve it in turn until
- * those who gave the threshold share of the raised amount have. The contract then makes the next tranche
- * releasable in the approving transaction.
+ * The NGO accounts for the tranche it was paid — here, one receipt — and the voters vote on it in turn until the
+ * need's release policy decides it. Approval makes the next tranche releasable in the deciding transaction; a
+ * rejection sends the NGO back, and past its retries cancels the need. A signed vote goes through `voteBySig`,
+ * sent by the relayer, so the voter pays no gas. Returns how the evidence ended.
  */
 const runDelivery = async (
   ctx: DemoContext,
   needId: bigint,
   trancheIndex: number,
-  donors: RoleName[],
-): Promise<void> => {
-  step(`Tranche ${trancheIndex - 1} accounted for: the NGO files a receipt, the donors approve it`)
+  voters: Voter[],
+  expected: 'Approved' | 'Rejected' = 'Approved',
+): Promise<'Open' | 'Approved' | 'Rejected'> => {
+  step(`Tranche ${trancheIndex - 1} accounted for: the NGO files a receipt, and it is judged under the need's rule`)
   const deliveryManager = ctx.deployment.contracts.DeliveryManager
   const readManager = <T>(functionName: string, args: readonly unknown[]) =>
     ctx.publicClient.readContract({
@@ -814,34 +892,79 @@ const runDelivery = async (
     'deliveryId',
   )
   info('evidence', `#${deliveryId}: ${file.name}, sha256 ${file.sha256.slice(0, 16)}…`)
+  if (file.cid) info('pinned to IPFS', file.cid)
   if (file.url) note(`the receipt is served at ${ctx.dashboardUrl}${file.url}`)
   tx(ctx.network, 'filed', submitted.hash)
-  if (donors.length === 0) {
-    note('left for the donors: open the need page with a donor wallet to approve it')
-    return
+  if (voters.length === 0) {
+    note('left for the voters: open the need page with a donor wallet to approve or reject it')
+    return 'Open'
   }
 
-  const required = await readManager<bigint>('requiredApproval', [needId])
-  for (const role of donors) {
-    const current = await readManager<{ status: number }>('getDelivery', [deliveryId])
-    if (current.status !== 0) break // no longer Open: approved
-    const weight = await readManager<bigint>('approvalWeight', [needId, ctx.accounts[role].address])
-    if (weight === 0n) continue
-    const approved = await send(ctx, role, {
-      address: deliveryManager,
-      abi: deliveryManagerAbi as Abi,
-      functionName: 'approve',
-      args: [deliveryId],
-    })
-    info(`${role} approves`, `their say weighs ${formatAmount(weight)} units`)
-    tx(ctx.network, 'approved', approved.hash)
-  }
-
-  const delivery = await readManager<{ status: number; approvedAmount: bigint }>('getDelivery', [deliveryId])
-  if (delivery.status !== 1) fail('the demo donors did not reach the approval threshold')
-  note(
-    `donors who gave ${formatAmount(delivery.approvedAmount)} of the ${formatAmount(required)} units required approved: tranche ${trancheIndex} is releasable`,
+  const rules = await readManager<{ donorApproval: bigint; donorRejection: bigint; verifierApproval: number }>(
+    'rulesOf',
+    [needId],
   )
+  for (const voter of voters) {
+    const current = await readManager<{ status: number }>('getDelivery', [deliveryId])
+    if (current.status !== 0) break // no longer Open: decided
+    const account = ctx.accounts[voter.role].address
+    const [voiceValue, weight] = await readManager<readonly [number, bigint]>('voiceOf', [needId, account])
+    const voice = voiceName(Number(voiceValue))
+    if (voice === 'None') continue
+    const functionName = voter.approve ? 'approve' : 'reject'
+    const cast = voter.signed
+      ? await signedVote(ctx, voter.role, deliveryId, voter.approve)
+      : await send(ctx, voter.role, {
+          address: deliveryManager,
+          abi: deliveryManagerAbi as Abi,
+          functionName,
+          args: [deliveryId],
+        })
+    const say = voice === 'Verifier' ? 'as an independent verifier' : `weighing ${formatAmount(weight)} units`
+    info(`${voter.role} ${voter.approve ? 'approves' : 'rejects'}`, voter.signed ? `${say}, signed for free` : say)
+    tx(ctx.network, voter.approve ? 'approved' : 'rejected', cast.hash)
+  }
+
+  const delivery = await readManager<{ status: number; approvedAmount: bigint; rejectedAmount: bigint }>(
+    'getDelivery',
+    [deliveryId],
+  )
+  const outcome = delivery.status === 1 ? 'Approved' : delivery.status === 3 ? 'Rejected' : 'Open'
+  if (outcome !== expected) fail(`the demo voters left the evidence ${outcome}, expected ${expected}`)
+  if (outcome === 'Approved') {
+    note(
+      rules.donorApproval > 0n
+        ? `donors who gave ${formatAmount(delivery.approvedAmount)} of the ${formatAmount(rules.donorApproval)} units required approved: tranche ${trancheIndex} is releasable`
+        : `the verifiers approved: tranche ${trancheIndex} is releasable`,
+    )
+  } else {
+    const strikes = await readManager<number>('strikesOf', [needId])
+    note(`rejected: strike ${strikes} for this need`)
+  }
+  return outcome
+}
+
+/** Signs a vote as `role` (EIP-712) and has the relayer submit it: the voter never pays gas. */
+const signedVote = async (ctx: DemoContext, role: RoleName, deliveryId: bigint, approve: boolean) => {
+  const account = ctx.accounts[role]
+  if (!account.signTypedData) return fail(`${role}'s account cannot sign typed data`)
+  const deadline = BigInt(Math.floor(Date.now() / 1000) + VOTE_SIGNATURE_TTL_SECONDS)
+  const signature = await account.signTypedData(
+    voteTypedData({
+      chainId: ctx.chain.id,
+      deliveryManager: ctx.deployment.contracts.DeliveryManager,
+      voter: account.address,
+      deliveryId,
+      approve,
+      deadline,
+    }),
+  )
+  return send(ctx, 'relayer', {
+    address: ctx.deployment.contracts.DeliveryManager,
+    abi: deliveryManagerAbi as Abi,
+    functionName: 'voteBySig',
+    args: [deliveryId, account.address, approve, deadline, signature],
+  })
 }
 
 const publishImpactReport = async (
@@ -931,8 +1054,8 @@ const mintIfPossible = async (
 }
 
 /**
- * A one-page receipt for the tranche, uploaded to the dashboard when it is running so the need page shows it; the
- * manifest commits to its SHA-256 either way.
+ * A one-page receipt for the tranche, uploaded to the dashboard when it is running so the need page shows it (and
+ * pinned to IPFS when the dashboard has a pinning key); the manifest commits to its SHA-256 either way.
  */
 const evidenceFile = async (ctx: DemoContext, needId: bigint, spentTranche: number) => {
   const name = `receipt-need-${needId}-tranche-${spentTranche}.pdf`
@@ -948,6 +1071,7 @@ const evidenceFile = async (ctx: DemoContext, needId: bigint, spentTranche: numb
     type: 'application/pdf',
     size: bytes.length,
     sha256: createHash('sha256').update(bytes).digest('hex'),
+    cid: undefined as string | undefined,
     url: '',
   }
   try {
@@ -955,8 +1079,10 @@ const evidenceFile = async (ctx: DemoContext, needId: bigint, spentTranche: numb
     body.append('files', new Blob([bytes], { type: 'application/pdf' }), name)
     const response = await fetch(`${ctx.dashboardUrl}/api/uploads`, { method: 'POST', body })
     if (!response.ok) return local
-    const uploaded = ((await response.json()) as { files: { sha256: string; url: string }[] }).files[0]
-    return uploaded && uploaded.sha256 === local.sha256 ? { ...local, url: uploaded.url } : local
+    const uploaded = ((await response.json()) as { files: { sha256: string; cid?: string; url: string }[] })
+      .files[0]
+    // The dashboard pins to IPFS when it has a pinning key, and says so with the file's CID.
+    return uploaded && uploaded.sha256 === local.sha256 ? { ...local, cid: uploaded.cid, url: uploaded.url } : local
   } catch {
     note('the dashboard is not running: the receipt is committed by hash only')
     return local

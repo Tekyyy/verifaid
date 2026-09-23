@@ -22,6 +22,8 @@ export interface UploadedEvidenceFile {
   type: string
   size: number
   sha256: string
+  /** IPFS content identifier, when the platform pinned the file. */
+  cid?: string
   url: string
 }
 

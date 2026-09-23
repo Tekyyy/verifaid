@@ -1,10 +1,10 @@
 import {
-  beneficiaryGroupsAbi,
   chainFor,
   type Deployment,
   getDeployment,
   hasRole,
   isActiveNgo,
+  programRegistryAbi,
   ROLES,
   type RoleCheckContext,
 } from '@poa/shared'
@@ -13,7 +13,7 @@ import type { VaultConfig } from './config.js'
 
 /**
  * Every authorisation decision in this service is a chain read. An NGO owns a program because
- * `BeneficiaryGroups.programNgo` says so, and a verifier may read a dossier because the RoleRegistry says so —
+ * `ProgramRegistry.programNgo` says so, and a verifier may read a dossier because the RoleRegistry says so —
  * nothing is inferred from a record's own columns, which a compromised row could otherwise forge.
  */
 
@@ -41,8 +41,8 @@ export const isRegisteredVerifier = async (chain: Chain, account: Address): Prom
 /** The NGO that created a program; zero address when the program does not exist. */
 export const programOwner = async (chain: Chain, programId: bigint): Promise<Address> =>
   chain.client.readContract({
-    address: chain.deployment.contracts.BeneficiaryGroups,
-    abi: beneficiaryGroupsAbi,
+    address: chain.deployment.contracts.ProgramRegistry,
+    abi: programRegistryAbi,
     functionName: 'programNgo',
     args: [programId],
   })

@@ -4,8 +4,8 @@ pragma solidity ^0.8.24;
 import {RoleAware} from "../access/RoleAware.sol";
 import {IAidVault} from "../interfaces/IAidVault.sol";
 import {IAidVaultFactory} from "../interfaces/IAidVaultFactory.sol";
-import {IBeneficiaryGroups} from "../interfaces/IBeneficiaryGroups.sol";
 import {INeedsRegistry} from "../interfaces/INeedsRegistry.sol";
+import {IProgramRegistry} from "../interfaces/IProgramRegistry.sol";
 import {IRoleRegistry} from "../interfaces/IRoleRegistry.sol";
 import {ITrancheLedger} from "../interfaces/ITrancheLedger.sol";
 import {Errors} from "../libraries/Errors.sol";
@@ -18,6 +18,8 @@ import {Errors} from "../libraries/Errors.sol";
 ///      share of each tranche each one receives (the NGO itself at most `MAX_NGO_SHARE_BPS` of the need). The
 ///      plan is fixed at creation, verified with the rest of the need, and a supplier can only be replaced with
 ///      the approval of as many independent verifiers as verified the need.
+///      Every need also names the release policy its evidence is judged by — one of the policies the platform
+///      approved — and keeps it for life, whatever the platform approves or withdraws later.
 contract NeedsRegistry is INeedsRegistry, RoleAware {
     uint16 public constant BPS_DENOMINATOR = 10_000;
     uint256 public constant MAX_TRANCHES = 5;
@@ -41,7 +43,7 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     uint256 public immutable HIGH_VALUE_THRESHOLD;
 
     IAidVaultFactory public vaultFactory;
-    IBeneficiaryGroups public beneficiaryGroups;
+    IProgramRegistry public programs;
     address public deliveryManager;
     address public resolver;
     bool public wired;
@@ -70,6 +72,8 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         // slots 3-4
         bytes32 regionCode;
         bytes32 dossierHash;
+        // slot 5
+        address releasePolicy;
     }
 
     mapping(uint256 => NeedRecord) private _needs;
@@ -104,6 +108,11 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     /// @notice Number of payee changes ever proposed (their ids are 1..payeeChangeCount).
     uint256 public payeeChangeCount;
 
+    /// @inheritdoc INeedsRegistry
+    mapping(address => bool) public isReleasePolicy;
+    /// @inheritdoc INeedsRegistry
+    address public defaultReleasePolicy;
+
     /// @param roles_ System role registry.
     /// @param highValueThreshold Target amount (base units) above which M-of-N (M ≥ 2) verification is enforced.
     constructor(IRoleRegistry roles_, uint256 highValueThreshold) RoleAware(roles_) {
@@ -111,21 +120,41 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     }
 
     /// @notice One-time wiring of the contracts this registry depends on. Admin only.
-    function wire(address vaultFactory_, address beneficiaryGroups_, address deliveryManager_, address resolver_)
+    function wire(address vaultFactory_, address programs_, address deliveryManager_, address resolver_)
         external
         onlyAdmin
     {
         if (wired) revert Errors.AlreadyWired();
         if (
-            vaultFactory_ == address(0) || beneficiaryGroups_ == address(0) || deliveryManager_ == address(0)
+            vaultFactory_ == address(0) || programs_ == address(0) || deliveryManager_ == address(0)
                 || resolver_ == address(0)
         ) revert Errors.ZeroAddress();
         wired = true;
         vaultFactory = IAidVaultFactory(vaultFactory_);
-        beneficiaryGroups = IBeneficiaryGroups(beneficiaryGroups_);
+        programs = IProgramRegistry(programs_);
         deliveryManager = deliveryManager_;
         resolver = resolver_;
-        emit Wired(vaultFactory_, beneficiaryGroups_, deliveryManager_, resolver_);
+        emit Wired(vaultFactory_, programs_, deliveryManager_, resolver_);
+    }
+
+    // ─── release policies ──────────────────────────────────────────────────────
+
+    /// @inheritdoc INeedsRegistry
+    /// @dev Withdrawing a policy only stops new needs choosing it: a need is judged by the rule its donors were
+    ///      shown, so an admin can never swap the rule under money that is already escrowed.
+    function setReleasePolicy(address policy, bool allowed) external onlyAdmin {
+        if (policy == address(0)) revert Errors.ZeroAddress();
+        if (!allowed && policy == defaultReleasePolicy) revert Errors.InvalidReleasePolicy();
+        isReleasePolicy[policy] = allowed;
+        emit ReleasePolicySet(policy, allowed);
+    }
+
+    /// @inheritdoc INeedsRegistry
+    // forge-lint: disable-next-line(missing-zero-check) only an approved policy is accepted, and zero never is
+    function setDefaultReleasePolicy(address policy) external onlyAdmin {
+        if (!isReleasePolicy[policy]) revert Errors.InvalidReleasePolicy();
+        defaultReleasePolicy = policy;
+        emit DefaultReleasePolicySet(policy);
     }
 
     // ─── idle capital ──────────────────────────────────────────────────────────
@@ -168,7 +197,10 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     function createNeed(CreateNeedParams calldata p) external whenNotPaused returns (uint256 needId) {
         if (!wired) revert Errors.NotWired();
         if (!roles.isActiveNgo(msg.sender)) revert Errors.Unauthorized();
-        if (beneficiaryGroups.programNgo(p.programId) != msg.sender) revert Errors.ProgramMismatch();
+        if (programs.programNgo(p.programId) != msg.sender) revert Errors.ProgramMismatch();
+        if (!programs.isProgramActive(p.programId)) revert Errors.ProgramInactive();
+        address policy = p.releasePolicy == address(0) ? defaultReleasePolicy : p.releasePolicy;
+        if (!isReleasePolicy[policy]) revert Errors.InvalidReleasePolicy();
         _validateTerms(p);
         if (p.verificationsRequired == 0 || (p.targetAmount > HIGH_VALUE_THRESHOLD && p.verificationsRequired < 2)) {
             revert Errors.InsufficientVerifications();
@@ -187,10 +219,11 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         n.trancheBps = _packTranches(p.trancheBps);
         n.regionCode = p.regionCode;
         n.dossierHash = p.dossierHash;
+        n.releasePolicy = policy;
         // status is Pending (the zero value)
         _storePayees(needId, p.payees);
 
-        emit NeedCreated(needId, msg.sender, p.programId, p);
+        emit NeedCreated(needId, msg.sender, p.programId, policy, p);
     }
 
     /// @inheritdoc INeedsRegistry
@@ -203,6 +236,16 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
             // NGOs may only cancel before funding closes; afterwards cancellation is an admin (dispute) decision.
             if (uint8(s) >= uint8(NeedStatus.Funded)) revert Errors.InvalidNeedStatus();
         }
+        _cancel(needId, n, msg.sender);
+    }
+
+    /// @inheritdoc INeedsRegistry
+    /// @dev Evidence is filed only once the previous tranche has been paid, so nothing is releasable here: the
+    ///      cancellation leaves no payee with work confirmed but unpaid.
+    function onEvidenceRejected(uint256 needId) external {
+        if (msg.sender != deliveryManager || msg.sender == address(0)) revert Errors.Unauthorized();
+        NeedRecord storage n = _need(needId);
+        if (n.status != NeedStatus.InDelivery) revert Errors.InvalidNeedStatus();
         _cancel(needId, n, msg.sender);
     }
 
@@ -407,7 +450,8 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
             fundingDeadline: n.fundingDeadline,
             executionDeadline: n.executionDeadline,
             minFundingBps: n.minFundingBps,
-            thirdPartyCostBps: n.thirdPartyCostBps
+            thirdPartyCostBps: n.thirdPartyCostBps,
+            releasePolicy: n.releasePolicy
         });
     }
 
@@ -450,6 +494,16 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     /// @inheritdoc INeedsRegistry
     function programOf(uint256 needId) external view returns (uint256) {
         return _need(needId).programId;
+    }
+
+    /// @inheritdoc INeedsRegistry
+    function releasePolicyOf(uint256 needId) external view returns (address) {
+        return _need(needId).releasePolicy;
+    }
+
+    /// @inheritdoc INeedsRegistry
+    function verificationsRequiredOf(uint256 needId) external view returns (uint8) {
+        return _need(needId).verificationsRequired;
     }
 
     /// @inheritdoc INeedsRegistry

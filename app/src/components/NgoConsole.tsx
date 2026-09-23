@@ -1,6 +1,6 @@
 'use client'
 
-import { aidVaultAbi, beneficiaryGroupsAbi, easAbi, needsRegistryAbi } from '@poa/shared'
+import { aidVaultAbi, easAbi, needsRegistryAbi, programRegistryAbi } from '@poa/shared'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
@@ -13,7 +13,6 @@ import { IdleCapitalPanel } from '@/components/IdleCapitalPanel'
 import { NeedPresentationPanel } from '@/components/NeedPresentationPanel'
 import { MissingDeployment } from '@/components/Notice'
 import { ProposePayeeChangePanel } from '@/components/PayeeChangePanel'
-import { ProgramPicker } from '@/components/ProgramPicker'
 import { PublishPhotosPanel } from '@/components/PublishPhotosPanel'
 import { SettlementPanel } from '@/components/SettlementPanel'
 import { TaxStatusPanel } from '@/components/TaxStatusPanel'
@@ -31,7 +30,6 @@ export function NgoConsole() {
   return (
     <div className="space-y-6">
       <CreateProgram />
-      <AddMembers />
       <CreateNeedPanel />
       <NeedPresentationPanel />
       <CloseFunding />
@@ -57,8 +55,8 @@ function CreateProgram() {
 
   const create = async () => {
     const result = await tx.run({
-      address: deployment?.contracts.BeneficiaryGroups as Address,
-      abi: beneficiaryGroupsAbi,
+      address: deployment?.contracts.ProgramRegistry as Address,
+      abi: programRegistryAbi,
       functionName: 'createProgram',
       args: [hash, uri],
     })
@@ -67,7 +65,7 @@ function CreateProgram() {
     // The need form picks its programme from this list, so it must not need a reload to see a new one. The
     // indexer trails the receipt by a block or two; refreshing before it has the programme would cache "none".
     const [event] = parseEventLogs({
-      abi: beneficiaryGroupsAbi,
+      abi: programRegistryAbi,
       eventName: 'ProgramCreated',
       logs: result.logs,
     })
@@ -113,50 +111,6 @@ function CreateProgram() {
         onClick={create}
       >
         {t('createProgram')}
-      </button>
-      <TxStatus state={tx} />
-    </Panel>
-  )
-}
-
-function AddMembers() {
-  const t = useTranslations('ngo')
-  const tErrors = useTranslations('errors')
-  const tx = useTx()
-  const [programId, setProgramId] = useState('')
-  const [raw, setRaw] = useState('')
-  const [error, setError] = useState<string | null>(null)
-
-  const submit = async () => {
-    const commitments = raw
-      .split(/\s+/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-    if (!/^\d+$/.test(programId) || commitments.length === 0 || !commitments.every((c) => /^\d+$/.test(c))) {
-      setError(tErrors('required'))
-      return
-    }
-    setError(null)
-    await tx.run({
-      address: deployment?.contracts.BeneficiaryGroups as Address,
-      abi: beneficiaryGroupsAbi,
-      functionName: 'addMembers',
-      args: [BigInt(programId), commitments.map((c) => BigInt(c))],
-    })
-  }
-
-  return (
-    <Panel title={t('membersTitle')} description={t('membersBody')}>
-      <ProgramPicker value={programId} onChange={setProgramId} />
-      <TextArea label={t('commitments')} value={raw} onChange={setRaw} rows={5} />
-      <FormError message={error} />
-      <button
-        type="button"
-        className="btn-primary"
-        disabled={tx.phase === 'signing' || tx.phase === 'pending'}
-        onClick={submit}
-      >
-        {t('addMembers')}
       </button>
       <TxStatus state={tx} />
     </Panel>

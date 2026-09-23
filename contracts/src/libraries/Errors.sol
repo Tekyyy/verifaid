@@ -62,16 +62,20 @@ library Errors {
     error Soulbound();
     error NotVault();
 
-    // ─── identity ──────────────────────────────────────────────────────────────
+    // ─── programmes ────────────────────────────────────────────────────────────
     error ProgramNotFound();
     error ProgramInactive();
-    error EmptyMembers();
 
     // ─── deliveries ────────────────────────────────────────────────────────────
     error DeliveryNotFound();
     error InvalidDeliveryStatus();
-    /// @dev Only a donor to the need, other than the NGO, its payout address and its payees, may approve its evidence.
-    error NotADonor();
+    /// @dev The need's release policy gives this address no say on its evidence.
+    error NoSay();
+    error AlreadyVoted();
+    /// @dev Evidence someone already rejected cannot be replaced once the need has no retries left.
+    error EvidenceContested();
+    /// @dev Not one of the platform's approved release policies, or a policy that gives nobody a say.
+    error InvalidReleasePolicy();
     error TooFewRecipients();
 
     // ─── conversions and forwarders ────────────────────────────────────────────
@@ -105,4 +109,6 @@ library Errors {
     error YieldVenueChanged();
     error SleeveIlliquid();
     error SleeveNotClosed();
+    /// @dev The venue gave the vault shares worth less than the deposit: its share price was being moved.
+    error DepositShortfall();
 }

@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
 import { IndexerNotice } from '@/components/Notice'
 import { VerifierQueue } from '@/components/VerifierQueue'
-import { getNeeds } from '@/lib/indexer'
+import { getDeliveries, getNeeds } from '@/lib/indexer'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +17,18 @@ export async function generateMetadata({
 
 export default async function VerifierPage() {
   const t = await getTranslations('verifier')
-  const needs = await getNeeds({ status: 'Pending' })
+  const [needs, inDelivery, open] = await Promise.all([
+    getNeeds({ status: 'Pending' }),
+    getNeeds({ status: 'InDelivery' }),
+    getDeliveries('Open'),
+  ])
+  // Evidence a verifier has a say on: open deliveries of needs whose release rule includes verifiers.
+  const judged = new Map(
+    (inDelivery.ok ? inDelivery.data : [])
+      .filter((need) => need.releasePolicy.verifiers)
+      .map((need) => [need.id, need]),
+  )
+  const evidence = (open.ok ? open.data : []).filter((delivery) => judged.has(delivery.needId))
 
   return (
     <div className="space-y-6">
@@ -28,7 +39,7 @@ export default async function VerifierPage() {
 
       {!needs.ok ? <IndexerNotice error={needs.error} /> : null}
 
-      <VerifierQueue needs={needs.ok ? needs.data : []} />
+      <VerifierQueue needs={needs.ok ? needs.data : []} evidence={evidence} />
     </div>
   )
 }

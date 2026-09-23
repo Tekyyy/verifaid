@@ -49,11 +49,15 @@ export const timelineTitle = (row: TimelineRow): string => {
     case 'DeliverySubmitted':
       return `The NGO accounted for tranche ${Number(data.trancheIndex ?? 1) - 1}: evidence open to donors`
     case 'DeliverySuperseded':
-      return `Evidence #${String(data.deliveryId ?? '')} replaced by newer evidence`
-    case 'DeliveryApprovalAdded':
-      return `A donor approved the evidence (${amount(data, 'approvedAmount')} of ${amount(data, 'requiredAmount')} needed)`
+      return `Evidence #${String(data.deliveryId ?? '')} replaced by newer evidence${data.contested ? ' after it was contested' : ''}`
+    case 'DeliveryVoteCast':
+      return `A ${String(data.voice).toLowerCase()} ${data.approve ? 'approved' : 'rejected'} the evidence`
     case 'DeliveryApproved':
-      return `Donors approved the evidence: tranche ${String(data.trancheIndex)} unlocked`
+      return `Evidence approved: tranche ${String(data.trancheIndex)} unlocked`
+    case 'DeliveryRejected':
+      return data.needCancelled
+        ? 'Evidence rejected again: the need is cancelled and donors can claim back what was not released'
+        : 'Evidence rejected: the NGO may file it again once'
     case 'ImpactReportPublished':
       return `Impact report published: ${String(data.beneficiariesServed)} beneficiaries served`
     default:
@@ -77,8 +81,8 @@ export const renderRss = (options: FeedOptions): string => {
     .sort((a, b) =>
       a.blockNumber === b.blockNumber ? b.logIndex - a.logIndex : Number(b.blockNumber - a.blockNumber),
     )
-    // A delivery can collect many donor approvals; one item each would drown the feed. The outcome is its own item.
-    .filter((row) => row.type !== 'DeliveryApprovalAdded')
+    // A delivery can collect many votes; one item each would drown the feed. The outcome is its own item.
+    .filter((row) => row.type !== 'DeliveryVoteCast')
     .slice(0, 100)
     .map(
       (row) => `    <item>

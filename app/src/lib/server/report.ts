@@ -169,18 +169,36 @@ export const renderNeedReport = async (need: NeedDetail, timeline: TimelineEvent
       { bold: true },
     )
     if (delivery.manifest?.note) report.paragraph(delivery.manifest.note, { size: 8.5 })
+    const donorVotes = delivery.votes.filter((vote) => vote.voice === 'Donor')
     report.keyValues([
       [
         'Donor approval',
-        `${amount(delivery.approvedAmount)} of ${amount(delivery.requiredAmount)} ${UNIT} required (${delivery.approvals.length} donors)`,
+        delivery.requiredAmount === '0'
+          ? null
+          : `${amount(delivery.approvedAmount)} of ${amount(delivery.requiredAmount)} ${UNIT} required (${donorVotes.filter((vote) => vote.approve).length} donors)`,
+      ],
+      [
+        'Donor rejection',
+        delivery.rejectionAmount === '0'
+          ? null
+          : `${amount(delivery.rejectedAmount)} of ${amount(delivery.rejectionAmount)} ${UNIT} needed to reject`,
+      ],
+      [
+        'Verifiers',
+        delivery.requiredVerifiers === 0
+          ? null
+          : `${delivery.verifierApprovals} of ${delivery.requiredVerifiers} approved, ${delivery.verifierRejections} rejected`,
       ],
       ['Filed', timestamp(delivery.submittedAt)],
-      ['Approved', delivery.approvedAt ? timestamp(delivery.approvedAt) : null],
+      [
+        delivery.status === 'Rejected' ? 'Rejected' : 'Approved',
+        delivery.decidedAt ? timestamp(delivery.decidedAt) : null,
+      ],
       ['Manifest hash (on chain)', delivery.evidenceHash],
       ['Transaction', delivery.txHash],
       ...(delivery.manifest?.files ?? []).map((file): [string, string] => [
         `${file.kind.replace('_', ' ')}: ${file.name}`,
-        `sha256 ${file.sha256}`,
+        file.cid ? `sha256 ${file.sha256}, IPFS ${file.cid}` : `sha256 ${file.sha256}`,
       ]),
     ])
     report.spacer(4)

@@ -21,7 +21,6 @@
     "deploy:local": "node scripts/deploy-local.mjs",
     "deploy:sepolia": "node scripts/deploy-sepolia.mjs",
     "demo:run": "pnpm --filter @poa/demo start",
-    "demo:identities": "pnpm --filter @poa/demo identities",
     "indexer:dev": "pnpm --filter @poa/indexer dev",
     "app:dev": "pnpm --filter @poa/app dev",
     "notifier:dev": "pnpm --filter @poa/notifier dev",
@@ -31,7 +30,8 @@
     "db:push": "pnpm --filter @poa/shared exec prisma db push",
     "verify": "node scripts/verify-all.mjs",
     "abis": "node scripts/export-abis.mjs",
-    "sync:deployments": "node scripts/sync-deployments.mjs"
+    "sync:deployments": "node scripts/sync-deployments.mjs",
+    "admin": "node scripts/admin.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.13",

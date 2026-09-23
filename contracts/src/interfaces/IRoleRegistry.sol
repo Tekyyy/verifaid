@@ -44,7 +44,7 @@ interface IRoleRegistry is IAccessControl {
     /// @notice True if `supplier` currently holds SUPPLIER_ROLE.
     function isActiveSupplier(address supplier) external view returns (bool);
 
-    /// @notice Pauses every pausable action in the system. Admin only.
+    /// @notice Pauses every pausable action in the system. The guardian or the admin.
     function pause() external;
 
     /// @notice Lifts the global pause. Admin only.
@@ -58,6 +58,9 @@ interface IRoleRegistry is IAccessControl {
 
     /// @notice True if `account` is a platform admin.
     function isAdmin(address account) external view returns (bool);
+
+    /// @notice True if `account` may pause the system.
+    function isGuardian(address account) external view returns (bool);
 
     /// @notice Payout address of a registered NGO (zero if unregistered).
     function payoutOf(address ngo) external view returns (address);

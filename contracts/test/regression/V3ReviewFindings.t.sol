@@ -30,7 +30,7 @@ contract V3ReviewFindingsTest is PoATest {
 
     function setUp() public override {
         super.setUp();
-        programId = _createProgram(ngo, 10);
+        programId = _createProgram(ngo);
     }
 
     function _need(uint256 target, uint16 capBps) internal returns (uint256 needId) {
@@ -210,9 +210,10 @@ contract V3ReviewFindingsTest is PoATest {
                 admin: admin,
                 token: address(0),
                 eas: address(eas),
-                semaphore: address(semaphore),
                 highValueThreshold: HIGH_VALUE_THRESHOLD,
                 donorApprovalBps: DONOR_APPROVAL_BPS,
+                donorRejectionBps: DONOR_REJECTION_BPS,
+                rejectionRetries: REJECTION_RETRIES,
                 minBeneficiariesServed: MIN_BENEFICIARIES_SERVED,
                 dashboardBaseURI: DASHBOARD_BASE_URI,
                 yieldVenue: address(0),

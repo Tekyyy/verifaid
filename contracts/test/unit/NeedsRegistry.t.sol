@@ -12,7 +12,7 @@ contract NeedsRegistryTest is PoATest {
 
     function setUp() public override {
         super.setUp();
-        programId = _createProgram(ngo, 10);
+        programId = _createProgram(ngo);
     }
 
     // ─── wiring ────────────────────────────────────────────────────────────────
@@ -20,7 +20,7 @@ contract NeedsRegistryTest is PoATest {
     function test_wire_revertsWhenAlreadyWired() public {
         vm.prank(admin);
         vm.expectRevert(Errors.AlreadyWired.selector);
-        registry.wire(address(factory), address(groups), address(deliveryManager), address(resolver));
+        registry.wire(address(factory), address(programs), address(deliveryManager), address(resolver));
     }
 
     function test_wire_revertsForNonAdminAndZeroAddress() public {
@@ -28,14 +28,14 @@ contract NeedsRegistryTest is PoATest {
 
         vm.prank(outsider);
         vm.expectRevert(Errors.Unauthorized.selector);
-        fresh.wire(address(factory), address(groups), address(deliveryManager), address(resolver));
+        fresh.wire(address(factory), address(programs), address(deliveryManager), address(resolver));
 
         vm.prank(admin);
         vm.expectRevert(Errors.ZeroAddress.selector);
-        fresh.wire(address(0), address(groups), address(deliveryManager), address(resolver));
+        fresh.wire(address(0), address(programs), address(deliveryManager), address(resolver));
 
         vm.prank(admin);
-        fresh.wire(address(factory), address(groups), address(deliveryManager), address(resolver));
+        fresh.wire(address(factory), address(programs), address(deliveryManager), address(resolver));
         assertTrue(fresh.wired());
     }
 
@@ -72,6 +72,7 @@ contract NeedsRegistryTest is PoATest {
         assertEq(n.executionDeadline, block.timestamp + DEFAULT_EXECUTION_WINDOW);
         assertEq(n.minFundingBps, 1);
         assertEq(n.thirdPartyCostBps, 0);
+        assertEq(n.releasePolicy, address(donorPolicy), "no policy named: the default");
 
         // convenience views
         assertEq(registry.ngoOf(needId), ngo);
@@ -82,6 +83,8 @@ contract NeedsRegistryTest is PoATest {
         assertEq(registry.trancheBpsOf(needId).length, 3);
         assertEq(registry.vaultOf(needId), address(0));
         assertEq(registry.thirdPartyCostBpsOf(needId), 0);
+        assertEq(registry.releasePolicyOf(needId), address(donorPolicy));
+        assertEq(registry.verificationsRequiredOf(needId), 1);
         (address coreNgo, address coreVault, uint256 coreProgram, INeedsRegistry.NeedStatus coreStatus) =
             registry.coreOf(needId);
         assertEq(coreNgo, ngo);
@@ -94,7 +97,7 @@ contract NeedsRegistryTest is PoATest {
         uint16[] memory bps = _threeTrancheBps();
         vm.expectEmit(true, true, true, true, address(registry));
         // display-only commitments (category, metadata, expected outcome) live only in this event
-        emit INeedsRegistry.NeedCreated(1, ngo, programId, _needParams(programId, 5000e6, 1, bps));
+        emit INeedsRegistry.NeedCreated(1, ngo, programId, address(donorPolicy), _needParams(programId, 5000e6, 1, bps));
         vm.prank(ngo);
         registry.createNeed(_needParams(programId, 5000e6, 1, bps));
     }
@@ -114,7 +117,7 @@ contract NeedsRegistryTest is PoATest {
     }
 
     function test_createNeed_revertsForForeignOrUnknownProgram() public {
-        uint256 otherProgram = _createProgram(ngo2, 10);
+        uint256 otherProgram = _createProgram(ngo2);
         vm.prank(ngo);
         vm.expectRevert(Errors.ProgramMismatch.selector);
         registry.createNeed(_needParams(otherProgram, 5000e6, 1, _threeTrancheBps()));
@@ -122,6 +125,92 @@ contract NeedsRegistryTest is PoATest {
         vm.prank(ngo);
         vm.expectRevert(Errors.ProgramMismatch.selector);
         registry.createNeed(_needParams(999, 5000e6, 1, _threeTrancheBps()));
+    }
+
+    function test_createNeed_revertsForAClosedProgramme() public {
+        vm.prank(ngo);
+        programs.setProgramActive(programId, false);
+        vm.prank(ngo);
+        vm.expectRevert(Errors.ProgramInactive.selector);
+        registry.createNeed(_needParams(programId, 5000e6, 1, _threeTrancheBps()));
+    }
+
+    // ─── release policies ──────────────────────────────────────────────────────
+
+    function test_releasePolicies_theThreeBuiltInsAreApproved_donorsDecideByDefault() public view {
+        assertTrue(registry.isReleasePolicy(address(donorPolicy)));
+        assertTrue(registry.isReleasePolicy(address(verifierPolicy)));
+        assertTrue(registry.isReleasePolicy(address(bothPolicy)));
+        assertEq(registry.defaultReleasePolicy(), address(donorPolicy));
+    }
+
+    function test_createNeed_keepsThePolicyItNamed() public {
+        INeedsRegistry.CreateNeedParams memory p = _needParams(programId, 5000e6, 1, _threeTrancheBps());
+        p.releasePolicy = address(bothPolicy);
+        vm.prank(ngo);
+        uint256 needId = registry.createNeed(p);
+        assertEq(registry.releasePolicyOf(needId), address(bothPolicy));
+    }
+
+    function test_createNeed_refusesAPolicyThePlatformDidNotApprove() public {
+        INeedsRegistry.CreateNeedParams memory p = _needParams(programId, 5000e6, 1, _threeTrancheBps());
+        p.releasePolicy = outsider;
+        vm.prank(ngo);
+        vm.expectRevert(Errors.InvalidReleasePolicy.selector);
+        registry.createNeed(p);
+    }
+
+    /// @dev Withdrawing a policy stops new needs from choosing it; a need that already chose it keeps it, so the
+    ///      admin can never change the rule for money already given.
+    function test_withdrawingAPolicy_onlyAffectsNewNeeds() public {
+        INeedsRegistry.CreateNeedParams memory p = _needParams(programId, 5000e6, 1, _threeTrancheBps());
+        p.releasePolicy = address(verifierPolicy);
+        vm.prank(ngo);
+        uint256 before = registry.createNeed(p);
+
+        vm.expectEmit(true, false, false, true, address(registry));
+        emit INeedsRegistry.ReleasePolicySet(address(verifierPolicy), false);
+        vm.prank(admin);
+        registry.setReleasePolicy(address(verifierPolicy), false);
+
+        assertEq(registry.releasePolicyOf(before), address(verifierPolicy));
+        vm.prank(ngo);
+        vm.expectRevert(Errors.InvalidReleasePolicy.selector);
+        registry.createNeed(p);
+    }
+
+    function test_releasePolicies_adminOnly_andTheDefaultCannotBeWithdrawn() public {
+        vm.startPrank(outsider);
+        vm.expectRevert(Errors.Unauthorized.selector);
+        registry.setReleasePolicy(outsider, true);
+        vm.expectRevert(Errors.Unauthorized.selector);
+        registry.setDefaultReleasePolicy(address(bothPolicy));
+        vm.stopPrank();
+
+        vm.startPrank(admin);
+        vm.expectRevert(Errors.InvalidReleasePolicy.selector);
+        registry.setReleasePolicy(address(donorPolicy), false);
+        vm.expectRevert(Errors.InvalidReleasePolicy.selector);
+        registry.setDefaultReleasePolicy(outsider);
+        vm.expectRevert(Errors.ZeroAddress.selector);
+        registry.setReleasePolicy(address(0), true);
+
+        registry.setDefaultReleasePolicy(address(bothPolicy));
+        vm.stopPrank();
+        vm.prank(ngo);
+        uint256 needId = registry.createNeed(_needParams(programId, 5000e6, 1, _threeTrancheBps()));
+        assertEq(registry.releasePolicyOf(needId), address(bothPolicy));
+    }
+
+    function test_onEvidenceRejected_onlyTheDeliveryManager() public {
+        vm.prank(ngo);
+        uint256 needId = registry.createNeed(_needParams(programId, 5000e6, 1, _threeTrancheBps()));
+        vm.prank(admin);
+        vm.expectRevert(Errors.Unauthorized.selector);
+        registry.onEvidenceRejected(needId);
+        vm.prank(address(deliveryManager));
+        vm.expectRevert(Errors.InvalidNeedStatus.selector);
+        registry.onEvidenceRejected(needId); // still Pending
     }
 
     function test_createNeed_revertsOnInvalidAmountsAndHashes() public {

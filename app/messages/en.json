@@ -81,9 +81,10 @@
     "Expired": "Expired"
   },
   "deliveryStatus": {
-    "Open": "Under donor review",
-    "Approved": "Approved by donors",
-    "Superseded": "Replaced"
+    "Open": "Under review",
+    "Approved": "Approved",
+    "Superseded": "Replaced",
+    "Rejected": "Rejected"
   },
   "trancheStatus": {
     "Locked": "Locked",
@@ -123,8 +124,9 @@
     "NeedPresentationPublished": "Presentation published by the NGO",
     "DeliverySubmitted": "Evidence filed for the donors",
     "DeliverySuperseded": "Evidence replaced",
-    "DeliveryApprovalAdded": "A donor approved the evidence",
-    "DeliveryApproved": "Donors approved: next tranche unlocked"
+    "DeliveryApproved": "Evidence approved: next tranche unlocked",
+    "DeliveryVoteCast": "A vote on the evidence",
+    "DeliveryRejected": "Evidence rejected"
   },
   "home": {
     "title": "Aid you can audit, beneficiaries you cannot identify",
@@ -138,7 +140,7 @@
     "needs": "Needs registered",
     "completed": "Needs completed",
     "deliveries": "Deliveries approved by donors",
-    "confirmations": "Donor approvals",
+    "confirmations": "Approving votes",
     "beneficiaries": "Beneficiaries served",
     "flowTitle": "How the money moves",
     "flow1Title": "A need is verified",
@@ -194,11 +196,11 @@
     "fundingTitle": "Funding",
     "raisedOfTarget": "{raised} of {target} {unit}",
     "trancheTitle": "Tranche plan",
-    "trancheNote": "Tranche 0 pre-finances the work. Every later tranche unlocks only when its delivery is finalized. Each one is paid straight to the need’s payment plan.",
+    "trancheNote": "Tranche 0 pre-finances the work. Every later tranche unlocks only when the NGO’s account of the one before is approved. Each one is paid straight to the need’s payment plan.",
     "trancheLabel": "Tranche {index}",
     "trancheShare": "{bps}% of the raised amount",
     "deliveriesTitle": "Deliveries",
-    "deliveriesNote": "After each tranche is paid, the NGO shows how it was spent — photos, receipts, bank statements — and the next tranche only unlocks once donors who gave 30% of the money approve it.",
+    "deliveriesNote": "After each tranche is paid, the NGO shows how it was spent — photos, receipts, bank statements — and the next tranche only unlocks once that account is approved under the need’s rule:",
     "expected": "Expected recipients",
     "noDeliveries": "No evidence filed yet.",
     "donationsTitle": "Donations",
@@ -268,10 +270,16 @@
     },
     "evidenceUnreadable": "This evidence is not in the expected format. Its text, exactly as filed:",
     "approvalProgress": "Donors who gave {approved} of the {required} {unit} needed have approved.",
-    "approvalCount": "{count, plural, =0 {No approvals yet.} one {# donor.} other {# donors.}}",
-    "evidenceSuperseded": "Replaced by newer evidence (#{id}); its approvals do not carry over.",
+    "evidenceSuperseded": "Replaced by newer evidence (#{id}); its votes do not carry over.",
     "evidenceTx": "Filed in",
-    "evidenceHash": "Hash on chain"
+    "evidenceHash": "Hash on chain",
+    "rejectionProgress": "Donors who gave {rejected} of the {required} {unit} needed have rejected.",
+    "verifierProgress": "Verifiers: {approved} of {required} approved, {rejected} rejected.",
+    "voteCount": "{count, plural, =0 {No votes yet.} one {# vote.} other {# votes.}}",
+    "evidenceContested": "Replaced (#{id}) after some had rejected it, which cost the NGO its second chance.",
+    "evidenceRejected": "Rejected. The NGO may file better evidence for this tranche.",
+    "evidenceRejectedFinal": "Rejected a second time: the need was cancelled and donors can claim back what was not released.",
+    "evidenceIpfs": "on IPFS"
   },
   "donor": {
     "title": "My donations",
@@ -302,17 +310,13 @@
     "notNgoTitle": "This wallet is not a registered NGO",
     "notNgoBody": "Only organisations the platform admin has registered can create programmes and needs or manage them; the contracts refuse any other wallet, which is why your wallet warns that the transaction is likely to fail. Connect the NGO’s wallet, or ask the admin to register {address}.",
     "programTitle": "1. Who you serve",
-    "programBody": "A programme is the group of people a need serves. Describe who qualifies; the text is hashed in your browser and only the hash goes on chain, so you can publish the rules later and anyone can check they were not rewritten afterwards.",
+    "programBody": "A programme is who a need serves. Describe who qualifies; the text is hashed in your browser and only the hash goes on chain, so you can publish the rules later and anyone can check they were not rewritten. The people themselves never go on chain.",
     "policyHash": "Enrollment policy hash",
     "policyText": "Eligibility rules (hashed in your browser)",
     "metadataUri": "Public metadata URI",
     "createProgram": "Create program",
-    "membersTitle": "2. Enrol the people you serve",
-    "membersBody": "Paste the commitments beneficiaries showed you, one per line. A commitment is an unlinkable number: it is not personal data, and nothing else about the person is sent anywhere.",
     "programId": "Program id",
-    "commitments": "Identity commitments, one per line",
-    "addMembers": "Enrol commitments",
-    "needTitle": "3. Ask for money",
+    "needTitle": "2. Ask for money",
     "needBody": "What you need, how much, and who gets paid. Everything else has a sensible default you can change under Advanced. These terms are shown to every donor and cannot be changed later.",
     "category": "Category",
     "targetAmount": "Target amount in {unit}",
@@ -454,8 +458,8 @@
     "programLabel": "Programme",
     "programLoading": "Loading your programmes…",
     "programNone": "You have no programme yet — create one above first.",
-    "programOption": "#{id} — {members} enrolled",
-    "programOptionNamed": "#{id} · {name} ({members} enrolled)",
+    "programOption": "#{id}",
+    "programOptionNamed": "#{id} · {name}",
     "programNoneOption": "No programmes yet",
     "programPick": "Choose a programme…",
     "errorProgram": "Choose the programme this need belongs to.",
@@ -513,11 +517,14 @@
     "presentationReplaces": "Publishing again replaces what donors see; every version stays on chain as an attestation you signed.",
     "presentationErrorTags": "At most {max} tags.",
     "idleTitle": "Let the money earn while it waits",
-    "idleHint": "Only after funding closes, and never money a supplier can claim. Donors see this on the need before they give, and are always repaid what they gave. It needs a second signature right after the need is created."
+    "idleHint": "Only after funding closes, and never money a supplier can claim. Donors see this on the need before they give, and are always repaid what they gave. It needs a second signature right after the need is created.",
+    "policyLabel": "Who approves each tranche",
+    "policyHint": "Fixed once the need is created: donors see it before they give, and it cannot be changed afterwards.",
+    "summaryPolicy": "Each tranche after the first is released under the rule “{name}”."
   },
   "verifier": {
     "title": "Verifier queue",
-    "subtitle": "Needs waiting for verification, and supplier changes waiting for approval. You must be independent of the NGO. How the money was spent is approved by the donors themselves.",
+    "subtitle": "Needs waiting for verification, supplier changes waiting for approval, and — on needs whose rule gives verifiers a vote — evidence waiting for a verifier. You must be independent of the NGO.",
     "needsQueue": "Needs pending verification",
     "openDossier": "Open the encrypted dossier",
     "reportHash": "Your report hash",
@@ -531,7 +538,12 @@
     "changeNone": "Nothing is waiting on you for this need.",
     "changeApprove": "Approve the replacement",
     "changeErrorNeed": "Enter the need id first.",
-    "needId": "Need id"
+    "needId": "Need id",
+    "evidenceQueue": "Evidence waiting for a verifier",
+    "evidenceQueueNote": "On these needs the next tranche also waits for an independent verifier. Open the need, read the evidence and vote beside it.",
+    "emptyEvidence": "No evidence is waiting for a verifier.",
+    "evidenceRow": "Need #{need}: how tranche {spent} was spent",
+    "evidenceOpen": "Review it"
   },
   "impact": {
     "title": "Impact",
@@ -1057,21 +1069,22 @@
       "Verified": "Verified: funding opens as soon as its vault is in place.",
       "Funding": "Raising until {date}. It closes by itself when the target is met; you can close it early once it has the minimum of {minimum} {unit}.",
       "release": "Tranche {index} ({amount} {unit}) is ready: release it below and the vault pays the suppliers directly.",
-      "openDelivery": "Next: account for tranche {spent} below — photos, receipts and bank statements. Once donors who gave 30% of the money approve it, tranche {index} unlocks here.",
-      "deliveryUnderway": "Donors are reviewing your evidence for tranche {spent}: {approved} of the {required} {unit} needed have approved.",
+      "openDelivery": "Next: account for tranche {spent} below — photos, receipts and bank statements. Once it is approved under the need’s rule, tranche {index} unlocks here.",
+      "deliveryUnderway": "Your evidence for tranche {spent} is under review: donors who gave {approved} of the {required} {unit} needed have approved.",
       "Completed": "Every tranche has been paid. Publish the impact report to close the story.",
       "Done": "Completed and reported. Nothing left to do.",
-      "Closed": "This need was {status}: donors can reclaim what was not released."
+      "Closed": "This need was {status}: donors can reclaim what was not released.",
+      "deliveryUnderwayVerifier": "Your evidence for tranche {spent} is waiting for a verifier: {approved} of {required} have approved."
     },
     "actionsTitle": "Actions on this need",
     "noActions": "Nothing to do on this need in its current state."
   },
   "evidence": {
     "submitTitle": "Account for tranche {spent}",
-    "submitBody": "Show how tranche {spent} ({amount} {unit}) was spent: photos of the work, supplier receipts, bank statements. Tranche {next} can be released once donors who gave {threshold}% of the money approve it.",
+    "submitBody": "Show how tranche {spent} ({amount} {unit}) was spent: photos of the work, supplier receipts, bank statements. Tranche {next} is released once this account is approved under the need’s rule.",
     "publicWarning": "Everything you upload is public, to every donor and anyone else. Before uploading, black out bank account numbers, and the names, addresses and faces of the people you help. Photos have their location data removed automatically.",
-    "underReview": "Donors are reviewing evidence #{id}: {approved} of the {required} {unit} needed have approved.",
-    "replaceHint": "Filing new evidence replaces it, and the approvals start again.",
+    "underReview": "Evidence #{id} is under review.",
+    "replaceHint": "Filing new evidence replaces it, and the votes start again.",
     "filesLabel": "Files",
     "filesHint": "JPEG, PNG, WebP or PDF, up to 10 MB each, {max} at most.",
     "kindLabel": "What {name} is",
@@ -1092,13 +1105,42 @@
     "errorNoNote": "Say what the money was spent on.",
     "errorUpload": "The files could not be uploaded: {detail}",
     "errorTooLong": "Too many files or too long a note to fit on chain: remove a file or shorten the note.",
-    "reviewTitle": "Approve how tranche {spent} was spent",
-    "reviewBody": "The NGO filed its evidence. Tranche {next} is only paid once donors who gave {threshold}% of the money approve it. Your say weighs what you gave.",
+    "reviewTitle": "Judge how tranche {spent} was spent",
+    "reviewBody": "The NGO filed its evidence. Approve it if it convinces you; reject it if it does not. Tranche {next} is paid only once it is approved.",
     "reviewSee": "{count, plural, =0 {See the evidence ↓} one {See the evidence (# file) ↓} other {See the evidence (# files) ↓}}",
-    "reviewProgress": "Donors who gave {approved} of the {required} {unit} needed have approved.",
-    "reviewConnect": "Connect the wallet you donated with to approve.",
-    "reviewDone": "You approved this evidence.",
-    "reviewNoSay": "This wallet has no say on this need: only its donors do, and never the NGO, its payout address or its suppliers.",
-    "reviewApprove": "Approve (your say: {weight} {unit})"
+    "reviewConnect": "Connect the wallet you donated with, or your verifier wallet, to vote.",
+    "reviewDone": "You voted on this evidence.",
+    "reviewNoSay": "This wallet has no vote on this need under its rule. Never the NGO, its payout address or its suppliers.",
+    "reviewApprove": "Approve",
+    "replaceContestedHint": "Some have already rejected it. Replacing it now uses up your second chance: the next rejection would cancel the need.",
+    "contestedLocked": "Some have rejected this evidence and you have no second chance left, so it cannot be replaced: the votes decide it.",
+    "rejectedRetry": "Evidence #{id} was rejected. File better evidence below: a second rejection cancels the need and refunds donors.",
+    "reviewReject": "Reject",
+    "reviewWeight": "Your vote weighs what you gave: {weight} {unit}.",
+    "reviewWeightVerifier": "You vote as an independent verifier.",
+    "reviewRejectWarning": "Rejecting sends the NGO back to file better evidence.",
+    "reviewRejectConfirm": "Yes, reject it",
+    "reviewRejectCancel": "Cancel",
+    "reviewFree": "Vote for free: you only sign, and VerifAid pays the network fee.",
+    "reviewSigning": "Sign the vote in your wallet…",
+    "reviewSending": "Recording your vote on chain…",
+    "reviewRelayError": "The vote could not be recorded: {detail}. Untick “vote for free” to send it yourself."
+  },
+  "policy": {
+    "label": "Release rule",
+    "name": {
+      "donors": "Donors decide",
+      "verifier": "A verifier checks",
+      "both": "Donors and a verifier",
+      "custom": "Custom rule"
+    },
+    "summary": {
+      "donors": "Each tranche after the first is paid once donors who gave {approve}% of the money approve the NGO’s evidence. Donors who gave {reject}% can reject it.",
+      "verifier": "Each tranche after the first is paid once {verifiers, plural, one {an independent verifier approves} other {# independent verifiers approve}} the NGO’s evidence, and as many can reject it. Donors have no vote.",
+      "both": "Each tranche after the first is paid once donors who gave {approve}% of the money and {verifiers, plural, one {an independent verifier} other {# independent verifiers}} approve the NGO’s evidence. Donors who gave {reject}%, or the verifiers, can reject it.",
+      "custom": "This need uses a rule the platform approved after launch; its contract decides who approves."
+    },
+    "retries": "{retries, plural, =0 {The next rejection cancels the need, and donors get back what was not released.} one {After a rejection the NGO may file new evidence once; the next rejection cancels the need, and donors get back what was not released.} other {After a rejection the NGO may file new evidence # times; the rejection after that cancels the need.}}",
+    "strikes": "{strikes, plural, one {Its evidence has been rejected once.} other {Its evidence has been rejected # times.}}"
   }
 }

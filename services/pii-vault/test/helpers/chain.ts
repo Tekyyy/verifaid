@@ -79,7 +79,7 @@ export const ensureSecondNgo = async (harness: Harness): Promise<HDAccount> => {
 
 export const programOwnedBy = async (harness: Harness, programId: bigint): Promise<string> =>
   harness.publicClient.readContract({
-    address: harness.deployment.contracts.BeneficiaryGroups,
+    address: harness.deployment.contracts.ProgramRegistry,
     abi: [
       {
         type: 'function',

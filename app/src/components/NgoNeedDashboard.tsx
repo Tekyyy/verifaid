@@ -226,12 +226,19 @@ function NextStep({ need }: { need: NeedDetail }) {
       case 'InDelivery':
         if (ready) return t('next.release', { index: ready.index, amount: amount(ready.amount), unit })
         if (underReview) {
-          return t('next.deliveryUnderway', {
-            spent: underReview.trancheIndex - 1,
-            approved: amount(underReview.approvedAmount),
-            required: amount(underReview.requiredAmount),
-            unit,
-          })
+          // A rule where only verifiers decide has no donor threshold to count towards.
+          return underReview.requiredAmount === '0'
+            ? t('next.deliveryUnderwayVerifier', {
+                spent: underReview.trancheIndex - 1,
+                approved: underReview.verifierApprovals,
+                required: underReview.requiredVerifiers,
+              })
+            : t('next.deliveryUnderway', {
+                spent: underReview.trancheIndex - 1,
+                approved: amount(underReview.approvedAmount),
+                required: amount(underReview.requiredAmount),
+                unit,
+              })
         }
         return nextLocked
           ? t('next.openDelivery', { spent: nextLocked.index - 1, index: nextLocked.index })

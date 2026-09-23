@@ -1,6 +1,6 @@
 import type { Address, Hex } from 'viem'
 import type { EvidenceManifest } from './manifest.js'
-import type { DeliveryStatus, NeedStatus, SchemaName, TrancheStatus } from './types.js'
+import type { DeliveryStatus, NeedStatus, SchemaName, TrancheStatus, Voice } from './types.js'
 
 /**
  * The contract between the Ponder indexer and everything that reads it (dashboard, demo runner).
@@ -54,6 +54,26 @@ export interface NeedSummary {
   presentation: NeedPresentationView | null
   /** The tax standing of the organisation behind it, as claimed and (maybe) checked. */
   taxStatus: OrgTaxStatusView | null
+  /** The rule its evidence is judged by, fixed when it was created. */
+  releasePolicy: ReleasePolicyView
+  /** Rejections and contested replacements so far; one more than `releasePolicy.retries` cancels the need. */
+  strikes: number
+}
+
+/** The built-in release policies, by who decides. `custom` is any other policy the platform approves later. */
+export const RELEASE_POLICY_KINDS = ['donors', 'verifier', 'both', 'custom'] as const
+export type ReleasePolicyKind = (typeof RELEASE_POLICY_KINDS)[number]
+
+export interface ReleasePolicyView {
+  address: Address
+  kind: ReleasePolicyKind
+  name: string
+  /** Share of the raised amount whose donors must approve / reject; 0 when donors have no say. */
+  donorApprovalBps: number
+  donorRejectionBps: number
+  /** Whether independent verifiers must approve (and can reject). */
+  verifiers: boolean
+  retries: number
 }
 
 /** Ways to order the needs list. `urgency` = soonest funding deadline first, then the largest funding gap. */
@@ -71,8 +91,9 @@ export interface TrancheView {
 }
 
 /**
- * The NGO's account of a tranche it was paid, filed to unlock the next one, and the donors who approved it.
- * Approval weighs what each donor gave; `requiredAmount` is the threshold for this need.
+ * The NGO's account of a tranche it was paid, filed to unlock the next one, and the votes on it. A donor's vote
+ * weighs what they gave; a verifier's counts once. The thresholds come from the need's release policy; a zero
+ * threshold means that group has no say.
  */
 export interface DeliveryView {
   id: string
@@ -88,18 +109,32 @@ export interface DeliveryView {
   /** The exact text the NGO submitted. */
   manifestText: string
   approvedAmount: string
+  rejectedAmount: string
+  /** Donations whose donors must approve / reject it. */
   requiredAmount: string
-  approvals: DeliveryApprovalView[]
+  rejectionAmount: string
+  verifierApprovals: number
+  verifierRejections: number
+  /** Independent verifiers who must approve / reject it. */
+  requiredVerifiers: number
+  votes: DeliveryVoteView[]
   submittedAt: number
-  approvedAt: number | null
+  /** When it was approved or rejected. */
+  decidedAt: number | null
   /** Set once newer evidence replaced this one. */
   supersededBy: string | null
+  /** True when it was replaced after someone had already rejected it, which cost the NGO a retry. */
+  contested: boolean
+  /** True when its rejection used up the need's retries and cancelled the need. */
+  cancelledNeed: boolean
   txHash: Hex
 }
 
-export interface DeliveryApprovalView {
-  donor: Address
-  /** What the donor gave, which is what the approval weighs. */
+export interface DeliveryVoteView {
+  voter: Address
+  voice: Exclude<Voice, 'None'>
+  approve: boolean
+  /** What the donor gave, or 1 for a verifier. */
   weight: string
   at: number
   txHash: Hex
@@ -317,15 +352,12 @@ export interface NeedBadges {
   needsTotal: number
 }
 
-/** One NGO programme: a Semaphore group, the hash of its published eligibility rules and who is enrolled. */
+/** One NGO programme: who it serves, by which published eligibility rules. Nobody is enrolled on chain. */
 export interface ProgramView {
   id: string
   ngo: Address
-  groupId: string
-  enrollmentPolicyHash: Hex
+  eligibilityHash: Hex
   metadataURI: string
-  /** Beneficiaries currently enrolled: the ceiling on a delivery's expected recipients. */
-  memberCount: number
   active: boolean
   createdAt: number
 }
@@ -396,8 +428,9 @@ export type TimelineEventType =
   | 'SleeveLoss'
   | 'DeliverySubmitted'
   | 'DeliverySuperseded'
-  | 'DeliveryApprovalAdded'
+  | 'DeliveryVoteCast'
   | 'DeliveryApproved'
+  | 'DeliveryRejected'
   | 'ImpactReportPublished'
   | 'PayeePaid'
   | 'PaymentHeld'
@@ -497,7 +530,8 @@ export interface ImpactSummary {
     released: string
     refunded: string
     deliveriesApproved: number
-    /** Donor approvals across every delivery. */
+    deliveriesRejected: number
+    /** Approving votes across every delivery. */
     approvals: number
     beneficiariesServed: number
   }
@@ -513,15 +547,6 @@ export interface ImpactBucket {
   released: string
   deliveriesApproved: number
   beneficiariesServed: number
-}
-
-export interface ProgramMembersResponse {
-  programId: string
-  groupId: string
-  memberCount: number
-  /** Identity commitments as decimal strings, in insertion order — the order that reproduces the Merkle root. */
-  members: string[]
-  merkleTreeDepth: number
 }
 
 // ─── per-donation tracking (the proposal's "track this donation" link) ─────────

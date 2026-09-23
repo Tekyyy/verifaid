@@ -61,6 +61,15 @@ export const notifierUrl: string = (
  */
 export const paymasterUrl: string | null = process.env.NEXT_PUBLIC_PAYMASTER_URL || null
 
+/**
+ * Public IPFS gateway for evidence files pinned to IPFS. Any gateway serves the same bytes for a CID, and the page
+ * shows the SHA-256 the chain committed to, so the gateway is a convenience, not a trust assumption.
+ */
+export const ipfsGateway: string = (process.env.NEXT_PUBLIC_IPFS_GATEWAY ?? 'https://ipfs.io/ipfs/').replace(
+  /\/?$/,
+  '/',
+)
+
 /** Serve the bundled fixtures instead of calling the indexer (useful while it is not running). */
 export const useFixtures: boolean = process.env.NEXT_PUBLIC_USE_FIXTURES === '1'
 

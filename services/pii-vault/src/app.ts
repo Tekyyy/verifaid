@@ -76,7 +76,7 @@ export const buildApp = async (config: VaultConfig = loadConfig()): Promise<Fast
             service: z.literal('pii-vault'),
             network: z.string(),
             chainId: z.number(),
-            beneficiaryGroups: z.string(),
+            programRegistry: z.string(),
           }),
         },
       },
@@ -86,7 +86,7 @@ export const buildApp = async (config: VaultConfig = loadConfig()): Promise<Fast
       service: 'pii-vault' as const,
       network: config.network,
       chainId: config.chainId,
-      beneficiaryGroups: chain.deployment.contracts.BeneficiaryGroups,
+      programRegistry: chain.deployment.contracts.ProgramRegistry,
     }),
   )
 

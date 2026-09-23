@@ -4,10 +4,14 @@
  *   Deploy.s.sol → RegisterSchemas.s.sol → SeedDemo.s.sol → VerifyDemoNeeds.s.sol
  *
  * Uses anvil's first well-known account as deployer/admin. Since nothing on a fresh anvil has code, the deploy
- * script also brings up its own EAS, SchemaRegistry and Semaphore v4 instances.
+ * script also brings up its own EAS and SchemaRegistry instances.
  *
  *   pnpm chain          # in another terminal
  *   pnpm deploy:local
+ *   pnpm deploy:local --handover   # also hand the admin role to a timelock, as a public deployment does
+ *
+ * Locally there is no Safe, so with --handover the timelock's proposer is anvil account #6 standing in for one,
+ * and the delay is a minute: enough to exercise scripts/admin.mjs end to end.
  */
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
@@ -20,6 +24,9 @@ const contracts = join(root, 'contracts')
 // anvil's first account: publicly known, local chain only
 const ANVIL_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
 const rpcUrl = process.env.ANVIL_RPC_URL ?? 'http://127.0.0.1:8545'
+// anvil account #6 (the council member on public chains), the stand-in for the admin Safe locally
+const ANVIL_COUNCIL = '0x976EA74026E726554dB657fA54763abd0C3a0aa9'
+const handover = process.argv.includes('--handover')
 
 const env = {
   ...process.env,
@@ -27,10 +34,9 @@ const env = {
   // Always anvil's well-known mnemonic locally, even when .env carries a private one for a public testnet:
   // the service test suites derive their role wallets from it, so the local seed has to match.
   DEMO_MNEMONIC: '',
-  // Left empty on purpose: a fresh anvil has no EAS/Semaphore, so Deploy.s.sol deploys local instances.
+  // Left empty on purpose: a fresh anvil has no EAS, so Deploy.s.sol deploys a local instance.
   EAS_ADDRESS: process.env.EAS_ADDRESS ?? '',
   SCHEMA_REGISTRY_ADDRESS: process.env.SCHEMA_REGISTRY_ADDRESS ?? '',
-  SEMAPHORE_ADDRESS: process.env.SEMAPHORE_ADDRESS ?? '',
   STABLECOIN_ADDRESS: process.env.STABLECOIN_ADDRESS ?? '',
   // Every conversion address unset → mock swap router, tokens and feeds. The mock feeds never update, so their
   // answers must stay fresh for as long as a local chain lives (the demo also moves time forward).
@@ -38,6 +44,8 @@ const env = {
   EUR_USD_HEARTBEAT: String(365 * 24 * 3600),
   USDC_USD_HEARTBEAT: String(365 * 24 * 3600),
   ETH_USD_HEARTBEAT: String(365 * 24 * 3600),
+  ADMIN_SAFE_ADDRESS: ANVIL_COUNCIL,
+  ADMIN_TIMELOCK_DELAY: '60',
 }
 
 const run = (script) => {
@@ -64,6 +72,7 @@ run('Deploy.s.sol')
 run('RegisterSchemas.s.sol')
 run('SeedDemo.s.sol')
 run('VerifyDemoNeeds.s.sol')
+if (handover) run('Handover.s.sol')
 
 // Addresses on a fresh anvil are deterministic, so a stale bundle does not fail loudly — it silently points the
 // demo and the app at the *previous* deployment's token wiring. Rebuild it here, where the deployment just changed.

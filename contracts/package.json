@@ -9,23 +9,11 @@
     "test": "forge test",
     "fmt": "forge fmt",
     "fmt:check": "forge fmt --check",
-    "coverage": "forge coverage --report summary --no-match-coverage \"(script|test|mocks)\"",
-    "fixture:semaphore": "node test/fixtures/generate-semaphore-fixture.mjs",
-    "fixture:demo": "node script/fixtures/generate-demo-identities.mjs"
+    "coverage": "forge coverage --report summary --no-match-coverage \"(script|test|mocks)\""
   },
   "dependencies": {
     "@ethereum-attestation-service/eas-contracts": "1.9.0",
     "@openzeppelin/contracts": "5.6.1",
-    "@semaphore-protocol/contracts": "4.14.3",
-    "@zk-kit/lean-imt.sol": "2.0.1",
-    "forge-std": "github:foundry-rs/forge-std#v1.16.2",
-    "poseidon-solidity": "0.0.5"
-  },
-  "devDependencies": {
-    "@semaphore-protocol/group": "4.14.3",
-    "@semaphore-protocol/identity": "4.14.3",
-    "@semaphore-protocol/proof": "4.14.3",
-    "@semaphore-protocol/utils": "4.14.3",
-    "ethers": "6.13.4"
+    "forge-std": "github:foundry-rs/forge-std#v1.16.2"
   }
 }

@@ -12,26 +12,29 @@ frauds expensive.
 |---|---|---|
 | Donor funds | The obvious one: money in escrow that has not been spent yet | `AidVault` (stablecoin), or a payment provider for off-chain custody |
 | Beneficiary identity and personal data | People receiving aid are often at risk from the same actors that caused the crisis | PII vault (encrypted), never on-chain |
-| The link "this person received aid" | Even without a name, a linkable confirmation can expose someone | Semaphore nullifiers only |
-| Evidence integrity | The claim "we delivered 120 kits" must be anchored in time | IPFS ciphertext + on-chain hash |
-| The verification record | Who said a need was real, who signed off on a delivery | EAS attestations |
+| The link "this person received aid" | Even without a name, a linkable record can expose someone | Nowhere on chain since v9 |
+| Evidence integrity | The claim "we delivered 120 kits" must be anchored in time | Manifest hash on chain; files by SHA-256, pinned to IPFS |
+| The verification record | Who said a need was real, who approved or rejected each account | EAS attestations, `DeliveryManager` votes |
+| The rules of a need | The release policy donors were shown must be the one their money is released under | Fixed per need in `NeedsRegistry` |
 | Role assignments | Whoever controls roles controls the flow of money | `RoleRegistry` |
 
 ## 2. Trust assumptions
 
 Stated plainly, because most of the security rests on them:
 
-1. **The platform admin key is honest-ish and safe.** It can pause the system, cancel needs, resolve disputes and
-   register organizations. It **cannot** move money out of a vault: there is no admin withdrawal path, and
-   releases only ever go to an NGO's registered payout address. In production the admin is a Safe multisig.
+1. **The admin is honest-ish and slow to act.** Since v9 the admin is a TimelockController whose only proposer
+   is a Safe multisig: every admin action needs the Safe's signatures and then waits out a public delay (ten
+   minutes on the testnet, two days by default) before anyone may execute it. It can cancel needs, register
+   organizations, suppliers and verifiers, approve release policies and the yield venue. It **cannot** move money
+   out of a vault, and cannot change the release rule of a need that already exists (§3.20).
 2. **Verifiers are independent of the NGO they verify.** This is enforced structurally (§4) rather than assumed.
-3. **At least one honest verifier watches each delivery.** The challenge window is only useful if somebody looks.
+3. **Somebody with a say reads each account.** A need's evidence is judged by its donors, its verifiers or both,
+   by the rule it chose; if nobody looks, the next tranche simply waits and the money goes back at the deadline.
 4. **The NGO's enrollment process is honest.** Nothing on-chain can tell a real household from an invented one.
 5. **The stablecoin behaves like a standard ERC-20** and holds its peg.
 7. **For off-chain custody (Model A), the named custodian is a regulated payment provider that really holds and
    pays out the money it attests.** The chain enforces who may attest and what the numbers must add up to; it
    cannot see a bank account. See §3.11.
-6. **Beneficiaries' identity secrets stay on their own device** (phone mode). Card mode weakens this deliberately.
 
 ## 3. Threats and mitigations
 
@@ -43,7 +46,7 @@ Stated plainly, because most of the security rests on them:
   attest to it on-chain, against the exact `dossierHash` of the assessment they read. Above
   `HIGH_VALUE_THRESHOLD` at least two are required. A single rejection cancels the need.
 - **Structural independence.** `RoleRegistry` enforces one operational role per address and rejects a verifier
-  that is the NGO, one of its field agents, or its payout Safe. So "independence" is not a policy sentence, it
+  that is the NGO or its payout Safe. So "independence" is not a policy sentence, it
   is a precondition the contract checks on every attestation.
 - **Residual risk.** Verifier–NGO collusion off-chain. The verifier's name is permanently attached to the
   attestation, which is a reputational deterrent, not a technical one. Roadmap: verifier staking with slashing,
@@ -76,39 +79,54 @@ Stated plainly, because most of the security rests on them:
   having to agree, and the supplier payments being visible on chain for comparison. It is weaker than an
   independent field audit, and says so.
 
-### 3.4 Manufactured approval
+### 3.4 Manufactured approval, or rejection
 
-*The NGO, or someone close to it, approves its own account.*
+*The NGO, or someone close to it, approves its own account — or someone blocks an honest one.*
 
-- **Mitigation.** The NGO, its payout address and the need's payees have no say, whatever they gave. A vote weighs
-  what the voter's wallet donated (`donatedBy`, frozen once funding closes), so splitting a gift across wallets
-  gains nothing. To approve its own evidence through fresh wallets an NGO must itself have donated 30% of the
-  raised amount — money that then goes to registered suppliers, not back to it.
+- **Mitigation.** Who has a say is the need's release policy (§3.20), fixed at creation. Under the donor rules the
+  NGO, its payout address and the need's payees have no say, whatever they gave, and a vote weighs what the
+  voter's wallet donated (`donatedBy`, frozen once funding closes), so splitting a gift across wallets gains
+  nothing. To approve its own evidence through fresh wallets an NGO must itself have donated 30% of the raised
+  amount — money that then goes to registered suppliers, not back to it. Under the verifier rules an independent
+  verifier (never the NGO or its payout address) must sign, and a high-value need takes two.
+- **Rejection.** Rejecting takes more agreement than approving (half of the money, against 30%), because it can end
+  the need: the first rejection sends the NGO back to file better evidence, and the next cancels the need and
+  refunds everything not yet released. Replacing evidence someone has already rejected costs that same second
+  chance, so an NGO cannot wipe a losing vote by re-filing; once the chance is spent, contested evidence stands until
+  the votes decide it.
+- **Signed votes.** A vote can be signed for free and relayed (`voteBySig`, EIP-712, ERC-1271 for smart wallets).
+  The signature names the voter, the delivery, the direction and a deadline; a voter votes once per delivery, so a
+  signature cannot be replayed, and an old one expires. The relayer pays for a vote and can withhold it — the voter
+  can always send it themselves — but can never forge or flip one.
 - **Residual risk.** Collusion between an NGO and a large "donor", or an NGO and one of its suppliers funding the
-  approving wallets. Verifier vetting of suppliers and the 25% cap on the NGO's own share bound what such a scheme
-  can take; public payouts make it traceable.
+  voting wallets. Verifier vetting of suppliers and the 25% cap on the NGO's own share bound what such a scheme can
+  take; public payouts make it traceable. A donor holding half the money can cancel an honest need after one
+  second chance — but that donor is then refunded pro rata like everyone else, so the attack costs them the need
+  they paid for and gains them nothing. Choosing the "donors and a verifier" rule puts a verifier in the way of
+  both kinds of abuse.
 
 ### 3.5 De-anonymizing beneficiaries
 
 *Working out who received aid from public data.*
 
-- **Mitigation.** No personal data, no GPS and no unsalted hashes of personal data reach the chain. Beneficiaries
-  appear only as Poseidon identity commitments enrolled in a programme. Evidence photos are stripped of EXIF and
+- **Mitigation.** No personal data, no GPS and no unsalted hashes of personal data reach the chain. Since v9
+  beneficiaries do not appear on chain at all: a programme is a label and a hash of its published eligibility
+  rules, and who is enrolled lives only in the NGO's encrypted PII vault. Evidence photos are stripped of EXIF and
   text metadata (GPS, camera serials, timestamps) before they are hashed and stored, and the upload form tells the
   NGO to black out names, faces and account numbers first. Regions are coarse ISO 3166-2 subdivisions, and impact
   reports below five people served are refused so a count cannot point at one household.
 - **Residual risk.** *The evidence is public by design.* An NGO that uploads an unredacted statement or a photo of
   identifiable people publishes it, and its hash on chain cannot be removed. The file itself can be taken down from
-  this app's storage; the need then shows a hash with no document behind it.
+  this app's storage — but once it is pinned to IPFS (§3.22) other nodes may already hold a copy, so a mistake can
+  no longer be fully undone.
 
 ### 3.6 Coercion
 
-*Someone forces a beneficiary to hand over aid, or to confirm receipt they never got.*
+*Someone forces a beneficiary to hand over aid.*
 
-- **Partial mitigation.** Confirmations are anonymous, so a coercer cannot verify from public data whether a
-  specific person confirmed. Card mode on a verifier-operated kiosk removes the phone requirement.
-- **Residual risk.** **Not solvable technically.** A coercer standing next to the beneficiary sees the screen.
-  This is a programme-design problem (distribution points, staff presence), and we should not pretend otherwise.
+- **Residual risk.** **Not solvable technically.** Since v9 no beneficiary signs or confirms anything on chain, so
+  there is nothing a coercer can extract from one either; what remains is a programme-design problem (distribution
+  points, staff presence), and we should not pretend otherwise.
 
 ### 3.7 Fund theft and key compromise
 
@@ -116,14 +134,20 @@ Stated plainly, because most of the security rests on them:
   and a fuzz-and-invariant-tested accounting identity
   (`balance + released + refunded == donated`). Releases go only to the payout address recorded at registration;
   there is deliberately no setter for it, so a compromised admin key cannot redirect future tranches.
-- **If the admin key is compromised:** the attacker can pause the system, cancel needs (which triggers refunds to
-  donors, not to the attacker), resolve disputes and register bogus organizations. They cannot take custody of
-  escrowed funds. On testnet the admin is an EOA; anything beyond that should be a Safe multisig with a timelock.
+- **If one admin key is compromised:** since v9 there is no single admin key. The admin is a timelock whose only
+  proposer is a Safe (2-of-3 on the testnet), so one stolen owner key can do nothing, and even the Safe's full
+  threshold only *schedules*: a registration of a bogus NGO, verifier or supplier, a new release policy or yield
+  venue waits out the public delay, during which the other owners can cancel it and the guardian can pause. Even a
+  completed attack cannot take custody of escrowed funds or change an existing need's rules.
+- **If the guardian key is compromised:** the attacker can pause the system, and nothing else. Unpausing is an
+  admin action through the timelock; payouts, refunds and unwinding the yield sleeve are designed to keep working
+  or to wait, never to strand money.
 - **If an NGO key is compromised:** the attacker can create needs and close funding, but money still only moves
   to the NGO's payout Safe, and only through verified deliveries. The admin can deactivate the NGO, which blocks
   further releases immediately.
-- **If a verifier key is compromised:** the attacker can approve deliveries for any NGO. This is why a rejection
-  is final for needs, why any *other* verifier can challenge a delivery, and why high-value needs need two.
+- **If a verifier key is compromised:** the attacker can verify needs, and — on needs whose release rule gives
+  verifiers a say — approve or reject their evidence. High-value needs need two verifiers for both, and under the
+  "donors and a verifier" rule the donors must approve as well.
 
 ### 3.8 Attestation-layer attacks
 
@@ -134,9 +158,9 @@ Stated plainly, because most of the security rests on them:
   address, so the attestation graph cannot be used as a back door for publishing data about a person.
 - **Expiring attestations.** Rejected: an attestation that silently expires while still counted would be
   misleading.
-- **Evidence chain forgery.** `DeliveryVerified.refUID` must equal the delivery's evidence UID, and
-  `ImpactReport.refUID` must equal the `DeliveryVerified` UID of the last finalized delivery. An impact report
-  for a need with no verified delivery cannot be published at all.
+- **Evidence chain forgery.** Delivery evidence is not an attestation since v8: it is a manifest committed by
+  `DeliveryManager`, whose hash only the NGO of the need can file. An `ImpactReport` can only be published by that
+  NGO, once every tranche has been released.
 
 ### 3.9 Bank-partner and fiat path (retired in v7)
 
@@ -177,10 +201,10 @@ custodian to trust.
 - **Threat.** `expire` is permissionless, so a donor-hostile actor could try to expire a need that had actually
   delivered, and an NGO could try to keep a failed need alive.
 - **Mitigation.** A need cannot be verified or funded once either deadline has passed. After the execution
-  deadline, a tranche already earned (releasable) or a verified delivery still in its challenge window or under
-  dispute holds expiry off for `EXPIRY_GRACE_PERIOD`, and dismissing a challenge resumes the remaining window
-  rather than restarting it (review finding F2). The hold is bounded, so nothing can postpone refunds
-  indefinitely (F3).
+  deadline, a tranche already earned (releasable) holds expiry off for `EXPIRY_GRACE_PERIOD`, so work that was
+  approved is paid before the rest goes back. The hold is bounded, so nothing can postpone refunds indefinitely
+  (F3). Since v9 a need whose evidence is rejected past its retries does not wait for the deadline at all: it is
+  cancelled on the spot and refunds open.
 - **Residual risk.** An NGO can donate to its own need to cross an all-or-nothing threshold (F5). This adds no
   exposure beyond pre-financing: an NGO that takes tranche 0 and does not deliver could do the same without the
   top-up. Enrolment vetting and verification of the NGO are the defence, not the threshold.
@@ -248,7 +272,7 @@ gets stuck between the two.*
 - **Mitigation.** An on-chain need's money leaves its vault only to the payees fixed in its plan at creation and
   verified with the need. Payees are addresses the admin registered as suppliers; the NGO can only appear as the
   plan's explicit sentinel, capped at 25% of the need. `RoleRegistry` refuses any address that holds — or ever
-  held — another operational role, so an NGO's own field agent or payout Safe cannot be re-introduced as a
+  held — another operational role, so an NGO's own payout Safe or a former verifier cannot be re-introduced as a
   supplier. Replacing a payee takes the NGO plus at least two independent verifiers, cannot redirect a tranche
   that is already releasable, and is public (`PayeeChangeProposed` / `PayeeChanged`).
 - **Stuck money.** A transfer the stablecoin refuses is held for its payee and can be delivered by anyone later,
@@ -294,7 +318,10 @@ gets stuck between the two.*
   pay a part of a tranche while the rest is lent. Principal is tracked at cost, so a rising share price never
   lets the vault believe it has more than it was given; a falling one is recorded as `lossRealised` and charged
   against earnings before anything is handed on. A donor's refund is computed from what was donated and
-  released, never from the balance, so nothing the venue does changes what a donor is owed.
+  released, never from the balance, so nothing the venue does changes what a donor is owed. Since v9 a deposit is
+  refused when the shares it buys are worth less than it cost (beyond 0.1% of rounding): `deployIdle` is
+  permissionless, so anyone could otherwise call it while a venue's share price was being inflated (the
+  first-depositor attack) and hand the difference to whoever inflated it.
 - **Residual risk.** This adds a third party the escrow did not have: the venue's curator chooses which markets
   the money is lent into, and their oracles and liquidations are outside this system entirely. A loss larger
   than everything earned leaves the need short, and the last claimants feel it. The platform admin's allowlist
@@ -316,59 +343,84 @@ gets stuck between the two.*
   the contracts have no provider path at all: no role can deposit on a donor's behalf or attest funding, and every
   need's money is in its own vault.
 
+### 3.20 Governance and release policies (v9)
+
+*The admin changes the rules under money that is already given, or approves a rule that lets an NGO release to
+itself.*
+
+- **Mitigation.** A need names its release policy when it is created and keeps it for life: withdrawing a policy
+  only stops new needs from choosing it. `markReleasable` is still callable only by `DeliveryManager`, and a policy
+  only answers questions (who has a say, what it weighs, how much agreement it takes); it cannot move money or pick
+  a tranche. Approving a new policy is an admin action, so it waits out the timelock where anyone can read it first.
+- **Residual risk.** A malicious policy approved through the full Safe threshold and the delay could give a single
+  address a say on new needs. It would be visible on every need page that chose it (the page names the policy and
+  states its rule), and it cannot touch needs created before it.
+
+### 3.21 The vote relayer (v9)
+
+*Someone makes the platform pay for spam, or the relayer censors votes.*
+
+- **Mitigation.** The relay route checks the signature (ERC-1271 included) and simulates the call before spending
+  gas, so only a real, still-valid vote by someone with a say is ever sent; it is rate limited per voter and per
+  address. Censorship is bounded: a voter can always send the same vote as an ordinary transaction.
+- **Residual risk.** The relayer is an operational cost, and it sees which votes arrive and when — no more than the
+  chain shows once they are mined.
+
+### 3.22 Evidence on IPFS (v9)
+
+*The app's server loses the files, or a gateway serves something else.*
+
+- **Mitigation.** With a pinning key configured, every uploaded file is pinned to IPFS and its CID is written into the
+  manifest the NGO signs, beside the SHA-256. The files route falls back to IPFS when its own copy is gone and serves
+  the bytes only if they hash to what the chain committed to; a gateway can be slow or down, never silently wrong.
+- **Residual risk.** Pinning is a service (Pinata) the platform pays for; if it lapses and no one else pinned the file,
+  the file can still disappear, leaving a hash with nothing behind it. Evidence uploaded without a key is on the
+  app's server only.
+
 ### 3.10 GDPR versus immutability
 
 - **Mitigation.** Personal data is only ever in the PII vault, encrypted with a per-record data key. Erasure is
-  crypto-shredding: destroy the wrapped data key and the ciphertext is unrecoverable, then call `removeMember`
-  so the identity can no longer confirm. What stays on-chain is an unlinkable commitment that is meaningless
-  without a secret only the person held.
-- **Residual risk.** Semaphore keeps old Merkle roots valid for a grace window (one hour by default), so a proof
-  made just before removal can still be submitted inside that window — demonstrated in
-  `test/integration/RealSemaphore.t.sol`. A legal review is required before any production deployment; nothing
-  here constitutes advice that the design is GDPR-compliant.
+  crypto-shredding: destroy the wrapped data key and the ciphertext is unrecoverable. Since v9 nothing on chain
+  refers to a beneficiary at all, so erasure is complete once the key is gone.
+- **Residual risk.** Evidence files are public and, once pinned, replicated (§3.5, §3.22): a photo that should not
+  have been published cannot be recalled from every copy. A legal review is required before any production
+  deployment; nothing here constitutes advice that the design is GDPR-compliant.
 
 ## 4. What an outside observer can learn
 
 Everything on-chain is public. Concretely, an observer sees: which NGOs exist and their public profiles; which
-needs exist, their category, coarse region, target and tranche plan; who verified what; every donation amount
-and the donor's address (for crypto donors — fiat donors appear only as a salted hash); when tranches were
-released and to which payout address; how many people were expected at each delivery and how many confirmed; the
-nullifiers of those confirmations; and the CIDs and hashes of encrypted evidence.
+needs exist, their category, coarse region, target, tranche plan and release rule; who verified what; every
+donation amount and the donor's address; when tranches were released and to which payees; every piece of delivery
+evidence — its manifest, its files by hash and, where pinned, by CID — and every vote on it, with the voter's
+address and weight.
 
-They cannot learn: who any beneficiary is, which beneficiary confirmed which delivery, what the evidence shows,
-or what the needs assessment says.
+They cannot learn: who any beneficiary is — since v9 no beneficiary is represented on chain in any form — or what
+the needs assessment says.
 
-**Cross-programme linkage is a real caveat, and it depends on the client.** Semaphore's duplicate-leaf check is
-per group, so nothing on-chain stops the *same* identity commitment being enrolled in two programmes — and
-Semaphore publishes every commitment it adds. If a beneficiary used one identity everywhere, intersecting two
-groups' commitment sets would reveal exactly which people appear in both, and the programmes' public metadata
-often says which villages or NGOs those are. The beneficiary app therefore derives a **separate identity per
-programme** from the device secret, so the commitments a person presents to two programmes are unlinkable. An
-NGO that enrols commitments from somewhere else can reintroduce the leak; enrolment tooling should refuse a
-commitment that already appears in another of its programmes. (The confirmation layer itself is unaffected:
-nullifiers are scoped per delivery, so two confirmations by the same person are never linkable.)
+**The evidence is the part that can leak.** It is public by design, so its safety rests on the NGO redacting names,
+faces and account numbers before uploading, and on the app stripping photo metadata; see §3.5.
 
 ## 5. Denial of service and griefing
 
 | Vector | Handling |
 |---|---|
-| A verifier repeatedly challenges a delivery | One challenge per verifier per delivery; the admin resolves and can reject the challenge |
+| A voter trying to vote twice | One vote per address per delivery, either way, whether sent or signed |
+| An NGO re-filing to reset a losing vote | Replacing evidence someone already rejected costs the need's second chance; once it is spent, contested evidence cannot be replaced |
 | Donations blocking a need | Overfunding reverts, so a donor cannot push a need past its target to jam it |
-| Blocking expiry | A releasable tranche or an in-flight delivery holds expiry off for at most 14 days after the execution deadline |
-| Frivolous late challenges | Each verifier challenges once; a dismissed challenge resumes the remaining window instead of restarting it |
+| Blocking expiry | A releasable tranche holds expiry off for at most 14 days after the execution deadline |
 | Spam needs | Only registered, active NGOs can create needs; the admin can deactivate an NGO |
-| Confirmation spam | Proofs must verify against the group and be unique per delivery; invalid proofs revert and cost the relayer gas — rate limiting belongs in the relayer |
-| Griefing the relayer | The relayer pays gas for beneficiaries; rate limit per delivery and cap spend. This is an operational cost, not a contract vulnerability |
+| Vote spam through the relayer | Signatures are checked and the call simulated before any gas is spent; rate limited per voter and per address. An operational cost, not a contract vulnerability |
 | Moving a pool to block conversions | Donations revert on the oracle bound instead of executing at a bad price; direct EURC and bank giving still work. On testnets the pool is rebalanced by re-running `SeedLiquidity` |
 | Spamming deposit addresses | Creating one through the app costs the relayer a clone deployment; the route is rate limited. Anyone can also deploy one at their own cost, which harms no one |
 
 ## 6. Known limitations
 
 1. Contracts are **not upgradeable** and **not audited**. This is a hackathon MVP.
-2. The admin is a single EOA on testnet.
-3. Evidence keys are held by the services (a custodial KMS model). A production system should use envelope
-   encryption against verifier-held public keys so the service operator cannot read evidence at all.
-4. The relayer sees which delivery a confirmation belongs to and when it arrived.
+2. On the testnet two of the three owner keys of the admin Safe (the deployer and a demo account) are held by the
+   same operator, so the multisig demonstrates the mechanism rather than an independent quorum; the timelock is ten
+   minutes, not days.
+3. Delivery evidence is public by design (§3.3, §3.5); there is no private-evidence mode for verifiers any more.
+4. The relayer sees the votes it relays, and when — nothing the chain does not show once they are mined.
 5. Fee-on-transfer or rebasing tokens are not supported.
 7. Off-chain custody is only as honest as its custodian (§3.11); the checkout, CSV import and settlement endpoints
    of the bank connector are a sandbox, not a payment integration.

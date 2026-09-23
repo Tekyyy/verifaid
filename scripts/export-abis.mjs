@@ -21,15 +21,17 @@ const FORGE_ARTIFACTS = [
   'AidVaultFactory',
   'AidVault',
   'DonationReceipt',
-  'BeneficiaryGroups',
+  'ProgramRegistry',
   'DeliveryManager',
+  'ReleasePolicy',
   'ProofOfAidResolver',
   'ConversionRouter',
   'DonationForwarder',
   'DonationForwarderFactory',
   'MockEURC',
   'MockYieldVault',
-  'Semaphore',
+  // The admin after the handover: scripts/admin.mjs schedules and executes through it.
+  'TimelockController',
 ]
 
 const EAS_ARTIFACTS = {

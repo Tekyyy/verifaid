@@ -15,7 +15,7 @@ contract VaultMathFuzzTest is PoATest {
 
     function setUp() public override {
         super.setUp();
-        programId = _createProgram(ngo, 10);
+        programId = _createProgram(ngo);
     }
 
     /// @dev Builds a valid split (1–5 parts, each ≥ 1 bp, summing to exactly 10_000) from fuzz input.

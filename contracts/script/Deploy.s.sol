@@ -2,7 +2,6 @@
 pragma solidity ^0.8.24;
 
 import {DeploymentIO} from "./lib/DeploymentIO.sol";
-import {SemaphoreDeployer} from "./lib/SemaphoreDeployer.sol";
 import {SystemDeployer} from "./lib/SystemDeployer.sol";
 import {Script} from "forge-std/Script.sol";
 import {stdJson} from "forge-std/StdJson.sol";
@@ -10,12 +9,13 @@ import {console2} from "forge-std/console2.sol";
 
 /// @title Deploy
 /// @notice Deploys and wires the whole Proof of Aid system, reusing the external contracts that already exist on
-///         the target chain (EAS, SchemaRegistry, Semaphore v4, a stablecoin) and deploying local stand-ins for
+///         the target chain (EAS, SchemaRegistry, a stablecoin) and deploying local stand-ins for
 ///         whichever of them is missing — which is what makes the same script work on anvil and on Base Sepolia.
-/// @dev Writes `deployments/<network>.json`. Run `RegisterSchemas.s.sol` next to fill in the schema UIDs.
+/// @dev Writes `deployments/<network>.json`. Run `RegisterSchemas.s.sol` next to fill in the schema UIDs, and
+///      `Handover.s.sol` last to hand the admin role to the Safe + timelock.
 ///
 ///      forge script script/Deploy.s.sol --rpc-url base_sepolia --broadcast --verify
-contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
+contract Deploy is Script, SystemDeployer, DeploymentIO {
     using stdJson for string;
 
     function run() external {
@@ -26,9 +26,10 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
             admin: deployer,
             token: vm.envOr("STABLECOIN_ADDRESS", address(0)),
             eas: vm.envOr("EAS_ADDRESS", address(0)),
-            semaphore: vm.envOr("SEMAPHORE_ADDRESS", address(0)),
             highValueThreshold: vm.envOr("HIGH_VALUE_THRESHOLD", uint256(10_000e6)),
             donorApprovalBps: uint16(vm.envOr("DONOR_APPROVAL_BPS", uint256(3000))),
+            donorRejectionBps: uint16(vm.envOr("DONOR_REJECTION_BPS", uint256(5000))),
+            rejectionRetries: uint8(vm.envOr("REJECTION_RETRIES", uint256(1))),
             minBeneficiariesServed: uint32(vm.envOr("MIN_BENEFICIARIES_SERVED", uint256(5))),
             dashboardBaseURI: vm.envOr("DASHBOARD_BASE_URI", string("http://localhost:3000/needs/")),
             yieldVenue: vm.envOr("YIELD_VENUE_ADDRESS", address(0)),
@@ -37,7 +38,6 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         });
 
         address schemaRegistry = vm.envOr("SCHEMA_REGISTRY_ADDRESS", address(0));
-        address semaphoreVerifier;
         uint256 startBlock = block.number;
 
         if (deployerKey != 0) vm.startBroadcast(deployerKey);
@@ -48,17 +48,13 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
             console2.log("EAS not found on this chain, deploying a local instance");
             (schemaRegistry, params.eas) = _deployLocalEAS();
         }
-        if (params.semaphore.code.length == 0) {
-            console2.log("Semaphore not found on this chain, deploying a local instance");
-            (params.semaphore, semaphoreVerifier) = _deployLocalSemaphore();
-        }
 
         System memory s = _deploySystem(params);
 
         vm.stopBroadcast();
 
         _log(s, params, schemaRegistry, deployer);
-        _write(s, params, schemaRegistry, semaphoreVerifier, deployer, startBlock);
+        _write(s, params, schemaRegistry, deployer, startBlock);
     }
 
     /// @dev External DeFi for the conversion path. On anvil every address is unset, so mocks are deployed; on Base
@@ -97,29 +93,28 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         console2.log("  ForwarderFactory     ", address(s.forwarderFactory));
         console2.log("  swap router (mock?)  ", s.conversion.swapRouter, s.conversion.mocks);
         console2.log("  DonationReceipt      ", address(s.receipt));
-        console2.log("  BeneficiaryGroups    ", address(s.groups));
+        console2.log("  ProgramRegistry      ", address(s.programs));
         console2.log("  DeliveryManager      ", address(s.deliveryManager));
+        console2.log("  release policies     ", address(s.donorPolicy), address(s.verifierPolicy));
+        console2.log("                       ", address(s.donorAndVerifierPolicy));
         console2.log("  token                ", s.token);
         console2.log("  EAS / SchemaRegistry ", params.eas, schemaRegistry);
-        console2.log("  Semaphore            ", params.semaphore);
     }
 
-    function _write(
-        System memory s,
-        Params memory params,
-        address schemaRegistry,
-        address semaphoreVerifier,
-        address deployer,
-        uint256 startBlock
-    ) internal {
+    function _write(System memory s, Params memory params, address schemaRegistry, address deployer, uint256 startBlock)
+        internal
+    {
         string memory contracts = "contracts";
         contracts.serialize("RoleRegistry", address(s.roles));
         contracts.serialize("NeedsRegistry", address(s.registry));
         contracts.serialize("AidVaultImplementation", address(s.vaultImplementation));
         contracts.serialize("AidVaultFactory", address(s.factory));
         contracts.serialize("DonationReceipt", address(s.receipt));
-        contracts.serialize("BeneficiaryGroups", address(s.groups));
+        contracts.serialize("ProgramRegistry", address(s.programs));
         contracts.serialize("DeliveryManager", address(s.deliveryManager));
+        contracts.serialize("ReleasePolicyDonors", address(s.donorPolicy));
+        contracts.serialize("ReleasePolicyVerifier", address(s.verifierPolicy));
+        contracts.serialize("ReleasePolicyDonorsAndVerifier", address(s.donorAndVerifierPolicy));
         contracts.serialize("ConversionRouter", address(s.router));
         contracts.serialize("DonationForwarderImplementation", address(s.forwarderImplementation));
         contracts.serialize("DonationForwarderFactory", address(s.forwarderFactory));
@@ -128,8 +123,6 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         string memory external_ = "external";
         external_.serialize("EAS", params.eas);
         external_.serialize("SchemaRegistry", schemaRegistry);
-        external_.serialize("Semaphore", params.semaphore);
-        external_.serialize("SemaphoreVerifier", semaphoreVerifier);
         external_.serialize("SwapRouter", s.conversion.swapRouter);
         external_.serialize("WETH", s.conversion.weth);
         external_.serialize("USDC", s.conversion.usdc);
@@ -143,7 +136,9 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         string memory externalJson = external_.serialize("Token", s.token);
 
         string memory protocolParams = "params";
-        protocolParams.serialize("donorApprovalBps", uint256(s.deliveryManager.approvalThresholdBps()));
+        protocolParams.serialize("donorApprovalBps", uint256(s.donorPolicy.donorApprovalBps()));
+        protocolParams.serialize("donorRejectionBps", uint256(s.donorPolicy.donorRejectionBps()));
+        protocolParams.serialize("rejectionRetries", uint256(s.donorPolicy.retries()));
         protocolParams.serialize("highValueThreshold", params.highValueThreshold);
         protocolParams.serialize("minBeneficiariesServed", uint256(params.minBeneficiariesServed));
         protocolParams.serialize("maxSlippageBps", uint256(params.conversion.maxSlippageBps));
@@ -155,7 +150,7 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
 
         string memory root = "deployment";
         root.serialize("network", _networkName(block.chainid));
-        root.serialize("version", uint256(5));
+        root.serialize("version", uint256(9));
         root.serialize("chainId", block.chainid);
         root.serialize("startBlock", startBlock);
         root.serialize("deployer", deployer);
@@ -163,6 +158,7 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         root.serialize("contracts", contractsJson);
         root.serialize("external", externalJson);
         root.serialize("params", paramsJson);
+        root.serialize("governance", _governancePlaceholders(deployer));
         root.serialize("schemas", _schemaPlaceholders());
         string memory json = root.serialize("communitySchemas", _communityPlaceholders());
 
@@ -177,6 +173,16 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         schemas.serialize("NeedVerified", bytes32(0));
         schemas.serialize("Settlement", bytes32(0));
         return schemas.serialize("ImpactReport", bytes32(0));
+    }
+
+    /// @dev Filled in by Handover.s.sol. Until then the deployer is the admin and the guardian.
+    function _governancePlaceholders(address deployer) internal returns (string memory) {
+        string memory governance = "governance";
+        governance.serialize("Safe", address(0));
+        governance.serialize("Timelock", address(0));
+        governance.serialize("Guardian", deployer);
+        governance.serialize("threshold", uint256(0));
+        return governance.serialize("delay", uint256(0));
     }
 
     /// @dev Same, for the resolver-less schemas that RegisterCommunitySchemas.s.sol fills in.

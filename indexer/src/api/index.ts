@@ -1,4 +1,4 @@
-import { db, publicClients } from 'ponder:api'
+import { db } from 'ponder:api'
 import schema from 'ponder:schema'
 import {
   categoryHash,
@@ -8,7 +8,6 @@ import {
   type DonationTrack,
   type DonorReceiptTrace,
   type DonorTrace,
-  getDeployment,
   type ImpactBucket,
   type ImpactSummary,
   NEED_SORTS,
@@ -19,16 +18,14 @@ import {
   type NeedStatus,
   type NeedSummary,
   type OrgTaxStatusView,
-  type ProgramMembersResponse,
   type ProgramView,
   payeeChangeApprovalsRequired,
+  type ReleasePolicyView,
   regionCode as regionCodeOf,
   regionLabel,
-  resolveNetwork,
   type SupplierApplicationView,
   type SupplierDetail,
   type SupplierView,
-  semaphoreAbi,
   type TimelineEvent,
   type TimelinePage,
   trackingRefKind,
@@ -56,6 +53,7 @@ import {
   toPayeeChangeView,
   toPayeePaymentView,
   toPayeeView,
+  toReleasePolicyView,
   toSettlementView,
   toSupplierApplicationView,
   toSupplierView,
@@ -68,32 +66,9 @@ import {
  * The read API the dashboard, the notifier and the demo runner consume. Every response is one of the types
  * exported by @poa/shared, with bigints serialized as decimal strings in token base units (6 decimals).
  *
- * Nothing here can expose a beneficiary: the only person-adjacent data indexed at all are Semaphore identity
- * commitments (public and unlinkable). Donors appear as the wallets that gave and approved, already public on chain.
+ * Nothing here can expose a beneficiary: none is indexed at all. Donors appear as the wallets that gave and voted,
+ * already public on chain.
  */
-
-const network = resolveNetwork(process.env.PONDER_NETWORK ?? 'anvil')
-const deployment = getDeployment(network)
-const client = publicClients[network]
-if (!client) throw new Error(`Ponder exposes no public client for chain "${network}"`)
-
-/**
- * Live tree depth from Semaphore. Falls back to the LeanIMT depth for `leaves` leaves — what
- * `@semaphore-protocol/group` computes client-side — if the RPC is unavailable.
- */
-const merkleTreeDepth = async (groupId: bigint, leaves: number): Promise<number> => {
-  try {
-    const depth = await client.readContract({
-      abi: semaphoreAbi,
-      address: deployment.external.Semaphore,
-      functionName: 'getMerkleTreeDepth',
-      args: [groupId],
-    })
-    return Number(depth)
-  } catch {
-    return leaves <= 1 ? leaves : Math.ceil(Math.log2(leaves))
-  }
-}
 
 const app = new Hono()
 
@@ -165,14 +140,15 @@ app.get('/needs', async (c) => {
   if (c.req.query('open') === 'true') rows = rows.filter((row) => isOpenForFunding(row, now))
   if (sort) rows = sortNeeds(rows, sort, now)
 
-  const [badges, presentations, taxStatus] = await Promise.all([
+  const [badges, presentations, taxStatus, policies] = await Promise.all([
     badgesFor(rows),
     presentationsFor(rows),
     taxStatusFor(rows),
+    policyIndex(),
   ])
   return c.json(
     rows.map((row) => ({
-      ...toNeedSummary(row),
+      ...toNeedSummary(row, policies),
       badges: badges.get(row.id) ?? EMPTY_BADGES,
       presentation: presentations.get(row.id) ?? null,
       taxStatus: taxStatus.get(row.ngo.toLowerCase()) ?? null,
@@ -322,26 +298,27 @@ app.get('/needs/:id', async (c) => {
     ])
 
   const live = liveReport(reports)
-  const approvals = await approvalsOf([id])
+  const votes = await votesOf([id])
 
   const photos = await db
     .select()
     .from(schema.workPhotos)
     .where(and(eq(schema.workPhotos.needId, id), eq(schema.workPhotos.revoked, false)))
     .orderBy(desc(schema.workPhotos.timestamp))
-  const [badges, presentations, taxStatus] = await Promise.all([
+  const [badges, presentations, taxStatus, policies] = await Promise.all([
     badgesFor([row]),
     presentationsFor([row]),
     taxStatusFor([row]),
+    policyIndex(),
   ])
 
   return c.json({
-    ...toNeedSummary(row),
+    ...toNeedSummary(row, policies),
     badges: badges.get(row.id) ?? EMPTY_BADGES,
     presentation: presentations.get(row.id) ?? null,
     taxStatus: taxStatus.get(row.ngo.toLowerCase()) ?? null,
     tranches: tranches.map((tranche) => toTrancheView(tranche)),
-    deliveries: deliveries.map((delivery) => toDeliveryView(delivery, approvals)),
+    deliveries: deliveries.map((delivery) => toDeliveryView(delivery, votes)),
     donations: donations.map(toDonationView),
     settlements: settlements.map(toSettlementView),
     impactReport: live ? toImpactReportView(live) : null,
@@ -518,10 +495,7 @@ app.get('/suppliers/:address', async (c) => {
 
 // ─── providers ───────────────────────────────────────────────────────────────
 
-/**
- * The programmes an NGO owns: the console needs them to fill "which programme" for it, and a donor page uses
- * the member count to explain what a delivery's recipient ceiling is.
- */
+/** The programmes an NGO owns: the console needs them to fill "which programme" for a new need. */
 app.get('/programs', async (c) => {
   const ngo = c.req.query('ngo')?.toLowerCase()
   if (ngo !== undefined && !/^0x[0-9a-f]{40}$/.test(ngo)) return c.json({ error: 'invalid ngo' }, 400)
@@ -535,13 +509,28 @@ app.get('/programs', async (c) => {
     rows.map((row) => ({
       id: row.id.toString(),
       ngo: row.ngo as Address,
-      groupId: row.groupId.toString(),
-      enrollmentPolicyHash: row.enrollmentPolicyHash as Hex,
+      eligibilityHash: row.eligibilityHash as Hex,
       metadataURI: row.metadataURI,
-      memberCount: row.memberCount,
       active: row.active,
       createdAt: row.createdAt,
     })) satisfies ProgramView[],
+  )
+})
+
+/**
+ * The release policies a new need may choose, the default first. Needs keep the policy they chose even after the
+ * platform withdraws it, so a need page reads its own policy from the need, not from this list.
+ */
+app.get('/release-policies', async (c) => {
+  const rows = await db.select().from(schema.releasePolicy).where(eq(schema.releasePolicy.allowed, true))
+  rows.sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name))
+  return c.json(
+    rows.map((row) => ({
+      ...toReleasePolicyView(row.address as Address, row),
+      isDefault: row.isDefault,
+    })) satisfies (ReleasePolicyView & {
+      isDefault: boolean
+    })[],
   )
 })
 
@@ -573,7 +562,7 @@ app.get('/supplier-applications', async (c) => {
 /**
  * "Follow my money". For every receipt the donor holds: the need it funded, the donor's share of that need's
  * funding, each tranche with both its real amount and this donor's slice of it, and the deliveries whose
- * approval by donors unlocked those releases.
+ * approval unlocked those releases.
  */
 app.get('/donors/:address/trace', async (c) => {
   const address = c.req.param('address').toLowerCase()
@@ -612,7 +601,7 @@ app.get('/donors/:address/trace', async (c) => {
         .where(and(eq(schema.refund.needId, need.id), eq(schema.refund.account, donor))),
     ])
 
-    const approvals = await approvalsOf([need.id])
+    const votes = await votesOf([need.id])
     // Shares are pro-rata of what the vault actually collected, which is frozen once funding closes.
     const funded = need.totalDonated
     const share = (amount: bigint): bigint => (funded === 0n ? 0n : (amount * receipt.amount) / funded)
@@ -635,7 +624,7 @@ app.get('/donors/:address/trace', async (c) => {
       releasedToNgo: releasedToNgo.toString(),
       refunded: refunds.reduce((sum, refund) => sum + refund.amount, 0n).toString(),
       tranches: donorTranches,
-      deliveries: deliveries.map((delivery) => toDeliveryView(delivery, approvals)),
+      deliveries: deliveries.map((delivery) => toDeliveryView(delivery, votes)),
     })
   }
 
@@ -649,7 +638,10 @@ app.get('/impact/summary', async (c) => {
     db.select().from(schema.need),
     db.select().from(schema.delivery),
     db.select().from(schema.impactReport),
-    db.select({ id: schema.deliveryApproval.id }).from(schema.deliveryApproval),
+    db
+      .select({ id: schema.deliveryVote.id })
+      .from(schema.deliveryVote)
+      .where(eq(schema.deliveryVote.approve, true)),
   ])
 
   const approvedByNeed = new Map<string, number>()
@@ -717,41 +709,13 @@ app.get('/impact/summary', async (c) => {
       released: released.toString(),
       refunded: refunded.toString(),
       deliveriesApproved: deliveries.filter((delivery) => delivery.status === 'Approved').length,
+      deliveriesRejected: deliveries.filter((delivery) => delivery.status === 'Rejected').length,
       approvals: approvals.length,
       beneficiariesServed: [...servedByNeed.values()].reduce((sum, value) => sum + value, 0),
     },
     byCategory: [...byCategory.values()].map(serializeBucket),
     byRegion: [...byRegion.values()].map(serializeBucket),
   } satisfies ImpactSummary)
-})
-
-// ─── programs ────────────────────────────────────────────────────────────────
-
-/**
- * Identity commitments in insertion order, so the beneficiary page can rebuild the Semaphore group and
- * produce a Merkle proof whose root matches the on-chain tree. Removed members keep their leaf as "0",
- * exactly like the on-chain LeanIMT, otherwise every subsequent proof would be invalid.
- */
-app.get('/programs/:id/members', async (c) => {
-  const id = parseId(c.req.param('id'))
-  if (id === null) return c.json({ error: 'invalid program id' }, 400)
-
-  const [program] = await db.select().from(schema.program).where(eq(schema.program.id, id)).limit(1)
-  if (!program) return c.json({ error: 'program not found' }, 404)
-
-  const members = await db
-    .select()
-    .from(schema.programMember)
-    .where(eq(schema.programMember.programId, id))
-    .orderBy(asc(schema.programMember.leafIndex))
-
-  return c.json({
-    programId: program.id.toString(),
-    groupId: program.groupId.toString(),
-    memberCount: program.memberCount,
-    members: members.map((member) => member.commitment.toString()),
-    merkleTreeDepth: await merkleTreeDepth(program.groupId, members.length),
-  } satisfies ProgramMembersResponse)
 })
 
 // ─── deliveries ──────────────────────────────────────────────────────────────
@@ -764,9 +728,9 @@ app.get('/deliveries', async (c) => {
     .from(schema.delivery)
     .where(status ? eq(schema.delivery.status, status) : undefined)
     .orderBy(asc(schema.delivery.id))
-  const approvals = await approvalsOf([...new Set(rows.map((row) => row.needId))])
+  const votes = await votesOf([...new Set(rows.map((row) => row.needId))])
 
-  return c.json(rows.map((row) => toDeliveryView(row, approvals)) satisfies DeliveryView[])
+  return c.json(rows.map((row) => toDeliveryView(row, votes)) satisfies DeliveryView[])
 })
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -791,14 +755,18 @@ const serializeBucket = (acc: ImpactBucketAcc): ImpactBucket => ({
   beneficiariesServed: acc.beneficiariesServed,
 })
 
-/** The donor approvals of every delivery of these needs. */
-const approvalsOf = async (needIds: readonly bigint[]) =>
+/** The votes on every delivery of these needs. */
+const votesOf = async (needIds: readonly bigint[]) =>
   needIds.length === 0
     ? []
     : db
         .select()
-        .from(schema.deliveryApproval)
-        .where(inArray(schema.deliveryApproval.needId, [...needIds]))
+        .from(schema.deliveryVote)
+        .where(inArray(schema.deliveryVote.needId, [...needIds]))
+
+/** Every release policy the indexer has seen, by lowercase address. There are a handful at most. */
+const policyIndex = async () =>
+  new Map((await db.select().from(schema.releasePolicy)).map((row) => [row.address.toLowerCase(), row]))
 
 const needTimeline = (needId: bigint) =>
   db
@@ -895,7 +863,8 @@ const loadTrack = async (ref: string): Promise<Loaded<DonationTrack>> => {
     timeline,
     payees,
     payments,
-    approvals,
+    votes,
+    policies,
   ] = await Promise.all([
     db.select().from(schema.donation).where(sameDonor),
     db
@@ -918,7 +887,8 @@ const loadTrack = async (ref: string): Promise<Loaded<DonationTrack>> => {
       .from(schema.payeePayment)
       .where(eq(schema.payeePayment.needId, needId))
       .orderBy(asc(schema.payeePayment.timestamp)),
-    approvalsOf([needId]),
+    votesOf([needId]),
+    policyIndex(),
   ])
 
   return {
@@ -930,7 +900,8 @@ const loadTrack = async (ref: string): Promise<Loaded<DonationTrack>> => {
       sameDonorDonations,
       tranches,
       deliveries,
-      approvals,
+      votes,
+      policies,
       settlements,
       reports,
       refunds,

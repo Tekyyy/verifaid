@@ -6,6 +6,9 @@ export const ROLES = {
   DEFAULT_ADMIN: `0x${'00'.repeat(32)}` as Hex,
   NGO: keccak256(toHex('NGO_ROLE')),
   VERIFIER: keccak256(toHex('VERIFIER_ROLE')),
+  SUPPLIER: keccak256(toHex('SUPPLIER_ROLE')),
+  /** May pause the system at once, and nothing else. */
+  GUARDIAN: keccak256(toHex('GUARDIAN_ROLE')),
 } as const
 
 export type RoleName = keyof typeof ROLES

@@ -10,13 +10,16 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
 /// @title RoleRegistry
 /// @notice Central role store for Proof of Aid. Every other contract calls `hasRole` / helper views on it.
-/// @dev The admin is a Safe multisig in production and the deployer EOA on testnets.
+/// @dev The admin starts as the deployer, which wires and seeds the system, and is then handed to a
+///      TimelockController whose only proposer is a Safe multisig: every admin action needs several signatures and
+///      waits out a public delay before it takes effect. The guardian can pause at once, without either.
 ///      Operational roles can only be assigned through the registration functions so that the
 ///      "one address, one role" rule is always enforced.
 contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     bytes32 public constant NGO_ROLE = Roles.NGO_ROLE;
     bytes32 public constant VERIFIER_ROLE = Roles.VERIFIER_ROLE;
     bytes32 public constant SUPPLIER_ROLE = Roles.SUPPLIER_ROLE;
+    bytes32 public constant GUARDIAN_ROLE = Roles.GUARDIAN_ROLE;
 
     /// @notice NGO profiles (organization data only).
     mapping(address => NgoProfile) public ngos;
@@ -101,7 +104,11 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     }
 
     /// @inheritdoc IRoleRegistry
-    function pause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+    /// @dev The guardian, or the admin. Stopping is the safe direction, so it must not wait for a timelock.
+    function pause() external {
+        if (!hasRole(GUARDIAN_ROLE, msg.sender) && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
+            revert Errors.Unauthorized();
+        }
         _pause();
     }
 
@@ -112,15 +119,17 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
 
     // ─── AccessControl hardening ───────────────────────────────────────────────
 
-    /// @notice Only DEFAULT_ADMIN_ROLE can be granted directly; operational roles use the registration functions.
+    /// @notice Only the admin and guardian roles can be granted directly; operational roles use the registration
+    ///         functions.
     function grantRole(bytes32 role, address account) public override(AccessControl, IAccessControl) {
-        if (role != DEFAULT_ADMIN_ROLE) revert Errors.UseRegistrationFunction();
+        _requireGovernanceRole(role);
         super.grantRole(role, account);
     }
 
-    /// @notice Only DEFAULT_ADMIN_ROLE can be revoked directly; operational roles use the removal functions.
+    /// @notice Only the admin and guardian roles can be revoked directly; operational roles use the removal
+    ///         functions.
     function revokeRole(bytes32 role, address account) public override(AccessControl, IAccessControl) {
-        if (role != DEFAULT_ADMIN_ROLE) revert Errors.UseRegistrationFunction();
+        _requireGovernanceRole(role);
         super.revokeRole(role, account);
     }
 
@@ -129,7 +138,7 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     ///      (re-registration reverts because the profile persists, and `grantRole` is blocked), which froze
     ///      every one of that NGO's vaults — including needs whose pre-financing had already been spent.
     function renounceRole(bytes32 role, address callerConfirmation) public override(AccessControl, IAccessControl) {
-        if (role != DEFAULT_ADMIN_ROLE) revert Errors.UseRegistrationFunction();
+        _requireGovernanceRole(role);
         super.renounceRole(role, callerConfirmation);
     }
 
@@ -152,6 +161,11 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     }
 
     /// @inheritdoc IRoleRegistry
+    function isGuardian(address account) external view returns (bool) {
+        return hasRole(GUARDIAN_ROLE, account);
+    }
+
+    /// @inheritdoc IRoleRegistry
     function isActiveSupplier(address supplier) external view returns (bool) {
         return hasRole(SUPPLIER_ROLE, supplier);
     }
@@ -167,6 +181,10 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     }
 
     // ─── internal ──────────────────────────────────────────────────────────────
+
+    function _requireGovernanceRole(bytes32 role) internal pure {
+        if (role != DEFAULT_ADMIN_ROLE && role != GUARDIAN_ROLE) revert Errors.UseRegistrationFunction();
+    }
 
     /// @dev "One address, one role", for the address's whole history: claims `role` for `account` or reverts.
     function _claimOperationalRole(address account, bytes32 role) internal {

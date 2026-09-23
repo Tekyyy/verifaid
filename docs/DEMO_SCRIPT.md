@@ -66,7 +66,7 @@ same on every machine:
 
 | # | Role | Address (anvil default) | What they do on stage |
 |---|---|---|---|
-| 0 | Platform admin | `0xf39Fd6e5…92266` | Registered the organizations and suppliers; can pause |
+| 0 | Platform admin | `0xf39Fd6e5…92266` | Registered the organizations and suppliers, then handed the admin role to the Safe + timelock; stays the guardian (pause only) |
 | 1 | NGO | `0x70997970…dc79C8` | Creates the need, releases tranches, files the evidence for each one |
 | 2 | NGO payout Safe | `0x3C44CdDd…4293BC` | Receives the NGO's own disclosed share, never a supplier's |
 | 4 | Verifier 1 | `0x15d34AAf…2C6A65` | Attests the need is real |
@@ -75,8 +75,9 @@ same on every machine:
 | 8 | Donor (card) | `0x23618e81…B3f8f` | Pays by card through the on-ramp sandbox, then approves like any donor |
 | 9 | Relayer | `0xa0Ee7A14…a79720` | Mints the sandbox on-ramp's test USDC and sweeps deposit addresses |
 
-Beneficiaries have **no wallet and no address** — that is the point. They exist on-chain only as Semaphore
-identity commitments.
+Beneficiaries have **no wallet and no address** — that is the point. Since v9 they do not exist on-chain in any
+form: a programme is a label and a hash of its eligibility rules, and the NGO keeps who is enrolled in its own
+encrypted records.
 
 ---
 
@@ -127,12 +128,19 @@ Open the escrow need from the demo run and scroll to **Deliveries**.
 > already paid bought — photos, the supplier's invoice, the bank statement. Each file is committed on chain by its
 > hash, so it cannot be swapped after anyone has seen it."
 
-Point at the approval bar, then at the **Approve** panel beside it (connect a donor wallet if you have one):
+Point at the rule above the evidence, the two bars, then at the **Approve / Reject** panel beside it (connect a
+donor wallet if you have one — the vote is signed for free, the platform pays the gas):
 
-> "Then the people who paid decide. A donor's say weighs what they gave — splitting a gift across a hundred wallets
-> gains nothing — and once donors who gave 30% of the money approve, the next tranche is released straight to the
-> suppliers. The NGO and its suppliers have no vote, however much they donated. And if nobody is convinced, the
-> money simply stays in escrow until the deadline, and then goes back."
+> "Then the people who paid decide — under the rule this need chose when it was created, and cannot change. A
+> donor's say weighs what they gave, so splitting a gift across a hundred wallets gains nothing, and once donors
+> who gave 30% of the money approve, the next tranche is released straight to the suppliers. The NGO and its
+> suppliers have no vote, however much they donated. Voting costs the donor nothing: they sign, we pay the gas."
+
+Open the rejected need from the demo run:
+
+> "And they can say no. Half of the money rejecting sends the NGO back to file better evidence; this one was
+> rejected again — by the donor, then by an independent verifier, because this need chose 'donors and a verifier' —
+> so it was cancelled on the spot and the donor got back the 70% that was never spent."
 
 ### 3:30 — What happens when a need fails (45s)
 
@@ -163,7 +171,8 @@ Open the expired need from the demo run.
 ### 4:45 — Close (15s)
 
 > "Verified needs, traceable donations, proof of delivery, beneficiaries who stay anonymous, impact anyone can
-> recompute. On Base, with EAS and Semaphore. The chain holds the flows and the proofs; it never holds people."
+> recompute. On Base, with EAS and a Safe behind a timelock. The chain holds the flows and the proofs; it never
+> holds people."
 
 ---
 
@@ -207,9 +216,10 @@ Crypto-shredding plus removal from the group is a defensible erasure story, and 
 chain. It still needs a legal review before production, and we say so in the threat model.
 
 **"What if the admin key is stolen?"**
-They can pause the system and cancel needs — which refunds donors — and register bogus organizations. They
-cannot withdraw from a vault: there is no admin withdrawal path, releases only go to the payees fixed in each
-need's payment plan, and they cannot approve a delivery on the donors' behalf.
+There is no single admin key. The admin is a timelock whose only proposer is a 2-of-3 Safe: one stolen key can do
+nothing, and even the full Safe can only *schedule* an action, which then waits out a public delay while the other
+owners can cancel it and the guardian can pause. Even a completed attack cannot withdraw from a vault — there is no
+admin withdrawal path — or change the rules of a need that already exists.
 
 **"Couldn't someone manipulate the swap?"**
 They can make it revert, not steal from it. The minimum output comes from Chainlink, not from the caller or the
@@ -218,5 +228,5 @@ nobody can wrap a sweep between two trades of their own; and even our admin key 
 price feed or a route.
 
 **"Why Base?"**
-Cheap enough that every donor can approve every delivery, EAS and Semaphore v4 already deployed, and Coinbase
+Cheap enough that every donor can vote on every delivery (and we pay for it), EAS and Safe already deployed, and Coinbase
 Smart Wallet means a donor with no crypto can still get a passkey wallet.

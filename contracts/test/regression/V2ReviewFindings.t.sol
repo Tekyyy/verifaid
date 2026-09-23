@@ -19,7 +19,7 @@ contract V2ReviewFindingsTest is PoATest {
 
     function setUp() public override {
         super.setUp();
-        programId = _createProgram(ngo, 10);
+        programId = _createProgram(ngo);
     }
 
     function _attestExpectingRevert(

@@ -2,35 +2,37 @@
 pragma solidity ^0.8.24;
 
 import {RoleAware} from "../access/RoleAware.sol";
-import {IAidVault} from "../interfaces/IAidVault.sol";
 import {IDeliveryManager} from "../interfaces/IDeliveryManager.sol";
 import {INeedsRegistry} from "../interfaces/INeedsRegistry.sol";
+import {IReleasePolicy} from "../interfaces/IReleasePolicy.sol";
 import {IRoleRegistry} from "../interfaces/IRoleRegistry.sol";
 import {ITrancheLedger} from "../interfaces/ITrancheLedger.sol";
 import {Errors} from "../libraries/Errors.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 /// @title DeliveryManager
-/// @notice Unlocks tranches after the first on the say-so of the people who paid for them.
+/// @notice Unlocks tranches after the first once the NGO has accounted for the money it was already paid, and that
+///         account has been judged under the need's release policy.
 ///
 ///         Tranche 0 pre-finances the work and is releasable the moment funding closes. For every later tranche
-///         the NGO first accounts for the money it was already paid: a manifest listing photos, receipts and bank
-///         statements (each by content hash, so a file cannot be swapped afterwards) and a note. Donors to the need
-///         read it and approve it; once donors who gave `approvalThresholdBps` of the raised amount have approved,
-///         the tranche becomes releasable in the same transaction.
+///         the NGO files a manifest listing photos, receipts and bank statements (each by content hash, so a file
+///         cannot be swapped afterwards) and a note. The people the need's policy gives a say — its donors, weighted
+///         by what they gave, independent verifiers, or both — approve or reject it here:
+///         - enough approval makes the tranche releasable in the same transaction;
+///         - enough rejection sends the NGO back to try again, `retries` times; the rejection after that cancels
+///           the need, and donors can claim back everything that was not yet released.
 ///
-///         A donor's say weighs what they gave, so it cannot be inflated by splitting one gift across many wallets.
-///         The NGO, its payout address and the need's payees are not donors for this purpose, however much they
-///         gave: they cannot approve their own accounts.
-contract DeliveryManager is IDeliveryManager, RoleAware {
-    uint16 public constant BPS_DENOMINATOR = 10_000;
-
+///         This contract is the ballot box and the evidence log; the rule itself lives in the policy, which the
+///         need chose when it was created and cannot change.
+contract DeliveryManager is IDeliveryManager, RoleAware, EIP712 {
     /// @notice Upper bound on a manifest, so the event carrying it stays cheap to emit and to index.
     uint256 public constant MAX_MANIFEST_BYTES = 8192;
 
-    INeedsRegistry public immutable registry;
+    bytes32 public constant VOTE_TYPEHASH =
+        keccak256("Vote(address voter,uint256 deliveryId,bool approve,uint256 deadline)");
 
-    /// @inheritdoc IDeliveryManager
-    uint16 public immutable approvalThresholdBps;
+    INeedsRegistry public immutable registry;
 
     /// @inheritdoc IDeliveryManager
     uint256 public deliveryCount;
@@ -39,7 +41,9 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
     /// @inheritdoc IDeliveryManager
     mapping(uint256 => uint256) public lastApprovedDeliveryOf;
     /// @inheritdoc IDeliveryManager
-    mapping(uint256 => mapping(address => bool)) public hasApproved;
+    mapping(uint256 => mapping(address => bool)) public hasVoted;
+    /// @inheritdoc IDeliveryManager
+    mapping(uint256 => uint8) public strikesOf;
 
     /// @dev Four slots.
     struct DeliveryRecord {
@@ -48,21 +52,23 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
         uint64 submittedAt;
         uint8 trancheIndex;
         DeliveryStatus status;
+        uint8 verifierApprovals;
+        uint8 verifierRejections;
         // slot 1
         uint128 needId;
-        uint64 approvedAt;
-        // slots 2-3
+        uint64 decidedAt;
+        // slot 2
         bytes32 evidenceHash;
-        uint256 approvedAmount;
+        // slot 3 — sums of donations, each at most the need's uint128 total
+        uint128 approvedAmount;
+        uint128 rejectedAmount;
     }
 
     mapping(uint256 => DeliveryRecord) private _deliveries;
 
-    constructor(IRoleRegistry roles_, INeedsRegistry registry_, uint16 approvalThresholdBps_) RoleAware(roles_) {
+    constructor(IRoleRegistry roles_, INeedsRegistry registry_) RoleAware(roles_) EIP712("VerifAid Deliveries", "1") {
         if (address(registry_) == address(0)) revert Errors.ZeroAddress();
-        if (approvalThresholdBps_ == 0 || approvalThresholdBps_ > BPS_DENOMINATOR) revert Errors.InvalidParameter();
         registry = registry_;
-        approvalThresholdBps = approvalThresholdBps_;
     }
 
     // ─── NGO ───────────────────────────────────────────────────────────────────
@@ -82,33 +88,29 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
         emit DeliverySubmitted(deliveryId, needId, trancheIndex, msg.sender, evidenceHash, manifest);
     }
 
-    // ─── donors ────────────────────────────────────────────────────────────────
+    // ─── voters ────────────────────────────────────────────────────────────────
 
     /// @inheritdoc IDeliveryManager
     function approve(uint256 deliveryId) external whenNotPaused {
-        DeliveryRecord storage d = _delivery(deliveryId);
-        if (d.status != DeliveryStatus.Open) revert Errors.InvalidDeliveryStatus();
-        uint256 needId = d.needId;
-        (address ngo, address vault,, INeedsRegistry.NeedStatus status) = registry.coreOf(needId);
-        if (status != INeedsRegistry.NeedStatus.InDelivery) revert Errors.InvalidNeedStatus();
-        if (hasApproved[deliveryId][msg.sender]) revert Errors.AlreadyApproved();
+        _vote(deliveryId, msg.sender, true);
+    }
 
-        uint256 weight = _weight(needId, ngo, vault, msg.sender);
-        if (weight == 0) revert Errors.NotADonor();
+    /// @inheritdoc IDeliveryManager
+    function reject(uint256 deliveryId) external whenNotPaused {
+        _vote(deliveryId, msg.sender, false);
+    }
 
-        hasApproved[deliveryId][msg.sender] = true;
-        uint256 approved = d.approvedAmount + weight;
-        d.approvedAmount = approved;
-        uint256 required = _required(vault);
-        emit DeliveryApprovalAdded(deliveryId, msg.sender, weight, approved, required);
-
-        if (approved >= required) {
-            d.status = DeliveryStatus.Approved;
-            d.approvedAt = uint64(block.timestamp);
-            lastApprovedDeliveryOf[needId] = deliveryId;
-            emit DeliveryApproved(deliveryId, needId, d.trancheIndex);
-            ITrancheLedger(vault).markReleasable(d.trancheIndex, deliveryId);
-        }
+    /// @inheritdoc IDeliveryManager
+    /// @dev No nonce: a voter votes once per delivery, so a signature can only ever be used once, and the deadline
+    ///      keeps a signature collected long ago from being played in later.
+    function voteBySig(uint256 deliveryId, address voter, bool approve_, uint256 deadline, bytes calldata signature)
+        external
+        whenNotPaused
+    {
+        if (block.timestamp > deadline) revert Errors.SignatureExpired();
+        bytes32 digest = voteDigest(deliveryId, voter, approve_, deadline);
+        if (!SignatureChecker.isValidSignatureNow(voter, digest, signature)) revert Errors.InvalidSignature();
+        _vote(deliveryId, voter, approve_);
     }
 
     // ─── views ─────────────────────────────────────────────────────────────────
@@ -123,27 +125,120 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
             submitter: d.submitter,
             evidenceHash: d.evidenceHash,
             approvedAmount: d.approvedAmount,
+            rejectedAmount: d.rejectedAmount,
+            verifierApprovals: d.verifierApprovals,
+            verifierRejections: d.verifierRejections,
             submittedAt: d.submittedAt,
-            approvedAt: d.approvedAt,
+            decidedAt: d.decidedAt,
             status: d.status
         });
     }
 
     /// @inheritdoc IDeliveryManager
-    function requiredApproval(uint256 needId) external view returns (uint256) {
-        (, address vault,,) = registry.coreOf(needId);
-        if (vault == address(0) || !ITrancheLedger(vault).fundingClosed()) return 0;
-        return _required(vault);
+    function policyOf(uint256 needId) public view returns (IReleasePolicy) {
+        return IReleasePolicy(registry.releasePolicyOf(needId));
     }
 
     /// @inheritdoc IDeliveryManager
-    function approvalWeight(uint256 needId, address donor) external view returns (uint256) {
-        (address ngo, address vault,,) = registry.coreOf(needId);
-        if (vault == address(0)) return 0;
-        return _weight(needId, ngo, vault, donor);
+    function rulesOf(uint256 needId) external view returns (IReleasePolicy.Rules memory rules) {
+        address vault = registry.vaultOf(needId);
+        if (vault == address(0) || !ITrancheLedger(vault).fundingClosed()) return rules;
+        return policyOf(needId).rulesOf(needId);
     }
 
-    // ─── internal ──────────────────────────────────────────────────────────────
+    /// @inheritdoc IDeliveryManager
+    function voiceOf(uint256 needId, address voter) external view returns (IReleasePolicy.Voice, uint256) {
+        return policyOf(needId).voiceOf(needId, voter);
+    }
+
+    /// @inheritdoc IDeliveryManager
+    function voteDigest(uint256 deliveryId, address voter, bool approve_, uint256 deadline)
+        public
+        view
+        returns (bytes32)
+    {
+        return _hashTypedDataV4(keccak256(abi.encode(VOTE_TYPEHASH, voter, deliveryId, approve_, deadline)));
+    }
+
+    /// @notice The EIP-712 domain separator votes are signed under.
+    // forge-lint: disable-next-line(mixed-case-function)
+    function DOMAIN_SEPARATOR() external view returns (bytes32) {
+        return _domainSeparatorV4();
+    }
+
+    // ─── internal: voting ──────────────────────────────────────────────────────
+
+    function _vote(uint256 deliveryId, address voter, bool approve_) internal {
+        DeliveryRecord storage d = _delivery(deliveryId);
+        if (d.status != DeliveryStatus.Open) revert Errors.InvalidDeliveryStatus();
+        uint256 needId = d.needId;
+        if (registry.statusOf(needId) != INeedsRegistry.NeedStatus.InDelivery) revert Errors.InvalidNeedStatus();
+        if (hasVoted[deliveryId][voter]) revert Errors.AlreadyVoted();
+
+        IReleasePolicy policy = policyOf(needId);
+        (IReleasePolicy.Voice voice, uint256 weight) = policy.voiceOf(needId, voter);
+        if (voice == IReleasePolicy.Voice.None || weight == 0) revert Errors.NoSay();
+
+        hasVoted[deliveryId][voter] = true;
+        _tally(d, voice, approve_, weight);
+        emit VoteCast(deliveryId, voter, voice, approve_, weight);
+
+        IReleasePolicy.Rules memory rules = policy.rulesOf(needId);
+        if (approve_) {
+            if (_isApproved(d, rules)) _approveDelivery(deliveryId, d);
+        } else if (_isRejected(d, rules)) {
+            _rejectDelivery(deliveryId, d, rules.retries);
+        }
+    }
+
+    function _tally(DeliveryRecord storage d, IReleasePolicy.Voice voice, bool approve_, uint256 weight) internal {
+        if (voice == IReleasePolicy.Voice.Verifier) {
+            if (approve_) ++d.verifierApprovals;
+            else ++d.verifierRejections;
+        } else if (approve_) {
+            d.approvedAmount += uint128(weight);
+        } else {
+            d.rejectedAmount += uint128(weight);
+        }
+    }
+
+    /// @dev Every voice the policy gives a say must have approved, and at least one voice must exist.
+    function _isApproved(DeliveryRecord storage d, IReleasePolicy.Rules memory r) internal view returns (bool) {
+        if (r.donorApproval == 0 && r.verifierApproval == 0) revert Errors.InvalidReleasePolicy();
+        if (r.donorApproval != 0 && d.approvedAmount < r.donorApproval) return false;
+        if (r.verifierApproval != 0 && d.verifierApprovals < r.verifierApproval) return false;
+        return true;
+    }
+
+    /// @dev Any voice the policy gives a say can reject on its own.
+    function _isRejected(DeliveryRecord storage d, IReleasePolicy.Rules memory r) internal view returns (bool) {
+        return (r.donorRejection != 0 && d.rejectedAmount >= r.donorRejection)
+            || (r.verifierRejection != 0 && d.verifierRejections >= r.verifierRejection);
+    }
+
+    function _approveDelivery(uint256 deliveryId, DeliveryRecord storage d) internal {
+        uint256 needId = d.needId;
+        d.status = DeliveryStatus.Approved;
+        d.decidedAt = uint64(block.timestamp);
+        lastApprovedDeliveryOf[needId] = deliveryId;
+        emit DeliveryApproved(deliveryId, needId, d.trancheIndex);
+        ITrancheLedger(registry.vaultOf(needId)).markReleasable(d.trancheIndex, deliveryId);
+    }
+
+    /// @dev The NGO may try again while it has retries left; past them, the need is cancelled and donors can claim
+    ///      back what was not released. Nothing is releasable at this point — evidence is only filed once the
+    ///      previous tranche has been paid — so cancelling strands no payee.
+    function _rejectDelivery(uint256 deliveryId, DeliveryRecord storage d, uint8 retries) internal {
+        uint256 needId = d.needId;
+        d.status = DeliveryStatus.Rejected;
+        d.decidedAt = uint64(block.timestamp);
+        uint8 strikes = ++strikesOf[needId];
+        bool cancel = strikes > retries;
+        emit DeliveryRejected(deliveryId, needId, d.trancheIndex, strikes, cancel);
+        if (cancel) registry.onEvidenceRejected(needId);
+    }
+
+    // ─── internal: evidence ────────────────────────────────────────────────────
 
     /// @dev Reverts unless the caller is the need's active NGO and the need is in delivery; returns the tranche.
     function _trancheForSubmitter(uint256 needId) internal view returns (uint256) {
@@ -154,10 +249,26 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
         return _nextToUnlock(ITrancheLedger(vault));
     }
 
-    /// @dev Stores a new Open delivery and retires the one it replaces: donors approved what they saw, so new
-    ///      evidence starts from nothing.
+    /// @dev Stores a new Open delivery and retires the one it replaces: people voted on what they saw, so new
+    ///      evidence starts from nothing. Replacing evidence someone already rejected is a strike, like a
+    ///      rejection, and is refused once the need has no retries left — otherwise withdrawing a losing account
+    ///      just before the rejection lands would be a way to never be rejected at all.
     function _record(uint256 needId, uint256 trancheIndex, bytes32 evidenceHash) internal returns (uint256 deliveryId) {
+        uint256 previous = activeDeliveryOf[needId][trancheIndex];
         deliveryId = ++deliveryCount;
+
+        if (previous != 0 && _deliveries[previous].status == DeliveryStatus.Open) {
+            DeliveryRecord storage old = _deliveries[previous];
+            bool contested = old.rejectedAmount != 0 || old.verifierRejections != 0;
+            uint8 strikes = strikesOf[needId];
+            if (contested) {
+                if (strikes >= policyOf(needId).rulesOf(needId).retries) revert Errors.EvidenceContested();
+                strikesOf[needId] = ++strikes;
+            }
+            old.status = DeliveryStatus.Superseded;
+            emit DeliverySuperseded(previous, deliveryId, contested, strikes);
+        }
+
         DeliveryRecord storage d = _deliveries[deliveryId];
         d.submitter = msg.sender;
         d.submittedAt = uint64(block.timestamp);
@@ -165,13 +276,7 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
         d.needId = uint128(needId);
         d.evidenceHash = evidenceHash;
         // status is Open (the zero value)
-
-        uint256 previous = activeDeliveryOf[needId][trancheIndex];
         activeDeliveryOf[needId][trancheIndex] = deliveryId;
-        if (previous != 0 && _deliveries[previous].status == DeliveryStatus.Open) {
-            _deliveries[previous].status = DeliveryStatus.Superseded;
-            emit DeliverySuperseded(previous, deliveryId);
-        }
     }
 
     /// @dev The first locked tranche, provided the one before it has been paid: evidence accounts for money the
@@ -186,23 +291,6 @@ contract DeliveryManager is IDeliveryManager, RoleAware {
             return index;
         }
         revert Errors.InvalidTrancheStatus();
-    }
-
-    /// @dev Rounded up, so "30%" never means a hair less than 30%.
-    function _required(address vault) internal view returns (uint256) {
-        uint256 raised = ITrancheLedger(vault).totalDonated();
-        return (raised * approvalThresholdBps + BPS_DENOMINATOR - 1) / BPS_DENOMINATOR;
-    }
-
-    /// @dev Zero for anyone who would be approving their own accounts: the NGO, its payout address, and the need's
-    ///      payees (a payee's account is where the money went).
-    function _weight(uint256 needId, address ngo, address vault, address donor) internal view returns (uint256) {
-        if (donor == address(0) || donor == ngo || donor == roles.payoutOf(ngo)) return 0;
-        INeedsRegistry.PayeeShare[] memory payees = registry.payeesOf(needId);
-        for (uint256 i; i < payees.length; ++i) {
-            if (payees[i].account == donor) return 0;
-        }
-        return IAidVault(vault).donatedBy(donor);
     }
 
     function _delivery(uint256 deliveryId) internal view returns (DeliveryRecord storage d) {

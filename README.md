@@ -25,8 +25,8 @@ lives in the code.
 |---|---|
 | R1 — register previously verified needs, with their terms | `NeedsRegistry` (deadlines, minimum funding, cost cap, expected outcome) + `NeedVerified` attestations |
 | R2 — track the path of donations | `AidVault`, soulbound `DonationReceipt`, `Settlement` attestations, on-chain conversions (`ConversionRouter`, `DonationForwarderFactory`), card payments through the Coinbase on-ramp, vaults that pay the need's registered suppliers directly, public tracking links |
-| R3 — evidence of aid delivery | `DeliveryManager`: the NGO files photos, receipts and bank statements by hash; donors who gave 30% of the money approve before the next tranche |
-| R4 — protect beneficiaries' data | off-chain PII vault, Semaphore identity commitments, evidence photos stripped of metadata |
+| R3 — evidence of aid delivery | `DeliveryManager`: the NGO files photos, receipts and bank statements by hash (and pinned to IPFS); the rule the need chose — donors, a verifier, or both — approves or rejects it before the next tranche |
+| R4 — protect beneficiaries' data | off-chain PII vault; no beneficiary on chain in any form; evidence photos stripped of metadata |
 | R5 — verifiable impact | `ImpactReport` attestations, Ponder indexer, public dashboard, PDF audit reports |
 
 ## How it works
@@ -42,9 +42,11 @@ NGO registers a need and its terms ─► independent verifier attests it ─►
       │          (below it the need expires and every donor is refunded)
       │                                        │
       ▼                tranche 0 paid to the need's suppliers as pre-financing ─► Settlement report
-NGO accounts for it: photos, receipts, bank statements (committed on chain by hash)
+NGO accounts for it: photos, receipts, bank statements (committed on chain by hash, pinned to IPFS)
       │                                                                           │
-      └──► donors who gave 30% of the money approve ─► next tranche ─► Settlement ─► … ─► impact report
+      ├──► approved under the need's rule (e.g. donors who gave 30%) ─► next tranche ─► … ─► impact report
+      └──► rejected (donors who gave 50%, or a verifier) ─► NGO files again once ─► rejected again: need
+           cancelled, donors refunded what was not released
 ```
 
 **Full blockchain mode.** The vaults hold USDC, so a donation in USDC — from a wallet, a card or an exchange —
@@ -62,55 +64,70 @@ discloses, capped at a quarter of the need. It is verified with the rest of the 
 pays those suppliers directly in the same transaction. Replacing one takes the NGO plus two independent
 verifiers, and a tranche someone has already earned cannot be redirected.
 
-Money only moves forward when three independent signals agree: field evidence, anonymous beneficiary
-confirmations above a threshold, and an approving verifier who is provably unrelated to the NGO. A donor follows
-all of it through five stages — **verified, funded, settled, delivered, impact confirmed** — from a tracking link
-that needs no account.
+**The need chooses who judges its evidence.** When it is created, a need picks one of the platform's release
+rules and keeps it for life: *donors decide* (the default: donors who gave 30% of the money approve, 50% reject),
+*a verifier checks*, or *donors and a verifier*. A rejection sends the NGO back once; a second one cancels the need
+and refunds what was not released. Donors vote for free — they sign, and the platform's relayer pays the gas. New
+rules can be approved later without redeploying anything, and never change a need that already exists.
+
+**The admin has to wait.** Every admin action is proposed by a 2-of-3 Safe and waits out a public timelock before
+anyone can execute it; a guardian can only pause. Nobody, including the admin, can take money out of a vault.
+
+A donor follows all of it through five stages — **verified, funded, settled, delivered, impact confirmed** — from
+a tracking link that needs no account.
 
 ## Live on Base Sepolia
 
-v8 is deployed and every contract is source-verified on Basescan; its schemas are registered in the real EAS
+v9 is deployed and every contract is source-verified on Basescan; its schemas are registered in the real EAS
 SchemaRegistry. The vaults hold a test USDC, so a donation in USDC never touches a pool. Euro donations convert on
 Uniswap v3's own Base Sepolia deployment under Chainlink's USDC/USD feed; Base Sepolia has no EUR/USD feed and no
 liquid pool for test tokens, so those two are mocked and the deploy creates the mock EURC / USDC pool at the oracle
 price. A need whose deliveries run for months can let its committed money wait in an ERC-4626 venue (a mock one
-on testnets). `pnpm demo:run base-sepolia` runs four needs on it: escrow with a wallet donor and a card donor,
+on testnets). `pnpm demo:run base-sepolia` runs five needs on it: escrow with a wallet donor and a card donor,
 each tranche paid straight to the need's supplier and the NGO's disclosed share; a need that expires below its
 minimum and refunds its donor; conversions (card-bought USDC donated as it is, euros and ETH converted, an exchange
-withdrawal to a deposit address); and idle capital earning while it waits. A donor who changes their mind while a
+withdrawal to a deposit address); idle capital earning while it waits; and a need whose evidence is rejected
+twice, cancelled and refunded. A donor who changes their mind while a
 need is still raising can take their donation back, up to two days before its funding deadline.
 
 | | |
 |---|---|
-| `NeedsRegistry` | [`0x990195d12640C8B50D2aaB94B2777D7221Ca2C3a`](https://sepolia.basescan.org/address/0x990195d12640C8B50D2aaB94B2777D7221Ca2C3a) |
-| `DeliveryManager` | [`0x99B128Ce5c242843F0a38942112Dd0A43d51Fe98`](https://sepolia.basescan.org/address/0x99B128Ce5c242843F0a38942112Dd0A43d51Fe98) |
-| `ProofOfAidResolver` | [`0x00C921d894a995Df7363B86D453647AbCf578475`](https://sepolia.basescan.org/address/0x00C921d894a995Df7363B86D453647AbCf578475) |
-| `RoleRegistry` | [`0x21AC1fa472B7c525c1CbfaBaE8Ea373be5f8a49d`](https://sepolia.basescan.org/address/0x21AC1fa472B7c525c1CbfaBaE8Ea373be5f8a49d) |
-| `AidVaultFactory` | [`0x17dad185dbdA6BB07F9C3099A0d636605B607171`](https://sepolia.basescan.org/address/0x17dad185dbdA6BB07F9C3099A0d636605B607171) |
-| `BeneficiaryGroups` | [`0x0723F9d28a9e116B22d919ba599a2eA2f42bBe2A`](https://sepolia.basescan.org/address/0x0723F9d28a9e116B22d919ba599a2eA2f42bBe2A) |
-| `DonationReceipt` | [`0xCB01cd3C34Ab174811F32E9D681257ea236C91CF`](https://sepolia.basescan.org/address/0xCB01cd3C34Ab174811F32E9D681257ea236C91CF) |
-| `ConversionRouter` | [`0xcE93A22d4f97d54d4a4a82234Bf069B75C90EFc2`](https://sepolia.basescan.org/address/0xcE93A22d4f97d54d4a4a82234Bf069B75C90EFc2) |
-| `DonationForwarderFactory` | [`0x6158b304bF74161f72f12056B1939125A620E072`](https://sepolia.basescan.org/address/0x6158b304bF74161f72f12056B1939125A620E072) |
-| vault currency, test USDC (mUSDC) | [`0x1B1D0801a25B16d4Ae29B4C04117E18dF63cC378`](https://sepolia.basescan.org/address/0x1B1D0801a25B16d4Ae29B4C04117E18dF63cC378) |
-| test EURC (mEURC), converted on the way in | [`0xA97793C1abd2930A5C96A5b3628B3865ea69738d`](https://sepolia.basescan.org/address/0xA97793C1abd2930A5C96A5b3628B3865ea69738d) |
-| idle-capital venue (mock ERC-4626) | [`0x95E1246eC5eC753e5cb6844B55892f9775777BA5`](https://sepolia.basescan.org/address/0x95E1246eC5eC753e5cb6844B55892f9775777BA5) |
+| `NeedsRegistry` | [`0xDDf49b52728edc38eB662Fdb934CB19Ec037997a`](https://sepolia.basescan.org/address/0xDDf49b52728edc38eB662Fdb934CB19Ec037997a) |
+| `DeliveryManager` | [`0xF8FD93f388A45df337f077C36E04E8fDD8844fCC`](https://sepolia.basescan.org/address/0xF8FD93f388A45df337f077C36E04E8fDD8844fCC) |
+| `ProofOfAidResolver` | [`0xD2771615B63D967Ff2f7D704dE0fdaca985ba181`](https://sepolia.basescan.org/address/0xD2771615B63D967Ff2f7D704dE0fdaca985ba181) |
+| `RoleRegistry` | [`0xf42EBd86a3decDD5466540F41D9B9dEeAdCFE8b5`](https://sepolia.basescan.org/address/0xf42EBd86a3decDD5466540F41D9B9dEeAdCFE8b5) |
+| `AidVaultFactory` | [`0x05bcf934DcB1462AA234C854Fd514325895CA161`](https://sepolia.basescan.org/address/0x05bcf934DcB1462AA234C854Fd514325895CA161) |
+| `ProgramRegistry` | [`0x9e23d1Cc7281c95FA83765517cF770438668d48A`](https://sepolia.basescan.org/address/0x9e23d1Cc7281c95FA83765517cF770438668d48A) |
+| release policy: donors decide | [`0x81123F83CAB4651F1b830E83376cC0Ec8fc8A816`](https://sepolia.basescan.org/address/0x81123F83CAB4651F1b830E83376cC0Ec8fc8A816) |
+| release policy: a verifier checks | [`0xFA616eAD54Edff5d541eeb1c99888d7F1C5BEB14`](https://sepolia.basescan.org/address/0xFA616eAD54Edff5d541eeb1c99888d7F1C5BEB14) |
+| release policy: donors and a verifier | [`0x5c9A0C7A35EAEf076b7c62f7d2638c394F3E03a7`](https://sepolia.basescan.org/address/0x5c9A0C7A35EAEf076b7c62f7d2638c394F3E03a7) |
+| admin: TimelockController | [`0xf5DD48f4aB8232F32eB527c15d56D39F3314580A`](https://sepolia.basescan.org/address/0xf5DD48f4aB8232F32eB527c15d56D39F3314580A) |
+| admin proposer: Safe (2-of-3) | [`0xd9575509cE883456185C458b5dD778aD2341b898`](https://sepolia.basescan.org/address/0xd9575509cE883456185C458b5dD778aD2341b898) |
+| `DonationReceipt` | [`0x191232C46D30923a36cFa2Ff94b47C90203039fB`](https://sepolia.basescan.org/address/0x191232C46D30923a36cFa2Ff94b47C90203039fB) |
+| `ConversionRouter` | [`0x25391Cab52DECb9e451cC247B74FAF5768393A02`](https://sepolia.basescan.org/address/0x25391Cab52DECb9e451cC247B74FAF5768393A02) |
+| `DonationForwarderFactory` | [`0x0a364893BF2686e3982dA7481A4A3aDbF0F38Dc1`](https://sepolia.basescan.org/address/0x0a364893BF2686e3982dA7481A4A3aDbF0F38Dc1) |
+| vault currency, test USDC (mUSDC) | [`0x32e8765f9aCF760f4c353e118A6C1a22367a23ff`](https://sepolia.basescan.org/address/0x32e8765f9aCF760f4c353e118A6C1a22367a23ff) |
+| test EURC (mEURC), converted on the way in | [`0xA0523ee77ca7219eD0E4a0FdBc7699C3E1F6eDE5`](https://sepolia.basescan.org/address/0xA0523ee77ca7219eD0E4a0FdBc7699C3E1F6eDE5) |
+| idle-capital venue (mock ERC-4626) | [`0x1fcc22EfB1e3eD6484d9E944F5eeDD084e29789E`](https://sepolia.basescan.org/address/0x1fcc22EfB1e3eD6484d9E944F5eeDD084e29789E) |
 
 Every address and schema UID is in [`deployments/base-sepolia.json`](deployments/base-sepolia.json); the schemas are
-browsable on the [Base Sepolia EAS explorer](https://base-sepolia.easscan.org). EAS, Semaphore v4, Uniswap v3 and
+browsable on the [Base Sepolia EAS explorer](https://base-sepolia.easscan.org). EAS, Safe, Uniswap v3 and
 the Chainlink feeds are the ones already deployed on Base Sepolia — this project deploys none of them. Earlier
 releases stay on-chain and are recorded in `deployments/base-sepolia.v1.json` through
-[`deployments/base-sepolia.v7.json`](deployments/base-sepolia.v7.json).
+[`deployments/base-sepolia.v8.json`](deployments/base-sepolia.v8.json).
 
 ## Repository layout
 
 ```
-contracts/    Foundry: needs and their terms, vaults, donor-approved deliveries, Semaphore groups, one EAS resolver
+contracts/    Foundry: needs and their terms, vaults, deliveries judged by release policies, programmes, one EAS
+              resolver, and the Safe + timelock handover
 services/     pii-vault (envelope-encrypted records), notifier (alerts and signed webhooks)
 indexer/      Ponder: events → tables → the API, donation tracking and RSS feeds
 app/          Next.js dashboard: public needs and tracking pages, embeddable widget, donor, NGO and verifier tools,
-              and the evidence uploads (content-addressed)
-              agent and beneficiary tools, PDF reports
-demo/         runs the four lifecycle scenarios against a live chain (escrow, expiry, conversions, idle capital)
+              evidence uploads (content-addressed, pinned to IPFS), the free-vote relay, PDF reports
+demo/         runs the five lifecycle scenarios against a live chain (escrow, expiry, conversions, idle capital,
+              rejection)
+scripts/      deploy (local and Base Sepolia), `pnpm admin` for timelocked admin actions after the handover
 deployments/  addresses + schema UIDs per network, written by the deploy scripts
 docs/         DECISIONS.md, THREAT_MODEL.md, DEMO_SCRIPT.md, ROADMAP.md, GAP_PLAN.md
 justfile      one-command shortcuts (see "Quick start")
@@ -163,8 +180,9 @@ just install        # install dependencies only
   does not redeploy anything.
 
 Deploy to Base Sepolia (needs `DEPLOYER_PRIVATE_KEY` and `BASESCAN_API_KEY` in `.env`). The whole system costs
-well under 0.001 ETH, and the script reuses the EAS, Semaphore, Uniswap and Chainlink contracts already deployed
-there:
+well under 0.001 ETH, and the script reuses the EAS, Safe, Uniswap and Chainlink contracts already deployed there.
+Its last step hands the admin role to a Safe (`ADMIN_SAFE_OWNERS`) behind a timelock; from then on admin actions
+go through `pnpm admin base-sepolia …`:
 
 ```bash
 pnpm deploy:sepolia
@@ -173,13 +191,14 @@ pnpm deploy:sepolia
 ## Privacy
 
 No name, ID number, phone number, exact location, photo, or unsalted hash of any of these ever reaches the
-chain. Beneficiaries appear only as Semaphore identity commitments. Delivery evidence is public, for donors to
-approve: photos are stripped of their location and camera metadata before they are stored, and the NGO is told
+chain. Beneficiaries do not appear on chain at all: a programme is a label and a hash of its eligibility rules.
+Delivery evidence is public, for donors to judge: photos are stripped of their location and camera metadata before
+they are stored, and the NGO is told
 to black out names, faces and account numbers first. Impact reports below five people served are refused so a
 count cannot identify a person. Donors are tracked by a
 receipt id or a deposit address, never by name; alert emails are encrypted and destroyed on unsubscribe.
-Right to erasure is handled by destroying the record's data key (crypto-shredding) and removing the identity
-commitment from the group. See `docs/THREAT_MODEL.md` for what this does **not** protect against.
+Right to erasure is handled by destroying the record's data key (crypto-shredding); nothing on chain refers to the
+person. See `docs/THREAT_MODEL.md` for what this does **not** protect against.
 
 ## Documentation
 

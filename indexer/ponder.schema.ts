@@ -3,9 +3,9 @@ import { index, onchainTable, primaryKey, relations } from 'ponder'
 /**
  * Tables from spec §10, plus what the derived API routes need.
  *
- * Privacy rule (spec §8): only what is already public on-chain is stored here. Beneficiaries appear only as
- * Semaphore identity commitments enrolled in a programme (unlinkable). Donors appear as the wallets that gave
- * and, since v8, approved a delivery — both already public on chain. Nothing else about a person is indexed.
+ * Privacy rule (spec §8): only what is already public on-chain is stored here. Beneficiaries do not appear at
+ * all since v9 (programmes are labels; enrolment stays in the NGO's encrypted records). Donors appear as the
+ * wallets that gave and voted on a delivery — both already public on chain. Nothing else about a person is indexed.
  *
  * Amounts are `bigint` (token base units), addresses and hashes are `hex`, enum-ish values are stored as the
  * same labels @poa/shared exposes so the API never has to translate numbers the UI would misread.
@@ -42,54 +42,40 @@ export const systemState = onchainTable('system_state', (t) => ({
   updatedAt: t.integer().notNull(),
 }))
 
-// ─── programs and beneficiary groups ─────────────────────────────────────────
+// ─── programmes and release policies ─────────────────────────────────────────
 
+/** An NGO's programme: who it serves, by which published eligibility rules. Nobody is enrolled on chain. */
 export const program = onchainTable(
   'program',
   (t) => ({
     id: t.bigint().primaryKey(),
     ngo: t.hex().notNull(),
-    groupId: t.bigint().notNull(),
-    enrollmentPolicyHash: t.hex().notNull(),
+    eligibilityHash: t.hex().notNull(),
     metadataURI: t.text().notNull(),
-    /** Live members, mirroring BeneficiaryGroups.memberCount (removals decrement it). */
-    memberCount: t.integer().notNull(),
-    /** Leaves inserted into the Semaphore tree, including the ones later zeroed out by a removal. */
-    leafCount: t.integer().notNull(),
-    merkleTreeRoot: t.bigint(),
     active: t.boolean().notNull(),
     createdAt: t.integer().notNull(),
   }),
-  (table) => ({ groupIdx: index().on(table.groupId) }),
+  (table) => ({ ngoIdx: index().on(table.ngo) }),
 )
 
 /**
- * Semaphore group id → program. Semaphore is a shared deployment on public chains, so its member events are
- * only indexed when the group appears here, i.e. when BeneficiaryGroups created it.
+ * A rule for releasing tranches, as the platform approved it. The parameters are read from the policy contract
+ * the first time it is seen; `kind` names the built-in shapes (donors, a verifier, both) and `custom` anything
+ * that is not a ReleasePolicy.
  */
-export const semaphoreGroup = onchainTable('semaphore_group', (t) => ({
-  groupId: t.bigint().primaryKey(),
-  programId: t.bigint().notNull(),
+export const releasePolicy = onchainTable('release_policy', (t) => ({
+  address: t.hex().primaryKey(),
+  name: t.text().notNull(),
+  kind: t.text().notNull(),
+  donorApprovalBps: t.integer().notNull(),
+  donorRejectionBps: t.integer().notNull(),
+  verifiers: t.boolean().notNull(),
+  retries: t.integer().notNull(),
+  /** Whether new needs may still choose it; needs that chose it keep it either way. */
+  allowed: t.boolean().notNull(),
+  isDefault: t.boolean().notNull(),
+  updatedAt: t.integer().notNull(),
 }))
-
-/**
- * One row per Semaphore leaf, keyed by its insertion index — the order that reproduces the Merkle root.
- * A removed member keeps its index with `commitment = 0`, exactly like the LeanIMT on-chain.
- */
-export const programMember = onchainTable(
-  'program_member',
-  (t) => ({
-    programId: t.bigint().notNull(),
-    leafIndex: t.integer().notNull(),
-    commitment: t.bigint().notNull(),
-    removed: t.boolean().notNull(),
-    addedAt: t.integer().notNull(),
-  }),
-  (table) => ({
-    pk: primaryKey({ columns: [table.programId, table.leafIndex] }),
-    programIdx: index().on(table.programId, table.leafIndex),
-  }),
-)
 
 // ─── needs ───────────────────────────────────────────────────────────────────
 
@@ -111,6 +97,10 @@ export const need = onchainTable(
     status: t.text().notNull(),
     /** The need's AidVault; null until it is verified. */
     vault: t.hex(),
+    /** The release policy its evidence is judged by, fixed at creation. */
+    releasePolicy: t.hex().notNull(),
+    /** Rejections and contested replacements of its evidence; one more than the policy's retries cancels it. */
+    strikes: t.integer().notNull(),
     // ── the terms the NGO committed to at creation ──
     fundingDeadline: t.integer(),
     executionDeadline: t.integer(),
@@ -391,35 +381,47 @@ export const delivery = onchainTable(
     /** The tranche this evidence unlocks; it accounts for the one before it. */
     trancheIndex: t.integer().notNull(),
     submitter: t.hex().notNull(),
-    /** Open (donors reviewing), Approved (tranche unlocked) or Superseded (the NGO filed newer evidence). */
+    /** Open (under review), Approved (tranche unlocked), Superseded (the NGO filed newer evidence) or Rejected. */
     status: t.text().notNull(),
     evidenceHash: t.hex().notNull(),
     /** The manifest exactly as submitted; its keccak256 is `evidenceHash`. */
     manifest: t.text().notNull(),
     approvedAmount: t.bigint().notNull(),
-    /** What the donors who approve must have given between them, read from the contract. */
+    rejectedAmount: t.bigint().notNull(),
+    verifierApprovals: t.integer().notNull(),
+    verifierRejections: t.integer().notNull(),
+    /** The need's thresholds, read from its release policy when the evidence was filed (they are fixed by then). */
     requiredAmount: t.bigint().notNull(),
+    rejectionAmount: t.bigint().notNull(),
+    requiredVerifiers: t.integer().notNull(),
     supersededBy: t.bigint(),
+    /** Replaced after someone had already rejected it: it cost the NGO a retry. */
+    contested: t.boolean().notNull(),
+    /** Its rejection used up the need's retries and cancelled the need. */
+    cancelledNeed: t.boolean().notNull(),
     submittedAt: t.integer().notNull(),
-    approvedAt: t.integer(),
+    decidedAt: t.integer(),
     txHash: t.hex().notNull(),
   }),
   (table) => ({ needIdx: index().on(table.needId), statusIdx: index().on(table.status) }),
 )
 
-/** A donor approving a delivery, with the weight of what they gave. */
-export const deliveryApproval = onchainTable(
-  'delivery_approval',
+/** A vote on a delivery: a donor with the weight of what they gave, or a verifier counting once. */
+export const deliveryVote = onchainTable(
+  'delivery_vote',
   (t) => ({
-    id: t.text().primaryKey(), // deliveryId-donor
+    id: t.text().primaryKey(), // deliveryId-voter
     deliveryId: t.bigint().notNull(),
     needId: t.bigint().notNull(),
-    donor: t.hex().notNull(),
+    voter: t.hex().notNull(),
+    /** Donor or Verifier. */
+    voice: t.text().notNull(),
+    approve: t.boolean().notNull(),
     weight: t.bigint().notNull(),
     txHash: t.hex().notNull(),
     timestamp: t.integer().notNull(),
   }),
-  (table) => ({ deliveryIdx: index().on(table.deliveryId), donorIdx: index().on(table.donor) }),
+  (table) => ({ deliveryIdx: index().on(table.deliveryId), voterIdx: index().on(table.voter) }),
 )
 
 // ─── attestations ────────────────────────────────────────────────────────────
@@ -547,11 +549,11 @@ export const receiptRelations = relations(receipt, ({ one }) => ({
 
 export const deliveryRelations = relations(delivery, ({ many, one }) => ({
   need: one(need, { fields: [delivery.needId], references: [need.id] }),
-  approvals: many(deliveryApproval),
+  votes: many(deliveryVote),
 }))
 
-export const deliveryApprovalRelations = relations(deliveryApproval, ({ one }) => ({
-  delivery: one(delivery, { fields: [deliveryApproval.deliveryId], references: [delivery.id] }),
+export const deliveryVoteRelations = relations(deliveryVote, ({ one }) => ({
+  delivery: one(delivery, { fields: [deliveryVote.deliveryId], references: [delivery.id] }),
 }))
 
 /** Photos of finished work, published by the NGO that ran the need (resolver-less `WorkPhotos` schema). */
@@ -643,12 +645,7 @@ export const workPhotosRelations = relations(workPhotos, ({ one }) => ({
 }))
 
 export const programRelations = relations(program, ({ many }) => ({
-  members: many(programMember),
   needs: many(need),
-}))
-
-export const programMemberRelations = relations(programMember, ({ one }) => ({
-  program: one(program, { fields: [programMember.programId], references: [program.id] }),
 }))
 
 export const attestationRelations = relations(attestation, ({ one }) => ({

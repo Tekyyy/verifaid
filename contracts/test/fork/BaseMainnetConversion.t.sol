@@ -64,7 +64,7 @@ contract BaseMainnetConversionTest is PoATest {
     function setUp() public override {
         super.setUp();
         if (!forked) return;
-        uint256 programId = _createProgram(ngo, 10);
+        uint256 programId = _createProgram(ngo);
         INeedsRegistry.CreateNeedParams memory p = _needParams(programId, 10_000e6, 1, _threeTrancheBps());
         p.thirdPartyCostBps = 200;
         p.costDisclosureHash = COST_DISCLOSURE_HASH;
