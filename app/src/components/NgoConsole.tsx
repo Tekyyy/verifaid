@@ -24,15 +24,27 @@ import { attestationRequest, schemaRecipient } from '@/lib/eas'
 import { amount, bpsPercent, isBytes32, isZeroHash, ZERO_BYTES32 } from '@/lib/format'
 import { useLedger, useTx } from '@/lib/hooks'
 
+/** Setting up: who the organisation serves, what it asks for, and its own standing. */
 export function NgoConsole() {
   if (!deployment) return <MissingDeployment />
 
   return (
     <div className="space-y-6">
-      <NgoCampaignDashboard />
       <CreateProgram />
       <AddMembers />
       <CreateNeedPanel />
+      <TaxStatusPanel />
+    </div>
+  )
+}
+
+/** Running what already exists: every campaign at a glance, then everything done to a need once it is created. */
+export function NgoNeedManagement() {
+  if (!deployment) return <MissingDeployment />
+
+  return (
+    <div className="space-y-6">
+      <NgoCampaignDashboard />
       <NeedPresentationPanel />
       <CloseFunding />
       <ReleaseTranche />
@@ -40,7 +52,6 @@ export function NgoConsole() {
       <ProposePayeeChangePanel />
       <SettlementPanel />
       <PublishPhotosPanel />
-      <TaxStatusPanel />
       <AcknowledgeDonationsPanel />
       <PublishImpactReport />
     </div>
