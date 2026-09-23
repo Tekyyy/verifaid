@@ -1,8 +1,6 @@
 import { db, publicClients } from 'ponder:api'
 import schema from 'ponder:schema'
 import {
-  CUSTODY_MODE,
-  type CustodyMode,
   categoryHash,
   categoryLabel,
   type DeliveryView,
@@ -23,7 +21,6 @@ import {
   type OrgTaxStatusView,
   type ProgramMembersResponse,
   type ProgramView,
-  type ProviderView,
   payeeChangeApprovalsRequired,
   regionCode as regionCodeOf,
   regionLabel,
@@ -125,7 +122,7 @@ const asBytes32 = (value: string, encode: (label: string) => Hex): Hex | null =>
 // ─── needs ───────────────────────────────────────────────────────────────────
 
 /**
- * `?status=&category=&region=&country=&custody=&open=true&sort=urgency|gap|newest`.
+ * `?status=&category=&region=&country=&open=true&sort=urgency|gap|newest`.
  * `urgency` puts needs that are still raising money first, soonest funding deadline first (open-ended ones after
  * the dated ones), then the largest funding gap; everything else follows, newest first.
  */
@@ -153,13 +150,6 @@ app.get('/needs', async (c) => {
   if (country) {
     if (!/^[A-Za-z]{2}$/.test(country)) return c.json({ error: 'invalid country' }, 400)
     filters.push(eq(schema.need.country, country.toUpperCase()))
-  }
-
-  const custody = c.req.query('custody')
-  if (custody) {
-    if (!(CUSTODY_MODE as readonly string[]).includes(custody))
-      return c.json({ error: 'invalid custody' }, 400)
-    filters.push(eq(schema.need.custodyMode, custody as CustodyMode))
   }
 
   const sort = (c.req.query('sort') ?? '') as NeedSort | ''
@@ -433,20 +423,19 @@ app.get('/timeline', async (c) => {
 // ─── donation tracking ───────────────────────────────────────────────────────
 
 /**
- * The public "track this donation" view. `:ref` is a receipt id (wallet donations), the salted payment reference
- * hash a payment provider returned (card and bank donations), or a deposit address (exchange withdrawals, all of
- * its sweeps together). None of them identifies the donor, so the route needs no login. When two providers reused
- * the same reference value, `?provider=0x…` picks one.
+ * The public "track this donation" view. `:ref` is a receipt id (wallet donations, card ones included) or a
+ * deposit address (exchange withdrawals, all of its sweeps together). Neither identifies the donor, so the route
+ * needs no login.
  */
 app.get('/donations/:ref', async (c) => {
-  const track = await loadTrack(c.req.param('ref'), c.req.query('provider'))
+  const track = await loadTrack(c.req.param('ref'))
   if ('error' in track) return c.json({ error: track.error }, track.status)
   return c.json(track.value satisfies DonationTrack)
 })
 
 app.get('/donations/:ref/feed.rss', async (c) => {
   const ref = c.req.param('ref')
-  const track = await loadTrack(ref, c.req.query('provider'))
+  const track = await loadTrack(ref)
   if ('error' in track) return c.json({ error: track.error }, track.status)
 
   const needId = BigInt(track.value.need.id)
@@ -575,23 +564,6 @@ app.get('/supplier-applications', async (c) => {
     rows.map((row) =>
       toSupplierApplicationView(row, registered.has(row.supplier.toLowerCase())),
     ) satisfies SupplierApplicationView[],
-  )
-})
-
-/** Registered payment providers: who can deposit card and bank payments or hold off-chain custody. */
-app.get('/providers', async (c) => {
-  const rows = await db
-    .select()
-    .from(schema.roleAccount)
-    .where(eq(schema.roleAccount.role, 'BANK_PARTNER'))
-    .orderBy(asc(schema.roleAccount.registeredAt))
-
-  return c.json(
-    rows.map((row) => ({
-      address: row.address as Address,
-      active: row.active,
-      registeredAt: row.registeredAt,
-    })) satisfies ProviderView[],
   )
 })
 
@@ -864,7 +836,7 @@ const sortNeeds = (rows: NeedRow[], sort: NeedSort, now: number): NeedRow[] => {
 type Loaded<T> = { value: T } | { error: string; status: 400 | 404 | 409 }
 
 /** Resolves a tracking reference to its donation and gathers everything the tracking view is built from. */
-const loadTrack = async (ref: string, provider: string | undefined): Promise<Loaded<DonationTrack>> => {
+const loadTrack = async (ref: string): Promise<Loaded<DonationTrack>> => {
   const refKind = trackingRefKind(ref)
   if (!refKind) return { error: 'invalid tracking reference', status: 400 }
 
@@ -877,28 +849,12 @@ const loadTrack = async (ref: string, provider: string | undefined): Promise<Loa
       return { error: 'nothing swept from this deposit address yet', status: 404 }
     donation = combineSweeps(loaded.sweeps)
     deposit = loaded.view
-  } else if (refKind === 'receipt') {
+  } else {
     ;[donation] = await db
       .select()
       .from(schema.donation)
       .where(eq(schema.donation.receiptId, BigInt(ref)))
       .limit(1)
-  } else {
-    if (provider && !/^0x[0-9a-fA-F]{40}$/.test(provider)) return { error: 'invalid provider', status: 400 }
-    const matches = await db
-      .select()
-      .from(schema.donation)
-      .where(
-        and(
-          eq(schema.donation.paymentRefHash, ref.toLowerCase() as Hex),
-          provider ? eq(schema.donation.partner, provider.toLowerCase() as Address) : undefined,
-        ),
-      )
-      .orderBy(desc(schema.donation.timestamp))
-    const partners = new Set(matches.map((match) => match.partner))
-    if (partners.size > 1)
-      return { error: 'reference used by several providers; pass ?provider=', status: 409 }
-    donation = matches[0]
   }
   if (!donation) return { error: 'donation not found', status: 404 }
 

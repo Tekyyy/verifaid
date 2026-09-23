@@ -1,6 +1,6 @@
 import { ponder } from 'ponder:registry'
 import schema from 'ponder:schema'
-import { countryOf, custodyModeName, needStatusName, regionLabel } from '@poa/shared'
+import { countryOf, needStatusName, regionLabel } from '@poa/shared'
 import { type Hex, zeroAddress, zeroHash } from 'viem'
 import { appendTimeline, seconds } from './lib/timeline.js'
 
@@ -15,7 +15,6 @@ const orNull = (value: bigint): number | null => (value === 0n ? null : Number(v
 ponder.on('NeedsRegistry:NeedCreated', async ({ event, context }) => {
   const { needId, ngo, programId, params } = event.args
   const { trancheBps } = params
-  const custodyMode = custodyModeName(params.custodyMode)
 
   await context.db.insert(schema.need).values({
     id: needId,
@@ -30,8 +29,6 @@ ponder.on('NeedsRegistry:NeedCreated', async ({ event, context }) => {
     verificationsRequired: params.verificationsRequired,
     verificationCount: 0,
     status: 'Pending',
-    custodyMode,
-    custodian: custodyMode === 'OffChain' && params.custodian !== zeroAddress ? params.custodian : null,
     vault: null,
     fundingDeadline: orNull(params.fundingDeadline),
     executionDeadline: orNull(params.executionDeadline),
@@ -106,7 +103,6 @@ ponder.on('NeedsRegistry:NeedCreated', async ({ event, context }) => {
       verificationsRequired: params.verificationsRequired,
       trancheCount: trancheBps.length,
       metadataURI: params.metadataURI,
-      custodyMode,
       fundingDeadline: orNull(params.fundingDeadline),
       executionDeadline: orNull(params.executionDeadline),
       minFundingBps: params.minFundingBps,

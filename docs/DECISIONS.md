@@ -709,12 +709,19 @@ from the seed. The on-ramp's cost-cap gate went too: it dated from v3, when card
 the swap was a cost the need had to allow. The vaults hold USDC, so card money goes in as it is and costs the need
 nothing; Coinbase's own fee is between the donor and Coinbase, paid before the USDC exists.
 
-**What was deliberately kept.** The contracts are unchanged, so `donateOnBehalf`, refunds by payment reference,
-`NonCustodialLedger` and `FundingRecorded` are still deployed. Nothing in the product calls them, and removing
-them means a redeploy (v7) that wipes the live needs — a separate decision. The indexer still reads every event
-those contracts can emit, and the need page, terms, PDF report and NGO console still render an off-chain need
-correctly, because one exists on v6 (need #3) and a mirror of the chain that hid it would be lying. That need now
-says plainly that its way of giving has been retired.
+**Then the contracts (v7).** The first pass left them alone, so the retired paths stayed deployed and a demo key
+still held the bank-partner role. v7 removes them: `donateOnBehalf` and the deposit digest a `FundingRecorded`
+attestation was matched against; the `FundingRecorded` schema, so the resolver serves five; off-chain custody —
+`NonCustodialLedger`, the custodian, and the `CustodyMode` choice between them, since one option is no choice; the
+factory's payment-reference registry; and `BANK_PARTNER_ROLE`. `Settlement` keeps its on-chain branch, the NGO
+reconciling a tranche the vault already paid.
+
+Refunds by reference stay, because deposit addresses use them: a deposit address that credits itself, when the
+donor gave no wallet, is recorded under its own address as the reference, and `claimRefundByRef` is how it gives
+the money back. The guard against another party owning a reference first stays too, though only a forwarder can
+write one now. The indexer, API, notifier payload and app lose the custody field, the provider fields on a
+donation (`paymentRefHash`, gross, fee, currency, its attestation), the custody filter and `/providers`; a
+tracking reference is a receipt id or a deposit address, nothing else.
 
 **Consequences worth knowing.**
 - On mainnet the on-ramp is live with CDP API keys; on testnets Coinbase cannot deliver, so a sandbox mints test

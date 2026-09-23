@@ -16,7 +16,6 @@ export interface Deployment {
     RoleRegistry: Address
     NeedsRegistry: Address
     AidVaultImplementation: Address
-    NonCustodialLedgerImplementation: Address
     AidVaultFactory: Address
     DonationReceipt: Address
     BeneficiaryGroups: Address
@@ -75,10 +74,9 @@ export interface Deployment {
   >
 }
 
-/** The six EAS schemas of the system, in the order a donor experiences them. */
+/** The five EAS schemas of the system, in the order a donor experiences them. */
 export const SCHEMA_NAMES = [
   'NeedVerified',
-  'FundingRecorded',
   'DeliveryEvidence',
   'DeliveryVerified',
   'Settlement',
@@ -99,14 +97,6 @@ export const NEED_STATUS = [
 ] as const
 export type NeedStatus = (typeof NEED_STATUS)[number]
 
-/**
- * Where a need's money lives, mirroring INeedsRegistry.CustodyMode.
- * `OnChain`: stablecoin escrow in an AidVault (the proposal's Model B).
- * `OffChain`: a payment provider holds the money and attests funding and payouts (Model A).
- */
-export const CUSTODY_MODE = ['OnChain', 'OffChain'] as const
-export type CustodyMode = (typeof CUSTODY_MODE)[number]
-
 /** Delivery lifecycle, mirroring IDeliveryManager.DeliveryStatus. */
 export const DELIVERY_STATUS = ['Open', 'Challengeable', 'Disputed', 'Finalized', 'Rejected'] as const
 export type DeliveryStatus = (typeof DELIVERY_STATUS)[number]
@@ -116,7 +106,6 @@ export const TRANCHE_STATUS = ['Locked', 'Releasable', 'Released'] as const
 export type TrancheStatus = (typeof TRANCHE_STATUS)[number]
 
 export const needStatusName = (value: number): NeedStatus => NEED_STATUS[value] ?? 'Pending'
-export const custodyModeName = (value: number): CustodyMode => CUSTODY_MODE[value] ?? 'OnChain'
 export const deliveryStatusName = (value: number): DeliveryStatus => DELIVERY_STATUS[value] ?? 'Open'
 export const trancheStatusName = (value: number): TrancheStatus => TRANCHE_STATUS[value] ?? 'Locked'
 

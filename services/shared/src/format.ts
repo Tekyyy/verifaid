@@ -1,4 +1,4 @@
-import { encodeAbiParameters, formatUnits, type Hex, hexToString, keccak256, stringToHex } from 'viem'
+import { formatUnits, type Hex, hexToString, keccak256, stringToHex } from 'viem'
 
 /** Stablecoin base units → display string, e.g. 1234560000n → "1,234.56". */
 export const formatAmount = (amount: bigint | string, decimals = 6, fractionDigits = 2): string => {
@@ -45,13 +45,6 @@ export const countryOf = (region: string): string => region.split('-')[0]?.toUpp
 
 /** bytes32 currency codes ("EUR" padded) back to text. */
 export const currencyLabel = (code: Hex): string => regionLabel(code)
-
-/**
- * Salted hash for fiat references, byte-for-byte equal to Solidity's
- * `keccak256(abi.encode(bytes32 salt, string value))` — the raw reference never leaves the bank partner.
- */
-export const saltedRefHash = (salt: Hex, value: string): Hex =>
-  keccak256(encodeAbiParameters([{ type: 'bytes32' }, { type: 'string' }], [salt, value]))
 
 export const shortAddress = (address: string): string => `${address.slice(0, 6)}…${address.slice(-4)}`
 

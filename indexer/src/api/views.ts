@@ -1,7 +1,6 @@
 import type schema from 'ponder:schema'
 import {
   type ConversionView,
-  type CustodyMode,
   categoryLabel,
   type DeliveryStatus,
   type DeliveryView,
@@ -91,7 +90,6 @@ export const toNeedSummary = (row: NeedRow): Omit<NeedSummary, 'badges' | 'prese
       }
     : null,
   status: row.status as NeedStatus,
-  custodyMode: row.custodyMode as CustodyMode,
   vault: (row.vault as Address | null) ?? null,
   metadataURI: row.metadataURI,
   verificationsRequired: row.verificationsRequired,
@@ -102,7 +100,6 @@ export const toNeedSummary = (row: NeedRow): Omit<NeedSummary, 'badges' | 'prese
   thirdPartyCostBps: row.thirdPartyCostBps,
   expectedOutcomeHash: row.expectedOutcomeHash as Hex,
   costDisclosureHash: (row.costDisclosureHash as Hex | null) ?? null,
-  custodian: (row.custodian as Address | null) ?? null,
   fundingFees: row.fundingFees.toString(),
   settlementFees: row.settlementFees.toString(),
   createdAt: row.createdAt,
@@ -224,14 +221,9 @@ export const toDonationView = (row: DonationRow): DonationView => ({
   kind: row.kind as DonationKind,
   donor: (row.donor as Address | null) ?? null,
   donorRefHash: (row.donorRefHash as Hex | null) ?? null,
-  paymentRefHash: (row.paymentRefHash as Hex | null) ?? null,
   amount: row.amount.toString(),
   withdrawn: row.withdrawn.toString(),
-  gross: row.gross?.toString() ?? null,
-  fee: row.fee?.toString() ?? null,
-  currency: row.currency,
   receiptId: row.receiptId?.toString() ?? null,
-  attestationUID: (row.attestationUID as Hex | null) ?? null,
   conversion: toConversionView(row),
   txHash: row.txHash as Hex,
   timestamp: row.timestamp,

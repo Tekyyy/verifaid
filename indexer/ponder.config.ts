@@ -10,13 +10,12 @@ import {
   easAbi,
   getDeployment,
   needsRegistryAbi,
-  nonCustodialLedgerAbi,
   resolveNetwork,
   roleRegistryAbi,
   semaphoreAbi,
 } from '@poa/shared'
 import { createConfig, factory } from 'ponder'
-import { type Abi, parseAbiItem, zeroAddress } from 'viem'
+import { parseAbiItem, zeroAddress } from 'viem'
 
 /**
  * Addresses, schema UIDs and the start block all come from `deployments/<network>.json` through @poa/shared,
@@ -41,25 +40,8 @@ const forwarderFactory = contracts.DonationForwarderFactory ?? zeroAddress
  */
 const schemaUIDs = [...Object.values(schemas), ...Object.values(deployment.communitySchemas ?? {})]
 
-/**
- * Both ledger kinds (the custodial AidVault and the NonCustodialLedger) share the funding and tranche events,
- * so they are indexed as one contract with the union of both ABIs, deduplicated by signature.
- */
-const ledgerAbi = [
-  ...aidVaultAbi,
-  ...nonCustodialLedgerAbi.filter(
-    (item) =>
-      !aidVaultAbi.some(
-        (existing) =>
-          existing.type === item.type &&
-          'name' in existing &&
-          'name' in item &&
-          existing.name === item.name &&
-          JSON.stringify('inputs' in existing ? existing.inputs : []) ===
-            JSON.stringify('inputs' in item ? item.inputs : []),
-      ),
-  ),
-] as const satisfies Abi
+/** One vault is cloned per need; every vault is an AidVault. */
+const ledgerAbi = aidVaultAbi
 
 export default createConfig({
   chains: { [network]: { id: chainId, rpc } },
@@ -78,7 +60,7 @@ export default createConfig({
       chain: network,
       address: factory({
         address: contracts.AidVaultFactory,
-        event: parseAbiItem('event VaultCreated(uint256 indexed needId, address vault, uint8 custodyMode)'),
+        event: parseAbiItem('event VaultCreated(uint256 indexed needId, address vault)'),
         parameter: 'vault',
         startBlock,
       }),

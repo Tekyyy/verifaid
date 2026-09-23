@@ -65,13 +65,12 @@ export interface AlertWebhookBody {
     regionLabel: string
     country: string
     status: string
-    custodyMode: string
     targetAmount: string
     totalDonated: string
     totalReleased: string
     totalRefunded: string
   }
-  donation: { kind: string; amount: string; currency: string | null; receiptId: string | null } | null
+  donation: { kind: string; amount: string; receiptId: string | null } | null
   createdAt: string
 }
 
@@ -119,7 +118,6 @@ export const redactedText = (urls: Urls, subscriptionId: string | null, text: st
 const refLabel = (target: AlertTarget): string => {
   if (!target.trackingRef) return `need #${target.needId}`
   const kind = trackingRefKind(target.trackingRef)
-  if (kind === 'payment') return `donation ${shortHex(target.trackingRef)}`
   if (kind === 'deposit') return `deposit address ${shortHex(target.trackingRef, 4)}`
   return `donation #${target.trackingRef}`
 }
@@ -135,9 +133,7 @@ const needLines = (context: AlertContext): string[] => {
       `released to the NGO ${formatAmount(need.totalReleased)}`,
   ]
   if (donation) {
-    lines.push(
-      `This donation: ${formatAmount(donation.amount)}${donation.currency ? ` ${donation.currency}` : ''}`,
-    )
+    lines.push(`This donation: ${formatAmount(donation.amount)}`)
   }
   return lines
 }
@@ -250,7 +246,6 @@ export const milestoneWebhookBody = (
       regionLabel: need.regionLabel,
       country: need.country,
       status: need.status,
-      custodyMode: need.custodyMode,
       targetAmount: need.targetAmount,
       totalDonated: need.totalDonated,
       totalReleased: need.totalReleased,
@@ -260,7 +255,6 @@ export const milestoneWebhookBody = (
       ? {
           kind: donation.kind,
           amount: donation.amount,
-          currency: donation.currency,
           receiptId: donation.receiptId,
         }
       : null,

@@ -15,11 +15,10 @@ need's money and recommends starting with the first:
 - **Model B — conditional stablecoin.** The money itself sits in an on-chain escrow and moves only when the rules
   say so.
 
-The platform runs **Model B only: everything happens on chain.** No payment provider holds anyone's money. A card
-reaches a need through the Coinbase on-ramp, which buys USDC into the donor's own wallet before anything is given,
-so even a card payment arrives as a token. The contracts still contain Model A (a `NonCustodialLedger` and
-provider-attested deposits) from earlier releases, but nothing in the product can create or fund such a need
-anymore. `docs/DECISIONS.md` §20 explains why. `docs/GAP_PLAN.md` maps every item of the proposal to where it
+The platform runs **Model B only: everything happens on chain.** No payment provider holds anyone's money, and
+since v7 the contracts have no way for one to: every need's money is escrowed in its own vault. A card reaches a
+need through the Coinbase on-ramp, which buys USDC into the donor's own wallet before anything is given, so even a
+card payment arrives as a token. `docs/DECISIONS.md` §20 explains why. `docs/GAP_PLAN.md` maps every item of the proposal to where it
 lives in the code.
 
 | Requirement | Where it lives |

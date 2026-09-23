@@ -4,32 +4,22 @@ import { DONOR_STAGES, trackingRefKind } from '../src/api.js'
 import { createSessionToken, verifySessionToken, verifyWebhookSignature } from '../src/auth.js'
 import { hmac, open, openEnvelope, seal, sealEnvelope } from '../src/crypto.js'
 import { getDeployment, hasDeployment } from '../src/deployment.js'
-import {
-  categoryHash,
-  categoryLabel,
-  countryOf,
-  currencyLabel,
-  regionCode,
-  regionLabel,
-  saltedRefHash,
-} from '../src/format.js'
+import { categoryHash, categoryLabel, countryOf, regionCode, regionLabel } from '../src/format.js'
 import { AID_RECEIVED_MESSAGE, ROLES } from '../src/roles.js'
 import {
   computeSchemaUid,
   decodeSchemaData,
   encodeSchemaData,
-  type FundingRecordedData,
   SCHEMAS,
   type SettlementData,
 } from '../src/schemas.js'
-import { custodyModeName, needStatusName, SCHEMA_NAMES } from '../src/types.js'
+import { needStatusName, SCHEMA_NAMES } from '../src/types.js'
 
 describe('roles', () => {
   it('matches the identifiers in Roles.sol', () => {
     expect(ROLES.NGO).toBe(keccak256(stringToHex('NGO_ROLE')))
     expect(ROLES.VERIFIER).toBe(keccak256(stringToHex('VERIFIER_ROLE')))
     expect(ROLES.FIELD_AGENT).toBe(keccak256(stringToHex('FIELD_AGENT_ROLE')))
-    expect(ROLES.BANK_PARTNER).toBe(keccak256(stringToHex('BANK_PARTNER_ROLE')))
     expect(ROLES.DEFAULT_ADMIN).toBe(`0x${'00'.repeat(32)}`)
   })
 
@@ -71,7 +61,7 @@ describe('schemas', () => {
 
   it.runIf(hasDeployment('anvil'))('derives the same schema UIDs the SchemaRegistry assigned', () => {
     const deployment = getDeployment('anvil')
-    // one resolver serves all six schemas
+    // one resolver serves all five schemas
     const resolver = deployment.contracts.ProofOfAidResolver
     for (const name of SCHEMA_NAMES) {
       const definition = SCHEMAS[name]
@@ -81,20 +71,7 @@ describe('schemas', () => {
     }
   })
 
-  it('encodes FundingRecorded and Settlement payloads', () => {
-    const funding = encodeSchemaData('FundingRecorded', [
-      3n,
-      1025_000000n,
-      25_000000n,
-      1000_000000n,
-      regionCode('EUR'),
-      keccak256(stringToHex('payment')),
-      keccak256(stringToHex('donor')),
-    ])
-    const decoded = decodeSchemaData<FundingRecordedData>('FundingRecorded', funding)
-    expect(decoded[1] - decoded[2]).toBe(decoded[3])
-    expect(currencyLabel(decoded[4])).toBe('EUR')
-
+  it('encodes Settlement payloads', () => {
     const settlement = encodeSchemaData('Settlement', [
       3n,
       0n,
@@ -109,9 +86,11 @@ describe('schemas', () => {
 })
 
 describe('tracking references', () => {
-  it('tells receipt ids from payment reference hashes', () => {
+  it('tells receipt ids from deposit addresses, and refuses anything else', () => {
     expect(trackingRefKind('12')).toBe('receipt')
-    expect(trackingRefKind(keccak256(stringToHex('payment')))).toBe('payment')
+    expect(trackingRefKind('0x5ce1a0de9f7b2c4d6e8f0a1b3c5d7e9f2a4b6c8d')).toBe('deposit')
+    // a 32-byte hash was a payment reference; nothing issues those any more
+    expect(trackingRefKind(keccak256(stringToHex('payment')))).toBeNull()
     expect(trackingRefKind('0')).toBeNull()
     expect(trackingRefKind('0x1234')).toBeNull()
     expect(trackingRefKind('../etc/passwd')).toBeNull()
@@ -121,7 +100,6 @@ describe('tracking references', () => {
     expect(DONOR_STAGES).toEqual(['Verified', 'Funded', 'Settled', 'Delivered', 'ImpactConfirmed'])
     expect(countryOf('ES-CM')).toBe('ES')
     expect(needStatusName(7)).toBe('Expired')
-    expect(custodyModeName(1)).toBe('OffChain')
   })
 })
 
@@ -135,13 +113,6 @@ describe('formatting', () => {
   it('labels known categories and falls back for unknown ones', () => {
     expect(categoryLabel(categoryHash('FOOD'))).toBe('FOOD')
     expect(categoryLabel(keccak256(stringToHex('SOMETHING_ELSE')))).toContain('…')
-  })
-
-  it('salts fiat references exactly like abi.encode(bytes32,string)', () => {
-    const salt = keccak256(stringToHex('partner-salt'))
-    // verified against: cast keccak $(cast abi-encode "f(bytes32,string)" <salt> "SEPA-E2E-0001")
-    expect(saltedRefHash(salt, 'SEPA-E2E-0001')).toMatch(/^0x[0-9a-f]{64}$/)
-    expect(saltedRefHash(salt, 'SEPA-E2E-0001')).not.toBe(saltedRefHash(salt, 'SEPA-E2E-0002'))
   })
 })
 

@@ -36,10 +36,6 @@ export const timelineTitle = (row: TimelineRow): string => {
       return 'A verification was revoked'
     case 'Donated':
       return `Donation of ${amount(data, 'amount')}`
-    case 'DonatedOnBehalf':
-      return `Bank or card donation of ${amount(data, 'amount')} deposited`
-    case 'FundingRecorded':
-      return `Payment of ${amount(data, 'net')} recorded by the payment provider (fee ${amount(data, 'fee')})`
     case 'FundingClosed':
       return `Funding closed at ${amount(data, 'totalDonated')}`
     case 'TrancheReleasable':

@@ -40,23 +40,6 @@ ponder.on('RoleRegistry:VerifierRemoved', async ({ event, context }) => {
   await context.db.update(schema.roleAccount, { address: event.args.verifier }).set({ active: false })
 })
 
-ponder.on('RoleRegistry:BankPartnerRegistered', async ({ event, context }) => {
-  await context.db
-    .insert(schema.roleAccount)
-    .values({
-      address: event.args.partner,
-      role: 'BANK_PARTNER',
-      ngo: null,
-      active: true,
-      registeredAt: seconds(event),
-    })
-    .onConflictDoUpdate({ active: true })
-})
-
-ponder.on('RoleRegistry:BankPartnerRemoved', async ({ event, context }) => {
-  await context.db.update(schema.roleAccount, { address: event.args.partner }).set({ active: false })
-})
-
 ponder.on('RoleRegistry:FieldAgentAdded', async ({ event, context }) => {
   await context.db
     .insert(schema.roleAccount)

@@ -307,11 +307,9 @@ gets stuck between the two.*
   browser. The panel only offers for donation the USDC that arrived on top of the balance recorded before the
   purchase, so money the donor already held is never presented as if it had just been bought.
 - **Residual risk.** Coinbase decides who may buy, where and how much; a donor it refuses has no card path here at
-  all. A donor who buys and never taps "donate" simply keeps the USDC — nothing is lost, but nothing is given. The
-  deployed contracts still contain the retired provider paths (`donateOnBehalf`, `NonCustodialLedger`); they are
-  reachable only by an address holding the bank-partner role. The seed no longer assigns it, but on v6 the
-  demo payment-provider key still holds it from the original seed; revoking it (`RoleRegistry.removeBankPartner`)
-  closes those paths on chain until a redeploy drops them.
+  all. A donor who buys and never taps "donate" simply keeps the USDC — nothing is lost, but nothing is given. Since v7
+  the contracts have no provider path at all: no role can deposit on a donor's behalf or attest funding, and every
+  need's money is in its own vault.
 
 ### 3.10 GDPR versus immutability
 

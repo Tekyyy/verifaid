@@ -20,7 +20,6 @@ const ALLOWED = [
   /^impact\/summary$/,
   /^programs\/[^/]+\/members$/,
   /^programs$/,
-  /^providers$/,
   /^supplier-applications$/,
   /^suppliers$/,
   /^suppliers\/0x[a-fA-F0-9]{40}$/,

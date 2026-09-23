@@ -99,7 +99,6 @@ export const renderTaxReceipt = async (input: TaxReceiptInput): Promise<Uint8Arr
   const receiptId = donation.receiptId ?? track.ref
   const assessment = assessDonation(track)
   const regime = assessment.kind === 'none' ? null : assessment.regime
-  const cash = track.refKind === 'payment'
   const done = assessment.kind === 'deductible' ? assessment : null
 
   const report = await PdfReport.create({
@@ -119,15 +118,8 @@ export const renderTaxReceipt = async (input: TaxReceiptInput): Promise<Uint8Arr
     ['Donor address', donorAddress || '(not stated)'],
     ['Date of contribution', date],
     ['Amount', `${amount(donation.amount)} ${unit}`],
-    [
-      'Form of contribution',
-      cash
-        ? `Money paid by card or bank transfer through a payment provider, credited to the need as ${unit}`
-        : `${unit} (a digital asset), transferred on-chain`,
-    ],
-    ...(cash
-      ? ([['Payment reference', track.ref]] as [string, string][])
-      : ([['Donor wallet (holds the receipt)', donation.donor ?? '-']] as [string, string][])),
+    ['Form of contribution', `${unit} (a digital asset), transferred on-chain`],
+    ['Donor wallet (holds the receipt)', donation.donor ?? '-'],
     ['Transferred to', track.need.vault ?? '-'],
     ['Transaction', donation.txHash],
     ['Need', `#${track.need.id} - ${track.need.categoryLabel}, ${track.need.regionLabel}`],
@@ -182,7 +174,7 @@ export const renderTaxReceipt = async (input: TaxReceiptInput): Promise<Uint8Arr
   if (regime === 'SG_IPC') {
     renderSingapore(report, assessment, donation.timestamp, ack, input.explorerAttestationUrl)
   } else {
-    renderUnitedStates(report, { cash, regime, ack, explorerAttestationUrl: input.explorerAttestationUrl })
+    renderUnitedStates(report, { regime, ack, explorerAttestationUrl: input.explorerAttestationUrl })
   }
 
   report.heading('How to verify every figure above')
@@ -259,7 +251,6 @@ export const renderTaxReceipt = async (input: TaxReceiptInput): Promise<Uint8Arr
 const renderUnitedStates = (
   report: PdfReport,
   input: {
-    cash: boolean
     regime: 'US_501C3' | null
     ack: DonationTrack['acknowledgment']
     explorerAttestationUrl: string | null
@@ -290,23 +281,15 @@ const renderUnitedStates = (
   if (!input.regime) return
 
   report.heading('What your accountant will ask (United States)')
-  if (input.cash) {
-    report.paragraph(
-      'This is a cash contribution: money paid by card or bank transfer. Keep this document together with ' +
-        'the card or bank statement that shows the payment. From tax year 2026 a donor who does not itemize ' +
-        'can still deduct up to 1,000 US dollars (2,000 filing jointly) of cash contributions to public ' +
-        'charities; a donor who itemizes deducts it on Schedule A.',
-    )
-  } else {
-    report.paragraph(
-      'A donation of a digital asset is a non-cash contribution of property. Above 500 US dollars it is ' +
-        'reported on Form 8283, Section A. Above 5,000 US dollars the IRS has required a qualified appraisal ' +
-        'and a donee signature on Form 8283, Section B; an exchange price is not a substitute for one. The ' +
-        'deductible amount depends on how long you held the asset and on your basis in it, neither of which ' +
-        'is recorded here. A non-cash contribution is not covered by the deduction for donors who do not ' +
-        'itemize.',
-    )
-  }
+  report.paragraph(
+    'A donation of a digital asset is a non-cash contribution of property, including when the asset was bought ' +
+      'by card moments before: the card bought USDC, and the USDC was given. Above 500 US dollars it is ' +
+      'reported on Form 8283, Section A. Above 5,000 US dollars the IRS has required a qualified appraisal ' +
+      'and a donee signature on Form 8283, Section B; an exchange price is not a substitute for one. The ' +
+      'deductible amount depends on how long you held the asset and on your basis in it, neither of which is ' +
+      'recorded here; USDC bought just before giving was held briefly, and its basis is what you paid for it. ' +
+      'A non-cash contribution is not covered by the deduction for donors who do not itemize.',
+  )
 }
 
 const renderSingapore = (

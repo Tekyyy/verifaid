@@ -2,8 +2,6 @@ import {
   AID_RECEIVED_MESSAGE,
   aidVaultAbi,
   beneficiaryGroupsAbi,
-  CUSTODY_MODE,
-  type CustodyMode,
   categoryHash,
   conversionRouterAbi,
   deliveryManagerAbi,
@@ -75,7 +73,6 @@ interface NeedSpec {
   category: string
   target: bigint
   trancheBps: number[]
-  custodyMode: CustodyMode
   minFundingBps: number
   thirdPartyCostBps: number
   fundingWindowSeconds: number
@@ -132,23 +129,22 @@ const main = async (): Promise<void> => {
   console.log('')
 }
 
-// ─── scenario 1: on-chain custody (Model B) ───────────────────────────────────
+// ─── scenario 1: escrow ───────────────────────────────────────────────────────
 
 const onChainScenario = async (ctx: DemoContext, programId: bigint, proofs: Proofs): Promise<string[]> => {
-  heading('1 · On-chain custody: escrowed stablecoin, released tranche by tranche')
+  heading('1 · Escrow: stablecoin held by the vault, released tranche by tranche')
   const spec: NeedSpec = {
     label: 'winter food kits',
     category: 'FOOD',
     target: 6_000_000_000n, // below the high-value threshold, so one verifier suffices
     trancheBps: [3000, 4000, 3000],
-    custodyMode: 'OnChain',
     minFundingBps: 6000,
     thirdPartyCostBps: 150,
     fundingWindowSeconds: 30 * 86_400,
     executionWindowSeconds: 120 * 86_400,
     outcome: '400 families receive winter food kits in ES-CM; partial funding scales kits pro rata above 60%',
   }
-  const needId = await createNeed(ctx, programId, spec, zeroAddress)
+  const needId = await createNeed(ctx, programId, spec)
   const vault = await verifyNeed(ctx, needId)
 
   step('Donations: a wallet donor, and a card donor through the Coinbase on-ramp')
@@ -175,7 +171,7 @@ const onChainScenario = async (ctx: DemoContext, programId: bigint, proofs: Proo
   ]
 }
 
-// ─── scenario 5: idle capital ─────────────────────────────────────────────────
+// ─── scenario 4: idle capital ─────────────────────────────────────────────────
 
 /**
  * The case this exists for: a programme whose deliveries run for months, holding money nobody can spend yet.
@@ -184,21 +180,20 @@ const onChainScenario = async (ctx: DemoContext, programId: bigint, proofs: Proo
  * over only at the end. What a donor gave stays what a donor is owed throughout.
  */
 const idleScenario = async (ctx: DemoContext, programId: bigint, proofs: Proofs): Promise<string[]> => {
-  heading('5 · Idle capital: committed money earns while it waits for a delivery')
+  heading('4 · Idle capital: committed money earns while it waits for a delivery')
   const venue = ctx.deployment.external.YieldVenue as Address
   const spec: NeedSpec = {
     label: 'boreholes over two dry seasons',
     category: 'WATER',
     target: 4_000_000_000n,
     trancheBps: [2000, 4000, 4000],
-    custodyMode: 'OnChain',
     minFundingBps: 6000,
     thirdPartyCostBps: 0,
     fundingWindowSeconds: 30 * 86_400,
     executionWindowSeconds: 180 * 86_400,
     outcome: '6 boreholes drilled and handed over in ES-CM across two dry seasons',
   }
-  const needId = await createNeed(ctx, programId, spec, zeroAddress)
+  const needId = await createNeed(ctx, programId, spec)
 
   step('The NGO opts the need in — only possible now, before it can take a single donation')
   const optIn = await send(ctx, 'ngo', {
@@ -304,10 +299,10 @@ const idleScenario = async (ctx: DemoContext, programId: bigint, proofs: Proofs)
   return [`need ${needId} (idle capital): ${ctx.dashboardUrl}/en/needs/${needId}`]
 }
 
-// ─── scenario 3: expiry below the minimum ─────────────────────────────────────
+// ─── scenario 2: expiry below the minimum ─────────────────────────────────────
 
 const expiryScenario = async (ctx: DemoContext, programId: bigint): Promise<string[]> => {
-  heading('3 · A deadline passes below the minimum: the need expires and donors get their money back')
+  heading('2 · A deadline passes below the minimum: the need expires and donors get their money back')
   // Long enough to verify and donate before it passes on a public testnet, short enough to wait for.
   const window = ctx.isLocal ? 3_600 : 150
   const spec: NeedSpec = {
@@ -315,14 +310,13 @@ const expiryScenario = async (ctx: DemoContext, programId: bigint): Promise<stri
     category: 'EDUCATION',
     target: 5_000_000_000n,
     trancheBps: [5000, 5000],
-    custodyMode: 'OnChain',
     minFundingBps: 5000,
     thirdPartyCostBps: 0,
     fundingWindowSeconds: window,
     executionWindowSeconds: window * 20,
     outcome: 'school supplies for 200 pupils; all or nothing below 50%',
   }
-  const needId = await createNeed(ctx, programId, spec, zeroAddress)
+  const needId = await createNeed(ctx, programId, spec)
   const vault = await verifyNeed(ctx, needId)
 
   step('Only 20% is raised before the funding deadline')
@@ -357,10 +351,10 @@ const expiryScenario = async (ctx: DemoContext, programId: bigint): Promise<stri
   ]
 }
 
-// ─── scenario 4: conversions (v3) ─────────────────────────────────────────────
+// ─── scenario 3: conversions (v3) ─────────────────────────────────────────────
 
 const conversionScenario = async (ctx: DemoContext, programId: bigint): Promise<string[]> => {
-  heading('4 · Full blockchain mode: card-bought USDC as it is, euros and ETH converted on-chain')
+  heading('3 · Full blockchain mode: card-bought USDC as it is, euros and ETH converted on-chain')
   const factory = ctx.deployment.contracts.DonationForwarderFactory as Address
   const router = ctx.deployment.contracts.ConversionRouter as Address
   const usdc = ctx.deployment.external.USDC as Address
@@ -374,7 +368,6 @@ const conversionScenario = async (ctx: DemoContext, programId: bigint): Promise<
     category: 'WATER',
     target: 4_000_000_000n,
     trancheBps: [5000, 5000],
-    custodyMode: 'OnChain',
     minFundingBps: 10_000,
     // Swaps cost something (pool fee, price impact): the NGO discloses it and the contract caps it.
     thirdPartyCostBps: 150,
@@ -382,7 +375,7 @@ const conversionScenario = async (ctx: DemoContext, programId: bigint): Promise<
     executionWindowSeconds: 90 * 86_400,
     outcome: 'water purification tablets for 1 000 households; all or nothing',
   }
-  const needId = await createNeed(ctx, programId, spec, zeroAddress)
+  const needId = await createNeed(ctx, programId, spec)
   const vault = await verifyNeed(ctx, needId)
   const quote = (tokenIn: Address, amountIn: bigint) =>
     ctx.publicClient.readContract({
@@ -603,16 +596,11 @@ const resolveProgram = async (ctx: DemoContext, expectedRoot: bigint): Promise<b
   )
 }
 
-const createNeed = async (
-  ctx: DemoContext,
-  programId: bigint,
-  spec: NeedSpec,
-  custodian: Address,
-): Promise<bigint> => {
+const createNeed = async (ctx: DemoContext, programId: bigint, spec: NeedSpec): Promise<bigint> => {
   step(`NGO registers a need: ${spec.label}`)
   const now = await chainTime(ctx)
   const dossierHash = keccak256(stringToHex(`demo-dossier-${spec.category}-${Date.now()}`))
-  const costDisclosure = `Card and bank processing, FX and payout fees for ${spec.label}, capped by contract`
+  const costDisclosure = `Conversion and payout costs for ${spec.label}, capped by contract`
   const params = {
     programId,
     category: categoryHash(spec.category),
@@ -622,15 +610,13 @@ const createNeed = async (
     metadataURI: `ipfs://demo-need-${spec.category.toLowerCase()}`,
     verificationsRequired: 1,
     trancheBps: spec.trancheBps,
-    custodyMode: CUSTODY_MODE.indexOf(spec.custodyMode),
-    custodian,
     fundingDeadline: now + BigInt(spec.fundingWindowSeconds),
     executionDeadline: now + BigInt(spec.executionWindowSeconds),
     minFundingBps: spec.minFundingBps,
     thirdPartyCostBps: spec.thirdPartyCostBps,
     expectedOutcomeHash: keccak256(stringToHex(spec.outcome)),
     costDisclosureHash: spec.thirdPartyCostBps === 0 ? zeroHash : keccak256(stringToHex(costDisclosure)),
-    payees: spec.custodyMode === 'OnChain' ? paymentPlan(ctx, spec.trancheBps.length) : [],
+    payees: paymentPlan(ctx, spec.trancheBps.length),
   }
   const { hash, receipt } = await send(ctx, 'ngo', {
     address: ctx.deployment.contracts.NeedsRegistry,
@@ -640,10 +626,6 @@ const createNeed = async (
   })
   const needId = eventArg<bigint>(receipt, needsRegistryAbi as Abi, 'NeedCreated', 'needId')
   info('need', needId.toString())
-  info(
-    'custody',
-    spec.custodyMode === 'OnChain' ? 'on-chain vault (Model B)' : `payment provider ${custodian} (Model A)`,
-  )
   info(
     'target',
     `${formatAmount(spec.target)} units, tranches ${spec.trancheBps.map((b) => b / 100).join(' / ')}%`,

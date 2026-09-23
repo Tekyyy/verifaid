@@ -6,7 +6,6 @@ import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { type Address, type Hex, keccak256, toHex } from 'viem'
 import { useReadContract } from 'wagmi'
-import { CustodyBadge } from '@/components/CustodyBadge'
 import { Deadline } from '@/components/Deadline'
 import { FormError, TextField } from '@/components/form'
 import { EmptyState, MissingDeployment } from '@/components/Notice'
@@ -167,17 +166,6 @@ function NeedTerms({ need }: { need: NeedSummary }) {
   const tTerms = useTranslations('terms')
   return (
     <dl className="grid gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
-      <div className="flex flex-wrap items-center gap-1 sm:col-span-2">
-        <dt className="sr-only">{tTerms('custody')}</dt>
-        <dd>
-          <CustodyBadge mode={need.custodyMode} />
-        </dd>
-        {need.custodian ? (
-          <dd className="font-mono text-slate-700" title={need.custodian}>
-            {shorten(need.custodian)}
-          </dd>
-        ) : null}
-      </div>
       <div className="flex flex-wrap gap-1">
         <dt className="text-slate-600">{tTerms('fundingDeadline')}</dt>
         <dd>

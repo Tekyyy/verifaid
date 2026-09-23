@@ -1,4 +1,4 @@
-import type { DonationTrack, OrgTaxStatusView, TrackingRefKind } from '@poa/shared'
+import type { DonationTrack, OrgTaxStatusView } from '@poa/shared'
 
 /**
  * When a donation to a need can be deducted, and in which country. Two regimes are modelled, and only when the
@@ -60,10 +60,6 @@ export const eligibleChannels = (regime: TaxRegime | null): readonly DonationCha
 export const isEligible = (status: OrgTaxStatusView | null | undefined, channel: DonationChannel): boolean =>
   eligibleChannels(regimeOf(status)).includes(channel)
 
-/** A payment reference is money a provider took by card or bank; receipts and deposit addresses are tokens. */
-export const channelOfRef = (kind: TrackingRefKind): DonationChannel =>
-  kind === 'payment' ? 'cash' : 'digital'
-
 /** IRAS has allowed 250% on qualifying donations since 2016; the current extension ends on 31 Dec 2026. */
 const SG_ENHANCED_UNTIL = Date.UTC(2027, 0, 1) / 1000
 
@@ -93,7 +89,7 @@ export type DeductionAssessment =
       taxYear: number
     }
 
-type AssessInput = Pick<DonationTrack, 'refKind' | 'donation' | 'stages' | 'outcome' | 'releasedToNgo'> & {
+type AssessInput = Pick<DonationTrack, 'donation' | 'stages' | 'outcome' | 'releasedToNgo'> & {
   need: Pick<DonationTrack['need'], 'taxStatus'>
 }
 
@@ -107,7 +103,8 @@ const RETURNING: readonly DonationTrack['outcome'][] = ['Refundable', 'Refunded'
 export const assessDonation = (track: AssessInput): DeductionAssessment => {
   const regime = regimeOf(track.need.taxStatus)
   if (!regime) return { kind: 'none' }
-  const channel = channelOfRef(track.refKind)
+  // Every donation arrives as a token — a card buys USDC first — so the digital channel is the only one there is.
+  const channel: DonationChannel = 'digital'
   if (!eligibleChannels(regime).includes(channel)) return { kind: 'channel', regime, channel }
 
   const funded = track.stages.find((stage) => stage.stage === 'Funded')

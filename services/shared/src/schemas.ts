@@ -15,14 +15,15 @@ export interface SchemaDefinition {
   revocable: boolean
   /**
    * Which contract must be the attestation recipient — never a person (spec §6). `Ledger` is the need's
-   * AidVault (on-chain custody) or NonCustodialLedger (off-chain custody): whatever `vaultOf(needId)` returns.
+   * AidVault: whatever `vaultOf(needId)` returns.
    */
   recipient: 'NeedsRegistry' | 'DeliveryManager' | 'Ledger'
 }
 
 /**
- * The six schemas of the system, exactly as registered by RegisterSchemas.s.sol against the single
- * ProofOfAidResolver. Amounts are in the need's stablecoin base units; `currency` is what a donor paid in.
+ * The five schemas of the system, exactly as registered by RegisterSchemas.s.sol against the single
+ * ProofOfAidResolver. Amounts are in the need's stablecoin base units. Money arrives on chain, so no schema
+ * vouches for a payment.
  */
 export const SCHEMAS: Record<SchemaName, SchemaDefinition> = {
   NeedVerified: {
@@ -30,13 +31,6 @@ export const SCHEMAS: Record<SchemaName, SchemaDefinition> = {
     schema: 'uint256 needId,bytes32 dossierHash,bool approved,bytes32 reportHash',
     revocable: true,
     recipient: 'NeedsRegistry',
-  },
-  FundingRecorded: {
-    name: 'FundingRecorded',
-    schema:
-      'uint256 needId,uint256 gross,uint256 fee,uint256 net,bytes32 currency,bytes32 paymentRefHash,bytes32 donorRefHash',
-    revocable: false,
-    recipient: 'Ledger',
   },
   DeliveryEvidence: {
     name: 'DeliveryEvidence',
@@ -205,15 +199,6 @@ export type DeliveryEvidenceData = readonly [
   regionCode: Hex,
 ]
 export type DeliveryVerifiedData = readonly [deliveryId: bigint, approved: boolean, reportHash: Hex]
-export type FundingRecordedData = readonly [
-  needId: bigint,
-  gross: bigint,
-  fee: bigint,
-  net: bigint,
-  currency: Hex,
-  paymentRefHash: Hex,
-  donorRefHash: Hex,
-]
 export type SettlementData = readonly [
   needId: bigint,
   trancheIndex: bigint,

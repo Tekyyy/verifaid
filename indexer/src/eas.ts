@@ -2,12 +2,10 @@ import { ponder } from 'ponder:registry'
 import schema from 'ponder:schema'
 import {
   type CommunitySchemaName,
-  currencyLabel,
   type DeliveryEvidenceData,
   type DeliveryVerifiedData,
   decodeSchemaData,
   easAbi,
-  type FundingRecordedData,
   getDeployment,
   type ImpactReportData,
   type NeedVerifiedData,
@@ -17,13 +15,12 @@ import {
   type SettlementData,
   schemaToAbiParameters,
 } from '@poa/shared'
-import { and, eq } from 'ponder'
 import type { Hex } from 'viem'
 import { recordCommunityAttestation, revokeCommunityAttestation } from './community.js'
 import { appendTimeline, seconds } from './lib/timeline.js'
 
 /**
- * EAS attestations are the evidence layer: they are what verifiers, field agents, payment providers and NGOs sign.
+ * EAS attestations are the evidence layer: they are what verifiers, field agents and NGOs sign.
  * The `Attested` log only carries the uid and the schema, so the payload is read back with `getAttestation`
  * and decoded with the same schema definitions the attesting code used (@poa/shared).
  *
@@ -129,31 +126,6 @@ ponder.on('EAS:Attested', async ({ event, context }) => {
       const [id] = values as DeliveryVerifiedData
       deliveryId = id
       needId = (await context.db.find(schema.delivery, { id }))?.needId ?? null
-      break
-    }
-    case 'FundingRecorded': {
-      const [id, gross, fee, , currency, paymentRefHash] = values as FundingRecordedData
-      needId = id
-      // On-chain custody: links the attestation to the DonatedOnBehalf deposit it vouches for, which happened
-      // in an earlier transaction. Off-chain custody: the ledger's FundingRecorded event later in this same
-      // transaction creates the donation row and reads this attestation back (see ledger.ts).
-      const [match] = await context.db.sql
-        .select({ id: schema.donation.id })
-        .from(schema.donation)
-        .where(
-          and(
-            eq(schema.donation.paymentRefHash, paymentRefHash),
-            eq(schema.donation.partner, event.args.attester),
-            eq(schema.donation.kind, 'FIAT'),
-          ),
-        )
-        .limit(1)
-      if (match) {
-        await context.db
-          .update(schema.donation, { id: match.id })
-          .set({ attestationUID: event.args.uid, gross, fee, currency: currencyLabel(currency) })
-        await context.db.update(schema.need, { id }).set((row) => ({ fundingFees: row.fundingFees + fee }))
-      }
       break
     }
     case 'Settlement': {

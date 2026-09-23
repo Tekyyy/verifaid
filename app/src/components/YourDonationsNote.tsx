@@ -27,7 +27,7 @@ export function YourDonationsNote({ need }: { need: NeedDetail }) {
     (sum, donation) => (donation.receiptId !== null ? sum + BigInt(donation.amount) : sum),
     0n,
   )
-  const open = need.status === 'Funding' && need.custodyMode === 'OnChain' && need.vault !== null
+  const open = need.status === 'Funding' && need.vault !== null
 
   if (!mounted || total === 0n) return null
 

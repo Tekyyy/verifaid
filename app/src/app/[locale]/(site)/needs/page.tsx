@@ -1,4 +1,4 @@
-import { CUSTODY_MODE, type CustodyMode, NEED_SORTS, type NeedSort } from '@poa/shared'
+import { NEED_SORTS, type NeedSort } from '@poa/shared'
 import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
 import { NeedCard } from '@/components/NeedCard'
@@ -37,17 +37,11 @@ export default async function NeedsPage({
     category: single(searchParams.category),
     region: single(searchParams.region),
     country: country && /^[A-Z]{2}$/.test(country) ? country : undefined,
-    custody: oneOf<CustodyMode>(CUSTODY_MODE, single(searchParams.custody)),
     open: single(searchParams.open) === 'true',
     sort: oneOf<NeedSort>(NEED_SORTS, single(searchParams.sort)),
   }
   const narrowed = Boolean(
-    filters.status ||
-      filters.category ||
-      filters.region ||
-      filters.country ||
-      filters.custody ||
-      filters.open,
+    filters.status || filters.category || filters.region || filters.country || filters.open,
   )
 
   // Country options come from every need, not just the filtered page, so picking one never hides the others.

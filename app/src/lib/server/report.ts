@@ -15,11 +15,6 @@ const UNIT = deployment ? vaultCurrency(deployment).symbol : 'USDC'
 const money = (value: string | bigint | null | undefined): string =>
   value === null || value === undefined ? '-' : `${amount(value)} ${UNIT}`
 
-const CUSTODY_LABEL = {
-  OnChain: 'Model B - on-chain escrow (AidVault)',
-  OffChain: 'Model A - payment provider custody (NonCustodialLedger)',
-} as const
-
 const deadline = (seconds: number | null, none: string): string => (seconds ? timestamp(seconds) : none)
 
 const eventDetails = (event: TimelineEvent): string =>
@@ -51,7 +46,7 @@ export const renderNeedReport = async (need: NeedDetail, timeline: TimelineEvent
     ['ProofOfAidResolver', deployment?.contracts.ProofOfAidResolver],
     ['EAS', deployment?.external.EAS],
     ['Stablecoin', deployment?.external.Token],
-    [need.custodyMode === 'OffChain' ? 'Ledger (non-custodial)' : 'Vault', need.vault],
+    ['Vault', need.vault],
     ['NGO', need.ngo],
   ])
 
@@ -69,10 +64,7 @@ export const renderNeedReport = async (need: NeedDetail, timeline: TimelineEvent
 
   report.heading('Terms committed at creation')
   report.keyValues([
-    ['Custody', CUSTODY_LABEL[need.custodyMode]],
-    ...(need.custodyMode === 'OffChain'
-      ? ([['Custodian', need.custodian]] as [string, string | null][])
-      : []),
+    ['Custody', "On-chain escrow in the need's own vault"],
     ['Funding deadline', deadline(need.fundingDeadline, 'Open-ended')],
     ['Execution deadline', deadline(need.executionDeadline, 'None')],
     [
@@ -149,16 +141,20 @@ export const renderNeedReport = async (need: NeedDetail, timeline: TimelineEvent
     [
       { header: 'Kind', width: 0.09 },
       { header: 'Counted', width: 0.12, align: 'right' },
-      { header: 'Paid / fee', width: 0.15, align: 'right' },
-      { header: 'Receipt / payment ref', width: 0.2, mono: true },
+      { header: 'Conversion cost', width: 0.15, align: 'right' },
+      { header: 'Receipt / deposit address', width: 0.2, mono: true },
       { header: 'Transaction', width: 0.29, mono: true },
       { header: 'When', width: 0.15 },
     ],
     need.donations.map((donation) => [
       donation.kind,
       amount(donation.amount),
-      donation.gross === null ? null : `${amount(donation.gross)} / ${amount(donation.fee ?? '0')}`,
-      donation.receiptId ? `#${donation.receiptId}` : donation.paymentRefHash,
+      donation.conversion ? amount(donation.conversion.conversionFee) : null,
+      donation.receiptId
+        ? `#${donation.receiptId}`
+        : donation.conversion?.viaDepositAddress
+          ? donation.conversion.via
+          : null,
       donation.txHash,
       timestamp(donation.timestamp),
     ]),

@@ -1,5 +1,4 @@
 import type {
-  CustodyMode,
   DeliveryView,
   DepositAddressView,
   DonationTrack,
@@ -10,7 +9,6 @@ import type {
   NeedSummary,
   ProgramMembersResponse,
   ProgramView,
-  ProviderView,
   SupplierApplicationView,
   SupplierDetail,
   SupplierView,
@@ -75,7 +73,6 @@ export interface NeedFilters {
   region?: string
   /** ISO 3166-1 alpha-2, e.g. "ES". */
   country?: string
-  custody?: CustodyMode
   /** Only needs that accept money right now. */
   open?: boolean
   sort?: NeedSort
@@ -87,7 +84,6 @@ const query = (filters: NeedFilters): string => {
   if (filters.category) params.set('category', filters.category)
   if (filters.region) params.set('region', filters.region)
   if (filters.country) params.set('country', filters.country)
-  if (filters.custody) params.set('custody', filters.custody)
   if (filters.open) params.set('open', 'true')
   if (filters.sort) params.set('sort', filters.sort)
   const serialized = params.toString()
@@ -137,9 +133,6 @@ export const getDepositAddress = async (address: string): Promise<Result<Deposit
   useFixtures
     ? fixtures.depositAddress(address)
     : get<DepositAddressView>(`/deposits/${encodeURIComponent(address)}`)
-
-export const getProviders = async (): Promise<Result<ProviderView[]>> =>
-  useFixtures ? { ok: true, data: fixtures.providers } : get<ProviderView[]>('/providers')
 
 /** Suppliers that asked to be registered: a public queue an admin acts on, not a role. */
 export const getSupplierApplications = async (): Promise<Result<SupplierApplicationView[]>> =>

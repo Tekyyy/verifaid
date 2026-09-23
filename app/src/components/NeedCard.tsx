@@ -1,6 +1,5 @@
 import type { NeedSummary } from '@poa/shared'
 import { useTranslations } from 'next-intl'
-import { CustodyBadge } from '@/components/CustodyBadge'
 import { Deadline } from '@/components/Deadline'
 import { NeedBadgeRow } from '@/components/NeedBadgeRow'
 import { ProgressBar } from '@/components/ProgressBar'
@@ -86,7 +85,6 @@ export function NeedCard({ need }: { need: NeedSummary }) {
         ) : null}
 
         <div className="mt-auto space-y-1 border-t border-slate-100 pt-3 text-xs text-slate-600">
-          <CustodyBadge mode={need.custodyMode} />
           {need.status === 'Funding' || need.status === 'Pending' ? (
             <p>
               <span>{tTerms('fundingDeadline')}: </span>

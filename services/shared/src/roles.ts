@@ -7,7 +7,6 @@ export const ROLES = {
   NGO: keccak256(toHex('NGO_ROLE')),
   VERIFIER: keccak256(toHex('VERIFIER_ROLE')),
   FIELD_AGENT: keccak256(toHex('FIELD_AGENT_ROLE')),
-  BANK_PARTNER: keccak256(toHex('BANK_PARTNER_ROLE')),
 } as const
 
 export type RoleName = keyof typeof ROLES

@@ -2,7 +2,6 @@ import type { NeedStatus } from '@poa/shared'
 import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
 import { CardOnrampPanel } from '@/components/CardOnrampPanel'
-import { CustodyBadge } from '@/components/CustodyBadge'
 import { DeliveryCard } from '@/components/DeliveryCard'
 import { DepositAddressPanel } from '@/components/DepositAddressPanel'
 import { DonatePanel } from '@/components/DonatePanel'
@@ -74,8 +73,7 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
     (EXPIRABLE_AFTER_FUNDING.includes(data.status) && passed(data.executionDeadline))
   const fundingOpen =
     data.status === 'Funding' && !passed(data.fundingDeadline) && !passed(data.executionDeadline)
-  const refundable =
-    data.custodyMode === 'OnChain' && (data.status === 'Cancelled' || data.status === 'Expired')
+  const refundable = data.status === 'Cancelled' || data.status === 'Expired'
 
   return (
     <div className="space-y-8">
@@ -100,7 +98,6 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <CustodyBadge mode={data.custodyMode} />
           <NeedStatusBadge status={data.status} />
           <NeedBadgeRow badges={data.badges} taxStatus={data.taxStatus} className="w-full justify-end" />
         </div>
@@ -131,9 +128,7 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-600">
-                  {data.custodyMode === 'OffChain' ? t('ledger') : t('vault')}
-                </dt>
+                <dt className="text-slate-600">{t('vault')}</dt>
                 <dd>
                   <ExplorerLink kind="address" value={data.vault} />
                 </dd>
@@ -242,22 +237,20 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
 
           {fundingOpen ? <TaxDeductionNotice taxStatus={data.taxStatus} /> : null}
 
-          {data.custodyMode === 'OnChain' ? (
-            <DonatePanel
-              needId={data.id}
-              vault={data.vault}
-              fundingOpen={fundingOpen}
-              targetAmount={data.targetAmount}
-              totalDonated={data.totalDonated}
-              thirdPartyCostBps={data.thirdPartyCostBps}
-              taxStatus={data.taxStatus}
-            />
-          ) : null}
+          <DonatePanel
+            needId={data.id}
+            vault={data.vault}
+            fundingOpen={fundingOpen}
+            targetAmount={data.targetAmount}
+            totalDonated={data.totalDonated}
+            thirdPartyCostBps={data.thirdPartyCostBps}
+            taxStatus={data.taxStatus}
+          />
 
           {/* Every way in ends on chain. A card buys USDC through the Coinbase on-ramp into the donor's own wallet,
               which then donates it; an exchange withdrawal lands in a deposit address that can only donate or
               refund. No payment provider holds anyone's money on the way. */}
-          {data.custodyMode === 'OnChain' && conversionsEnabled ? (
+          {conversionsEnabled ? (
             <>
               <CardOnrampPanel
                 needId={data.id}
@@ -274,8 +267,6 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
               />
             </>
           ) : null}
-
-          {data.custodyMode === 'OffChain' ? <Notice tone="info" title={t('offChainRetired')} /> : null}
 
           <IdleCapitalNote need={data} />
 

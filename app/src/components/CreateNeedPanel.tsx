@@ -1,6 +1,6 @@
 'use client'
 
-import { CATEGORIES, CUSTODY_MODE, categoryHash, needsRegistryAbi } from '@poa/shared'
+import { CATEGORIES, categoryHash, needsRegistryAbi } from '@poa/shared'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
@@ -233,9 +233,6 @@ export function CreateNeedPanel() {
           metadataURI: metadataUri,
           verificationsRequired: Number(verificationsRequired),
           trancheBps,
-          // The registry still accepts off-chain custody; this app never asks for it. Money lives in the vault.
-          custodyMode: CUSTODY_MODE.indexOf('OnChain'),
-          custodian: zeroAddress,
           fundingDeadline: BigInt(fundingDeadline ?? 0),
           executionDeadline: BigInt(executionDeadline ?? 0),
           minFundingBps: minFundingBps as number,

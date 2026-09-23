@@ -27,7 +27,7 @@ export const roleAccount = onchainTable(
   'role_account',
   (t) => ({
     address: t.hex().primaryKey(),
-    role: t.text().notNull(), // VERIFIER | BANK_PARTNER | FIELD_AGENT
+    role: t.text().notNull(), // VERIFIER | FIELD_AGENT
     ngo: t.hex(),
     active: t.boolean().notNull(),
     registeredAt: t.integer().notNull(),
@@ -109,9 +109,7 @@ export const need = onchainTable(
     verificationsRequired: t.integer().notNull(),
     verificationCount: t.integer().notNull(),
     status: t.text().notNull(),
-    /** OnChain (AidVault escrow, Model B) | OffChain (payment provider custody, Model A). */
-    custodyMode: t.text().notNull(),
-    custodian: t.hex(),
+    /** The need's AidVault; null until it is verified. */
     vault: t.hex(),
     // ── the terms the NGO committed to at creation ──
     fundingDeadline: t.integer(),
@@ -135,7 +133,7 @@ export const need = onchainTable(
     yieldRealised: t.bigint().notNull(),
     yieldPaid: t.bigint().notNull(),
     yieldLost: t.bigint().notNull(),
-    /** Fees intermediaries kept, as attested in FundingRecorded and Settlement. */
+    /** What intermediaries kept: conversion costs on the way in, Settlement-attested fees on the way out. */
     fundingFees: t.bigint().notNull(),
     settlementFees: t.bigint().notNull(),
     trancheCount: t.integer().notNull(),
@@ -178,9 +176,8 @@ export const tranche = onchainTable(
 // ─── donations ───────────────────────────────────────────────────────────────
 
 /**
- * `donor` is set for direct donations, `donorRefHash` (salted, never the raw reference) for provider ones.
- * DIRECT: a wallet donated to the vault. FIAT: a provider deposited a card or bank payment into the vault.
- * OFFCHAIN: a provider holds the money and recorded it by attestation (non-custodial need).
+ * `donor` is set whenever a wallet was credited, card donations included.
+ * DIRECT: a wallet donated to the vault.
  * CONVERTED: another token was swapped into the vault token on-chain, from a wallet or a deposit address. A deposit
  *   address that credits itself has no donor; its refund key is `donorRefHash` = the address padded to 32 bytes.
  */
@@ -189,22 +186,15 @@ export const donation = onchainTable(
   (t) => ({
     id: t.text().primaryKey(), // txHash-logIndex
     needId: t.bigint().notNull(),
-    kind: t.text().notNull(), // DIRECT | FIAT | OFFCHAIN | CONVERTED
+    kind: t.text().notNull(), // DIRECT | CONVERTED
     donor: t.hex(),
+    /** Set when a deposit address holds the claim itself: its address, left-padded to 32 bytes. */
     donorRefHash: t.hex(),
-    paymentRefHash: t.hex(),
-    /** Payment provider that deposited or recorded the donation. It is the intermediary, never the donor. */
-    partner: t.hex(),
     /** Net amount that still counts toward the target, i.e. given minus anything withdrawn. */
     amount: t.bigint().notNull(),
     /** Taken back by the donor while the need was still raising. The `Donated` event keeps the original. */
     withdrawn: t.bigint().notNull(),
-    /** What the donor paid and what the provider kept, once a FundingRecorded attestation states them. */
-    gross: t.bigint(),
-    fee: t.bigint(),
-    currency: t.text(),
     receiptId: t.bigint(),
-    attestationUID: t.hex(),
     // ── CONVERTED only: the wallet or deposit address the swap ran for, and what it did ──
     via: t.hex(),
     viaDepositAddress: t.boolean(),
@@ -223,7 +213,6 @@ export const donation = onchainTable(
   (table) => ({
     needIdx: index().on(table.needId),
     donorIdx: index().on(table.donor),
-    refIdx: index().on(table.paymentRefHash),
     viaIdx: index().on(table.via),
     txIdx: index().on(table.txHash),
   }),
@@ -373,7 +362,7 @@ export const depositRefund = onchainTable(
   (table) => ({ depositIdx: index().on(table.depositAddress) }),
 )
 
-/** A tranche payout reconciled by a Settlement attestation (NGO for on-chain custody, custodian for off-chain). */
+/** A tranche payout the NGO reconciled with a Settlement attestation. */
 export const settlement = onchainTable(
   'settlement',
   (t) => ({

@@ -18,7 +18,6 @@ import type {
   PayeeView,
   ProgramMembersResponse,
   ProgramView,
-  ProviderView,
   SettlementView,
   SupplierApplicationView,
   SupplierDetail,
@@ -53,14 +52,12 @@ const VERIFIER = '0x90F79bf6EB2c4f870365E785982E1f101E93b906' as Address
 const DONOR = '0x976EA74026E726554dB657fA54763abd0C3a0aa9' as Address
 /** A donor who paid by card: the Coinbase on-ramp bought USDC into this wallet, which then gave it. */
 const CARD_DONOR = '0x14dC79964da2C08b23698B3D3cc7Ca32193d9956' as Address
-const PROVIDER = '0x14dC79964da2C08b23698B3D3cc7Ca32193d9955' as Address
 /** The NGO's payout Safe: where its own disclosed share of a tranche goes. */
 const NGO_PAYOUT = '0xBcd4042DE499D14e55001CcbB24a551F3b954096' as Address
-const PROVIDER_RETIRED = '0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f' as Address
 const VAULT_1 = '0x5FC8d32690cc91D4c39d9d3abcBD16989F875707' as Address
 const VAULT_2 = '0xa513E6E4b8f2a923D98304ec87F64353C4D5C853' as Address
 const VAULT_4 = '0x8A791620dd6260079BF849Dc5567aDC3F2FdC318' as Address
-const LEDGER_5 = '0x610178dA211FEF7D417bC0e6FeD39F05609AD788' as Address
+const VAULT_5 = '0x610178dA211FEF7D417bC0e6FeD39F05609AD788' as Address
 const VAULT_6 = '0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e' as Address
 const VAULT_7 = '0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82' as Address
 
@@ -68,9 +65,6 @@ const region = (code: string): Hex => stringToHex(code, { size: 32 })
 const tx = (n: number): Hex => `0x${n.toString(16).padStart(64, 'a')}` as Hex
 const uid = (n: number): Hex => `0x${n.toString(16).padStart(64, 'e')}` as Hex
 const hashText = (text: string): Hex => keccak256(stringToHex(text))
-
-/** The payment reference the sandbox checkout would return for the card donation to need #5. */
-export const FIXTURE_PAYMENT_REF = hashText('fixture-payment-ref-need-5-card')
 
 /** A deposit address that has swept euros into need #7, and one that is deployed but still waiting for funds. */
 export const FIXTURE_DEPOSIT_ADDRESS = getAddress('0x5ce1a0de9f7b2c4d6e8f0a1b3c5d7e9f2a4b6c8d')
@@ -88,8 +82,6 @@ const USDC: Address =
   getAddress('0x036cbd53842c5426634e7929541ec2318f3dcf7e')
 
 interface Terms {
-  custodyMode?: NeedSummary['custodyMode']
-  custodian?: Address | null
   fundingDeadline?: number | null
   executionDeadline?: number | null
   minFundingBps?: number
@@ -228,7 +220,6 @@ const summary = (
     // No sample need lends its idle escrow: it is off by default, and a need opts in before it can be funded.
     idleCapital: null,
     status,
-    custodyMode: terms.custodyMode ?? 'OnChain',
     vault,
     metadataURI: `ipfs://demo/need-${id}.json`,
     verificationsRequired: 1,
@@ -239,7 +230,6 @@ const summary = (
     thirdPartyCostBps: costBps,
     expectedOutcomeHash: hashText(`Expected outcome of need ${id}`),
     costDisclosureHash: costBps > 0 ? hashText(`Cost disclosure of need ${id}`) : null,
-    custodian: terms.custodian ?? null,
     fundingFees: terms.fundingFees ?? '0',
     settlementFees: terms.settlementFees ?? '0',
     createdAt,
@@ -285,14 +275,11 @@ const NEEDS: NeedSummary[] = [
     VAULT_4,
     1_756_100_000,
   ),
-  summary('5', 'CASH', 'PT-11', '5000000000', '1450000000', '0', 'Funding', LEDGER_5, 1_758_000_000, {
-    custodyMode: 'OffChain',
-    custodian: PROVIDER,
+  summary('5', 'CASH', 'PT-11', '5000000000', '1450000000', '0', 'Funding', VAULT_5, 1_758_000_000, {
     fundingDeadline: 1_791_000_000,
     executionDeadline: 1_799_000_000,
     minFundingBps: 8000,
     thirdPartyCostBps: 300,
-    fundingFees: '7250000',
   }),
   summary('6', 'EDUCATION', 'ES-CM', '8000000000', '1200000000', '0', 'Expired', VAULT_6, 1_755_000_000, {
     fundingDeadline: 1_760_000_000,
@@ -381,12 +368,7 @@ const donation = (
 ) => ({
   donor: null,
   donorRefHash: null,
-  paymentRefHash: null,
-  gross: null,
-  fee: null,
-  currency: null,
   receiptId: null,
-  attestationUID: null,
   conversion: null,
   withdrawn: '0',
   txHash: tx(Number(fields.id)),
@@ -419,30 +401,33 @@ const DONATIONS_1: DonationView[] = [
 ]
 
 const DONATIONS_5: DonationView[] = [
+  // Paid by card: USDC from the on-ramp, given as it was, so the need bore no cost.
   donation({
     id: '50',
     needId: '5',
-    kind: 'OFFCHAIN',
-    donorRefHash: uid(51),
-    paymentRefHash: FIXTURE_PAYMENT_REF,
-    amount: '492750000',
-    gross: '500000000',
-    fee: '7250000',
-    currency: 'EUR',
-    attestationUID: uid(52),
+    kind: 'CONVERTED',
+    donor: CARD_DONOR,
+    amount: '500000000',
+    receiptId: '11',
+    conversion: {
+      tokenIn: USDC,
+      tokenInSymbol: 'USDC',
+      amountIn: '500000000',
+      amountOut: '500000000',
+      fairValue: '500000000',
+      conversionFee: '0',
+      via: CARD_DONOR,
+      viaDepositAddress: false,
+    },
     timestamp: 1_758_100_000,
   }),
   donation({
     id: '53',
     needId: '5',
-    kind: 'OFFCHAIN',
-    donorRefHash: uid(54),
-    paymentRefHash: uid(55),
-    amount: '957250000',
-    gross: '957250000',
-    fee: '0',
-    currency: 'EUR',
-    attestationUID: uid(56),
+    kind: 'DIRECT',
+    donor: DONOR,
+    amount: '950000000',
+    receiptId: '12',
     timestamp: 1_758_200_000,
   }),
 ]
@@ -779,21 +764,23 @@ const TIMELINES: Record<string, TimelineEvent[]> = {
     event(
       '5',
       3,
-      'FundingRecorded',
-      { provider: PROVIDER, gross: '500000000', fee: '7250000', net: '492750000', currency: 'EUR' },
+      'DonatedConverted',
+      {
+        donor: CARD_DONOR,
+        depositAddress: null,
+        tokenIn: USDC,
+        tokenInSymbol: 'USDC',
+        amountIn: '500000000',
+        converted: '500000000',
+        fairValue: '500000000',
+        amount: '500000000',
+        conversionFee: '0',
+        receiptId: '11',
+      },
       310,
       1_758_100_000,
-      uid(52),
     ),
-    event(
-      '5',
-      4,
-      'FundingRecorded',
-      { provider: PROVIDER, gross: '957250000', fee: '0', net: '957250000', currency: 'EUR' },
-      320,
-      1_758_200_000,
-      uid(56),
-    ),
+    event('5', 4, 'Donated', { donor: DONOR, amount: '950000000', receiptId: '12' }, 320, 1_758_200_000),
   ],
   '6': [
     event(
@@ -1016,7 +1003,6 @@ export const filterNeeds = (filters: NeedFilters): NeedSummary[] => {
       (!filters.category || need.category === filters.category || need.categoryLabel === filters.category) &&
       (!filters.region || need.regionCode === filters.region || need.regionLabel === filters.region) &&
       (!filters.country || need.country === filters.country.toUpperCase()) &&
-      (!filters.custody || need.custodyMode === filters.custody) &&
       (!filters.open || isOpen(need, now)),
   )
   return filters.sort ? [...matches].sort(SORTS[filters.sort]) : matches
@@ -1134,11 +1120,6 @@ export const programs = (ngo: string): ProgramView[] => [
   },
 ]
 
-export const providers: ProviderView[] = [
-  { address: PROVIDER, active: true, registeredAt: 1_756_000_000 },
-  { address: PROVIDER_RETIRED, active: false, registeredAt: 1_755_000_000 },
-]
-
 const stages = (reached: Partial<Record<DonorStage, Omit<DonorStageView, 'stage'>>>): DonorStageView[] =>
   DONOR_STAGES.map(
     (stage) =>
@@ -1193,12 +1174,12 @@ const TRACKS: Record<string, DonationTrack> = {
     payees: PAYEES_1,
     updatedAt: 1_757_400_000,
   },
-  [FIXTURE_PAYMENT_REF.toLowerCase()]: {
-    ref: FIXTURE_PAYMENT_REF,
-    refKind: 'payment',
+  '11': {
+    ref: '11',
+    refKind: 'receipt',
     donation: DONATIONS_5[0] as DonationView,
     need: needAt(4),
-    shareBps: 3398,
+    shareBps: 3448,
     stages: stages({
       Verified: reachedAt(1_758_050_000, tx(305), uid(57)),
       Funded: {
@@ -1213,7 +1194,7 @@ const TRACKS: Record<string, DonationTrack> = {
     outcome: 'InProgress',
     releasedToNgo: '0',
     refunded: '0',
-    tranches: withDonorShare(DETAILS['5']?.tranches ?? [], 3398),
+    tranches: withDonorShare(DETAILS['5']?.tranches ?? [], 3448),
     deliveries: [],
     settlements: [],
     impactReport: null,

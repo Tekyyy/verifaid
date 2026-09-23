@@ -1,12 +1,12 @@
 'use client'
 
-import { CATEGORIES, CUSTODY_MODE, NEED_SORTS, NEED_STATUS } from '@poa/shared'
+import { CATEGORIES, NEED_SORTS, NEED_STATUS } from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import { useRouter } from '@/i18n/navigation'
 import { flagEmoji } from '@/lib/format'
 import type { NeedFilters as NeedFilterValues } from '@/lib/indexer'
 
-const TEXT_KEYS = ['status', 'category', 'region', 'country', 'custody', 'sort'] as const
+const TEXT_KEYS = ['status', 'category', 'region', 'country', 'sort'] as const
 
 /**
  * A plain form: it submits on "Apply" and works with the keyboard alone. Filters live in the URL so a
@@ -16,7 +16,6 @@ export function NeedFilters({ values, countries }: { values: NeedFilterValues; c
   const t = useTranslations('needs')
   const tCommon = useTranslations('common')
   const tStatus = useTranslations('needStatus')
-  const tCustody = useTranslations('custody')
   const router = useRouter()
 
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -87,20 +86,6 @@ export function NeedFilters({ values, countries }: { values: NeedFilterValues; c
           defaultValue={values.region ?? ''}
           placeholder={t('filterRegionPlaceholder')}
         />
-      </div>
-
-      <div>
-        <label className="label" htmlFor="filter-custody">
-          {t('filterCustody')}
-        </label>
-        <select id="filter-custody" name="custody" className="input" defaultValue={values.custody ?? ''}>
-          <option value="">{tCommon('all')}</option>
-          {CUSTODY_MODE.map((mode) => (
-            <option key={mode} value={mode}>
-              {tCustody(mode)}
-            </option>
-          ))}
-        </select>
       </div>
 
       <div>

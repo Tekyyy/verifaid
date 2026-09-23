@@ -26,13 +26,14 @@ export const ROLE_INDEX = {
   fieldAgent: 3,
   verifier1: 4,
   verifier2: 5,
-  bankPartner: 6,
+  // 6 was the payment provider; it stays unused so every other role keeps its address.
   donor1: 7,
   donor2: 8,
   relayer: 9,
   // Registered suppliers the vaults pay directly (SeedDemo registers them). They never send a transaction.
   foodSupplier: 10,
   shelterSupplier: 11,
+  medicalSupplier: 12,
 } as const
 
 export type RoleName = keyof typeof ROLE_INDEX

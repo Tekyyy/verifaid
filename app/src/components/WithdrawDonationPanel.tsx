@@ -33,7 +33,7 @@ export function WithdrawDonationPanel({ need }: { need: NeedDetail }) {
 
   const now = Math.floor(Date.now() / 1000)
   const locked = need.fundingDeadline !== null && now + LOCK_PERIOD_SECONDS > need.fundingDeadline
-  const open = need.status === 'Funding' && need.custodyMode === 'OnChain'
+  const open = need.status === 'Funding'
 
   const mine = need.donations.filter(
     (donation) =>

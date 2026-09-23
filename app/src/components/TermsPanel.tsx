@@ -1,9 +1,7 @@
 import type { NeedSummary } from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import type { ReactNode } from 'react'
-import { CustodyBadge } from '@/components/CustodyBadge'
 import { Deadline } from '@/components/Deadline'
-import { ExplorerLink } from '@/components/ExplorerLink'
 import { amount, bpsOf, bpsPercent, timestamp } from '@/lib/format'
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
@@ -36,14 +34,6 @@ export function TermsPanel({ need }: { need: NeedSummary }) {
       <p className="mt-1 text-sm text-slate-700">{t('note')}</p>
 
       <dl className="mt-4 space-y-3 text-sm">
-        <Row label={t('custody')}>
-          <CustodyBadge mode={need.custodyMode} explain />
-        </Row>
-        {need.custodyMode === 'OffChain' ? (
-          <Row label={t('custodian')}>
-            <ExplorerLink kind="address" value={need.custodian} />
-          </Row>
-        ) : null}
         <Row label={t('fundingDeadline')}>
           <Deadline seconds={need.fundingDeadline} none={t('openEnded')} />
         </Row>

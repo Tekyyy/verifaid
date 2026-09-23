@@ -1,5 +1,5 @@
 import type { Address, Hex } from 'viem'
-import type { CustodyMode, DeliveryStatus, NeedStatus, SchemaName, TrancheStatus } from './types.js'
+import type { DeliveryStatus, NeedStatus, SchemaName, TrancheStatus } from './types.js'
 
 /**
  * The contract between the Ponder indexer and everything that reads it (dashboard, demo runner).
@@ -29,7 +29,6 @@ export interface NeedSummary {
    */
   idleCapital: IdleCapitalView | null
   status: NeedStatus
-  custodyMode: CustodyMode
   vault: Address | null
   metadataURI: string
   verificationsRequired: number
@@ -39,13 +38,11 @@ export interface NeedSummary {
   executionDeadline: number | null
   /** Share of the target that must be raised for the need to go ahead (10000 = all or nothing). */
   minFundingBps: number
-  /** Disclosed cap on intermediary costs (payment, FX, banking), in basis points. */
+  /** Disclosed cap on intermediary costs (conversions, payouts), in basis points. */
   thirdPartyCostBps: number
   expectedOutcomeHash: Hex
   costDisclosureHash: Hex | null
-  /** Off-chain custody only: the payment provider that holds the money. */
-  custodian: Address | null
-  /** Fees intermediaries kept, as attested: on the way in (FundingRecorded) and out (Settlement). */
+  /** What intermediaries kept: conversions on the way in, and Settlement-attested fees on the way out. */
   fundingFees: string
   settlementFees: string
   createdAt: number
@@ -90,12 +87,10 @@ export interface DeliveryView {
 
 /**
  * DIRECT: a wallet donated stablecoin to the vault (gets a receipt NFT).
- * FIAT: a payment provider converted a bank or card payment and deposited it in the vault.
- * OFFCHAIN: a payment provider holds the money and recorded it by attestation (non-custodial need).
  * CONVERTED: another token (USDC bought with a card, ETH, an exchange withdrawal) was swapped on-chain into the
  *   vault token under the oracle bound, from a wallet or a deposit address.
  */
-export type DonationKind = 'DIRECT' | 'FIAT' | 'OFFCHAIN' | 'CONVERTED'
+export type DonationKind = 'DIRECT' | 'CONVERTED'
 
 /** What happened on-chain when a donation arrived in another token. */
 export interface ConversionView {
@@ -122,16 +117,11 @@ export interface DonationView {
   needId: string
   kind: DonationKind
   donor: Address | null
+  /** Set when a deposit address holds the claim itself (the donor gave no wallet). */
   donorRefHash: Hex | null
-  paymentRefHash: Hex | null
-  /** Amount that counts toward the target (net of fees). */
+  /** Amount that counts toward the target (net of conversion costs). */
   amount: string
-  /** What the donor paid and what intermediaries kept, when a provider attested them. */
-  gross: string | null
-  fee: string | null
-  currency: string | null
   receiptId: string | null
-  attestationUID: Hex | null
   /** Set for CONVERTED donations. */
   conversion: ConversionView | null
   txHash: Hex
@@ -372,9 +362,7 @@ export type TimelineEventType =
   | 'PartialFundingAccepted'
   | 'VerificationRevoked'
   | 'Donated'
-  | 'DonatedOnBehalf'
   | 'DonatedConverted'
-  | 'FundingRecorded'
   | 'FundingClosed'
   | 'TrancheReleasable'
   | 'TrancheReleased'
@@ -428,13 +416,6 @@ export interface TimelineEvent {
 export interface TimelinePage {
   events: TimelineEvent[]
   cursor: string | null
-}
-
-/** A registered payment provider (BANK_PARTNER_ROLE): who can deposit fiat or hold off-chain custody. */
-export interface ProviderView {
-  address: Address
-  active: boolean
-  registeredAt: number
 }
 
 export interface AttestationView {
@@ -557,11 +538,10 @@ export interface DonorStageView {
 export type DonationOutcome = 'InProgress' | 'Completed' | 'Refundable' | 'Refunded' | 'Expired' | 'Cancelled'
 
 /**
- * Tracking reference: a receipt id for wallet donations ("12"), the salted payment reference hash a payment
- * provider returned for bank and card donations ("0x…" 32 bytes), or a deposit address ("0x…" 20 bytes) for money
- * sent from an exchange. None of them identifies the donor.
+ * Tracking reference: a receipt id for wallet donations ("12"), card ones included, or a deposit address ("0x…"
+ * 20 bytes) for money sent from an exchange. Neither identifies the donor.
  */
-export type TrackingRefKind = 'receipt' | 'payment' | 'deposit'
+export type TrackingRefKind = 'receipt' | 'deposit'
 
 export interface DonationTrack {
   ref: string
@@ -592,7 +572,6 @@ export interface DonationTrack {
 /** Classifies a tracking reference, or returns null when it is neither shape. */
 export const trackingRefKind = (ref: string): TrackingRefKind | null => {
   if (/^[1-9][0-9]{0,18}$/.test(ref)) return 'receipt'
-  if (/^0x[0-9a-fA-F]{64}$/.test(ref)) return 'payment'
   // A deposit address (DonationForwarder): the address itself is the tracking reference.
   if (/^0x[0-9a-fA-F]{40}$/.test(ref)) return 'deposit'
   return null

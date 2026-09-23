@@ -1,6 +1,6 @@
 'use client'
 
-import { aidVaultAbi, beneficiaryGroupsAbi, CUSTODY_MODE, easAbi, needsRegistryAbi } from '@poa/shared'
+import { aidVaultAbi, beneficiaryGroupsAbi, easAbi, needsRegistryAbi } from '@poa/shared'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
@@ -11,7 +11,7 @@ import { CreateNeedPanel } from '@/components/CreateNeedPanel'
 import { Advanced, FormError, Panel, TextArea, TextField } from '@/components/form'
 import { IdleCapitalPanel } from '@/components/IdleCapitalPanel'
 import { NeedPresentationPanel } from '@/components/NeedPresentationPanel'
-import { MissingDeployment, Notice } from '@/components/Notice'
+import { MissingDeployment } from '@/components/Notice'
 import { ProposePayeeChangePanel } from '@/components/PayeeChangePanel'
 import { ProgramPicker } from '@/components/ProgramPicker'
 import { PublishPhotosPanel } from '@/components/PublishPhotosPanel'
@@ -145,19 +145,6 @@ function AddMembers() {
   )
 }
 
-/** Whether the need's money is held on chain; `undefined` while unknown. */
-function useCustody(needId: string) {
-  const enabled = /^\d+$/.test(needId)
-  const { data } = useReadContract({
-    address: deployment?.contracts.NeedsRegistry as Address,
-    abi: needsRegistryAbi,
-    functionName: 'custodyModeOf',
-    args: enabled ? [BigInt(needId)] : undefined,
-    query: { enabled },
-  })
-  return data === undefined ? undefined : CUSTODY_MODE[data]
-}
-
 /**
  * Closing early must respect the terms donors were shown: the ledger reverts below `minFundingBps` of the
  * target, so the panel reads both numbers and explains the threshold instead of letting the NGO hit a revert.
@@ -225,7 +212,6 @@ function ReleaseTranche() {
   const [needId, setNeedId] = useState('')
   const [index, setIndex] = useState('0')
   const vault = useLedger(needId)
-  const offChain = useCustody(needId) === 'OffChain'
 
   return (
     <Panel title={t('releaseTitle')} description={t('releaseBody')}>
@@ -234,13 +220,10 @@ function ReleaseTranche() {
         <TextField label={t('trancheIndex')} value={index} onChange={setIndex} inputMode="numeric" />
       </div>
       <p className="hint mono">{vault ?? '—'}</p>
-      {offChain ? <Notice tone="info" title={t('releaseOffChain')} /> : null}
       <button
         type="button"
         className="btn-primary"
-        disabled={
-          !vault || offChain || !/^\d+$/.test(index) || tx.phase === 'signing' || tx.phase === 'pending'
-        }
+        disabled={!vault || !/^\d+$/.test(index) || tx.phase === 'signing' || tx.phase === 'pending'}
         onClick={() =>
           vault &&
           tx.run({

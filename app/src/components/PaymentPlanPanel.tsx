@@ -8,8 +8,6 @@ import { amount, bpsPercent, shorten, timestamp } from '@/lib/format'
  * The payment plan of an on-chain need: the registered suppliers its vault pays directly, what share of each
  * tranche each one gets, and what has actually reached them. Nothing here is reported by the NGO — the shares
  * are fixed on chain when the need is created (and verified with it), and every payment is a vault event.
- *
- * Off-chain needs have no plan: their custodian pays the suppliers and attests the settlements instead.
  */
 export function PaymentPlanPanel({ need }: { need: NeedDetail }) {
   const t = useTranslations('plan')
@@ -17,7 +15,7 @@ export function PaymentPlanPanel({ need }: { need: NeedDetail }) {
   const unit = tCommon('amountUnit')
   const pending = need.payeeChanges.filter((change) => change.status === 'PENDING')
 
-  if (need.custodyMode === 'OffChain' || need.payees.length === 0) return null
+  if (need.payees.length === 0) return null
 
   return (
     <section className="card" aria-labelledby="plan">

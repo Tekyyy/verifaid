@@ -20,8 +20,6 @@ export const dynamic = 'force-dynamic'
 const perIp = createRateLimiter({ windowMs: 10 * 60_000, max: 5 })
 const overall = createRateLimiter({ windowMs: 60 * 60_000, max: 120 })
 
-const ON_CHAIN_CUSTODY = 0
-
 async function handle(request: NextRequest) {
   const context = forwarderContext()
   if (!context) {
@@ -60,22 +58,14 @@ async function handle(request: NextRequest) {
   if (intent.needId > needCount) {
     return NextResponse.json({ error: 'not_found', message: 'No such need.' }, { status: 404 })
   }
-  const [custody, [, , , open]] = await Promise.all([
-    publicClient.readContract({
-      address: registry,
-      abi: needsRegistryAbi,
-      functionName: 'custodyModeOf',
-      args: [intent.needId],
-    }),
-    publicClient.readContract({
-      address: registry,
-      abi: needsRegistryAbi,
-      functionName: 'fundingTermsOf',
-      args: [intent.needId],
-    }),
-  ])
-  // An address that could only ever refund would mislead the donor: create them for open on-chain needs only.
-  if (custody !== ON_CHAIN_CUSTODY || !open) {
+  const [, , , open] = await publicClient.readContract({
+    address: registry,
+    abi: needsRegistryAbi,
+    functionName: 'fundingTermsOf',
+    args: [intent.needId],
+  })
+  // An address that could only ever refund would mislead the donor: create them for open needs only.
+  if (!open) {
     return NextResponse.json(
       { error: 'not_accepting', message: 'This need is not accepting on-chain donations.' },
       { status: 409 },

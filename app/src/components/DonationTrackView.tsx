@@ -3,7 +3,6 @@ import { useTranslations } from 'next-intl'
 import { AlertsForm } from '@/components/AlertsForm'
 import { ConversionNote } from '@/components/ConversionNote'
 import { CopyLinkButton } from '@/components/CopyLinkButton'
-import { CustodyBadge } from '@/components/CustodyBadge'
 import { DeliveryCard } from '@/components/DeliveryCard'
 import { DepositActivity } from '@/components/DepositActivity'
 import { DepositSweeps } from '@/components/DepositSweeps'
@@ -51,7 +50,6 @@ export function DonationTrackView({ track }: { track: DonationTrack }) {
           <p className="mt-1 text-xs text-slate-600">{t('updatedAt', { at: timestamp(track.updatedAt) })}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <CustodyBadge mode={need.custodyMode} />
           <NeedStatusBadge status={need.status} />
         </div>
       </header>
@@ -95,26 +93,11 @@ export function DonationTrackView({ track }: { track: DonationTrack }) {
                 className="mt-3 text-xs text-slate-700 tabular-nums"
               />
             ) : null}
-            {donation.gross !== null ? (
-              <p className="mt-3 text-xs text-slate-700 tabular-nums">
-                {tNeed('donationPaid', {
-                  gross: amount(donation.gross),
-                  fee: amount(donation.fee ?? '0'),
-                  currency: donation.currency ?? unit,
-                })}
-              </p>
-            ) : null}
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
               <span className="flex items-center gap-1">
                 <span className="text-slate-600">{tCommon('transaction')}</span>
                 <ExplorerLink kind="tx" value={donation.txHash} />
               </span>
-              {donation.attestationUID ? (
-                <span className="flex items-center gap-1">
-                  <span className="text-slate-600">{tCommon('attestation')}</span>
-                  <ExplorerLink kind="attestation" value={donation.attestationUID} />
-                </span>
-              ) : null}
               <span className="text-slate-500">{timestamp(donation.timestamp)}</span>
             </div>
           </section>

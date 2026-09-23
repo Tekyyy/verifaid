@@ -64,7 +64,7 @@ export interface TrackInputs {
   /** The organisation's tax standing, and the donee's acknowledgment of this donation. */
   taxStatus: OrgTaxStatusView | null
   acknowledgment: AcknowledgmentRow | null
-  /** v4 payment plan and the vault's payments to it (empty for off-chain custody). */
+  /** The payment plan and the vault's payments to it. */
   payees: PayeeRow[]
   payments: PayeePaymentRow[]
 }
@@ -116,7 +116,7 @@ export const buildDonationTrack = (inputs: TrackInputs): DonationTrack => {
 
   // ── Settled ──
   // A vault paying the payment plan's suppliers directly is a settlement in itself: the transfer is the proof.
-  // Off-chain custody (and older vaults) settle through the Settlement attestation instead.
+  // An NGO's Settlement attestation, when it files one, reconciles the same tranche from its side.
   const firstReport = [...settlements].sort((a, b) => a.timestamp - b.timestamp)[0]
   const firstPayment = inputs.payments.filter((payment) => !payment.held)[0]
   const firstSettlement =
@@ -130,10 +130,7 @@ export const buildDonationTrack = (inputs: TrackInputs): DonationTrack => {
     if (released.length > 0) {
       settledPending = `Tranche ${released[0]?.index} released to the NGO; settlement report not yet filed`
     } else if (releasable.length > 0) {
-      settledPending =
-        need.custodyMode === 'OffChain'
-          ? `Tranche ${releasable[0]?.index} ready for payout by the payment provider`
-          : `Tranche ${releasable[0]?.index} ready to be released to the NGO`
+      settledPending = `Tranche ${releasable[0]?.index} ready to be released to the NGO`
     }
   }
   const settledStage = stage(
@@ -217,7 +214,7 @@ export const buildDonationTrack = (inputs: TrackInputs): DonationTrack => {
   if (need.status === 'Completed') outcome = 'Completed'
   else if (need.status === 'Cancelled' || need.status === 'Expired') {
     if (refunded > 0n) outcome = 'Refunded'
-    else if (need.custodyMode === 'OnChain' && funding > need.totalReleased) outcome = 'Refundable'
+    else if (funding > need.totalReleased) outcome = 'Refundable'
     else outcome = need.status
   }
 

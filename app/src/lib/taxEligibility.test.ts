@@ -3,7 +3,6 @@ import { describe, it } from 'node:test'
 import type { DonationTrack, OrgTaxStatusView } from '@poa/shared'
 import {
   assessDonation,
-  channelOfRef,
   deductibleHere,
   isEligible,
   parseJurisdiction,
@@ -28,13 +27,11 @@ const FUNDED_AT = Date.UTC(2026, 2, 10) / 1000
 
 const track = (overrides: {
   jurisdiction?: string | null
-  refKind?: DonationTrack['refKind']
   amount?: string
   funded?: boolean
   outcome?: DonationTrack['outcome']
   releasedToNgo?: string
 }) => ({
-  refKind: overrides.refKind ?? 'receipt',
   donation: { amount: overrides.amount ?? '100000000' } as DonationTrack['donation'],
   stages: [
     { stage: 'Verified', reached: true, at: 1, txHash: null, attestationUID: null, pending: null },
@@ -85,12 +82,6 @@ describe('isEligible', () => {
     assert.equal(isEligible(status('SG:IPC'), 'cash'), true)
     assert.equal(isEligible(status('SG:IPC'), 'digital'), false)
   })
-
-  it('maps tracking references to channels', () => {
-    assert.equal(channelOfRef('payment'), 'cash')
-    assert.equal(channelOfRef('receipt'), 'digital')
-    assert.equal(channelOfRef('deposit'), 'digital')
-  })
 })
 
 describe('parseJurisdiction', () => {
@@ -128,13 +119,12 @@ describe('assessDonation', () => {
     assert.equal(assessDonation(track({ jurisdiction: 'US' })).kind, 'none')
   })
 
-  it('refuses a token donation to an IPC but accepts cash', () => {
+  it('refuses every donation to an IPC: each one arrives as a token, a card payment included', () => {
     assert.deepEqual(assessDonation(track({ jurisdiction: 'SG:IPC' })), {
       kind: 'channel',
       regime: 'SG_IPC',
       channel: 'digital',
     })
-    assert.equal(assessDonation(track({ jurisdiction: 'SG:IPC', refKind: 'payment' })).kind, 'deductible')
   })
 
   it('is returned when fully withdrawn or refunded with nothing paid out', () => {
