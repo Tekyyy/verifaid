@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
 import { NgoCampaignDashboard } from '@/components/NgoCampaignDashboard'
+import { NgoRoleNotice } from '@/components/NgoRoleNotice'
 import { MissingDeployment } from '@/components/Notice'
 import { Link } from '@/i18n/navigation'
 import { deployment } from '@/lib/config'
@@ -28,6 +29,7 @@ export default async function NgoManagePage() {
           {t('backToSetup')}
         </Link>
       </header>
+      <NgoRoleNotice />
       {deployment ? <NgoCampaignDashboard /> : <MissingDeployment />}
     </div>
   )

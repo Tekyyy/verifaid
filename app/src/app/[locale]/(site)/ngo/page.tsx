@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
 import { NgoConsole } from '@/components/NgoConsole'
+import { NgoRoleNotice } from '@/components/NgoRoleNotice'
 import { Link } from '@/i18n/navigation'
 
 export async function generateMetadata({
@@ -26,6 +27,7 @@ export default async function NgoPage() {
           {t('manageButton')}
         </Link>
       </header>
+      <NgoRoleNotice />
       <NgoConsole />
     </div>
   )

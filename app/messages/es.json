@@ -299,6 +299,8 @@
     "manageTitle": "Gestión de necesidades",
     "manageSubtitle": "Cada campaña de esta cartera que sigue recaudando o entregando, y dónde puede esperar el dinero de las campañas largas.",
     "backToSetup": "← Consola de la ONG",
+    "notNgoTitle": "Esta cartera no es una ONG registrada",
+    "notNgoBody": "Solo las organizaciones que el administrador de la plataforma ha registrado pueden crear programas y necesidades o gestionarlos; los contratos rechazan cualquier otra cartera, por eso tu cartera avisa de que la transacción probablemente fallará. Conecta la cartera de la ONG o pide al administrador que registre {address}.",
     "programTitle": "1. A quién atiendes",
     "programBody": "Un programa es el grupo de personas al que sirve una necesidad. Describe quién cumple los requisitos; el texto se resume (hash) en tu navegador y a la cadena solo va el hash, así puedes publicar las reglas después y cualquiera puede comprobar que no se reescribieron.",
     "policyHash": "Hash de la política de inscripción",

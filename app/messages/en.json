@@ -299,6 +299,8 @@
     "manageTitle": "Need management",
     "manageSubtitle": "Every campaign this wallet runs that is still raising or delivering, and where long campaigns’ money can wait.",
     "backToSetup": "← NGO console",
+    "notNgoTitle": "This wallet is not a registered NGO",
+    "notNgoBody": "Only organisations the platform admin has registered can create programmes and needs or manage them; the contracts refuse any other wallet, which is why your wallet warns that the transaction is likely to fail. Connect the NGO’s wallet, or ask the admin to register {address}.",
     "programTitle": "1. Who you serve",
     "programBody": "A programme is the group of people a need serves. Describe who qualifies; the text is hashed in your browser and only the hash goes on chain, so you can publish the rules later and anyone can check they were not rewritten afterwards.",
     "policyHash": "Enrollment policy hash",
