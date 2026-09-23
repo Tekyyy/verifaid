@@ -70,6 +70,10 @@ interface IAidVault is ITrancheLedger {
     /// @notice All held payments. Released, so never refundable: they belong to their payees.
     function totalHeld() external view returns (uint256);
 
+    /// @notice What `donor`'s wallet gave and has not been refunded. Frozen once funding closes, which makes it
+    ///         the weight of that donor's say on how the money was spent.
+    function donatedBy(address donor) external view returns (uint256);
+
     /// @notice Pro-rata refund of the unreleased balance to a direct donor of a cancelled or expired need.
     function claimRefund() external returns (uint256 amount);
 

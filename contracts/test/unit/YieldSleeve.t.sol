@@ -140,7 +140,7 @@ contract YieldSleeveTest is PoATest {
 
     function test_deploy_leavesAReleasableTrancheWhereAPayeeCanReachIt() public {
         vault = _waitingNeed();
-        _runDelivery(needId, 1, 10); // a verified delivery makes tranche 1 payable right now
+        _runDelivery(needId, 1); // a verified delivery makes tranche 1 payable right now
 
         uint256 releasable = _trancheAmount(1);
         assertGt(releasable, 0);
@@ -197,7 +197,7 @@ contract YieldSleeveTest is PoATest {
     function test_release_pullsTheMoneyBackSoASupplierIsPaidInFull() public {
         vault = _waitingNeed();
         vault.deployIdle(vault.deployableAmount());
-        _runDelivery(needId, 1, 10);
+        _runDelivery(needId, 1);
 
         uint256 owed = _trancheAmount(1);
         uint256 before = token.balanceOf(supplierA);
@@ -211,7 +211,7 @@ contract YieldSleeveTest is PoATest {
     function test_release_revertsPlainlyWhenTheVenueCannotPayToday() public {
         vault = _waitingNeed();
         vault.deployIdle(vault.deployableAmount());
-        _runDelivery(needId, 1, 10);
+        _runDelivery(needId, 1);
         venue.setLiquidityCap(0); // every market fully borrowed
 
         vm.expectRevert(Errors.SleeveIlliquid.selector);
@@ -299,7 +299,7 @@ contract YieldSleeveTest is PoATest {
     function _completeNeed() internal {
         uint256 count = vault.trancheCount();
         for (uint256 i = 1; i < count; ++i) {
-            _runDelivery(needId, i, 10);
+            _runDelivery(needId, i);
             vault.releaseTranche(i);
         }
     }

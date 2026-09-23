@@ -311,15 +311,15 @@ contract NeedTermsTest is PoATest {
         assertEq(vault.claimRefund(), 2800e6);
         assertVaultInvariant(vault);
 
-        // no more deliveries once expired
-        vm.prank(fieldAgent);
+        // no more evidence once expired
+        vm.prank(ngo);
         vm.expectRevert(Errors.InvalidNeedStatus.selector);
-        deliveryManager.openDelivery(needId, 1, 10);
+        deliveryManager.submitEvidence(needId, MANIFEST);
     }
 
     function test_expire_waitsForAnEarnedTrancheToBePaid() public {
         (uint256 needId, AidVault vault) = _inDelivery();
-        _runDelivery(needId, 1, 10); // tranche 1 becomes releasable
+        _runDelivery(needId, 1); // tranche 1 becomes releasable
 
         vm.warp(block.timestamp + EXECUTION_WINDOW);
         vm.expectRevert(Errors.ReleasePending.selector);

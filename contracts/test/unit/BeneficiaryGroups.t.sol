@@ -189,6 +189,20 @@ contract BeneficiaryGroupsTest is PoATest {
 
     // ─── proofs ────────────────────────────────────────────────────────────────
 
+    /// @dev A MockSemaphore-valid proof (points[0] == 1) with a unique nullifier.
+    function _proof(uint256 scope, uint256 nullifierSeed) internal pure returns (ISemaphore.SemaphoreProof memory) {
+        uint256[8] memory points;
+        points[0] = 1;
+        return ISemaphore.SemaphoreProof({
+            merkleTreeDepth: 3,
+            merkleTreeRoot: uint256(keccak256("root")),
+            nullifier: uint256(keccak256(abi.encode(scope, nullifierSeed))),
+            message: uint256(keccak256("AID_RECEIVED")),
+            scope: scope,
+            points: points
+        });
+    }
+
     function test_validateProof_onlyDeliveryManager() public {
         uint256 programId = _createProgram(ngo, 5);
         vm.prank(outsider);

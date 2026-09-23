@@ -18,8 +18,6 @@ interface IRoleRegistry is IAccessControl {
     event NgoStatusChanged(address indexed ngo, bool active);
     event VerifierRegistered(address indexed verifier);
     event VerifierRemoved(address indexed verifier);
-    event FieldAgentAdded(address indexed ngo, address indexed agent);
-    event FieldAgentRemoved(address indexed ngo, address indexed agent);
     event SupplierRegistered(address indexed supplier, bytes32 credentialHash, string metadataURI);
     event SupplierRemoved(address indexed supplier);
 
@@ -46,12 +44,6 @@ interface IRoleRegistry is IAccessControl {
     /// @notice True if `supplier` currently holds SUPPLIER_ROLE.
     function isActiveSupplier(address supplier) external view returns (bool);
 
-    /// @notice Binds a field agent to the calling (active) NGO.
-    function addFieldAgent(address agent) external;
-
-    /// @notice Unbinds a field agent from the calling NGO.
-    function removeFieldAgent(address agent) external;
-
     /// @notice Pauses every pausable action in the system. Admin only.
     function pause() external;
 
@@ -64,17 +56,11 @@ interface IRoleRegistry is IAccessControl {
     /// @notice True if `ngo` holds NGO_ROLE and is active.
     function isActiveNgo(address ngo) external view returns (bool);
 
-    /// @notice True if `agent` holds FIELD_AGENT_ROLE and is bound to `ngo`.
-    function isFieldAgentOf(address agent, address ngo) external view returns (bool);
-
     /// @notice True if `account` is a platform admin.
     function isAdmin(address account) external view returns (bool);
 
     /// @notice Payout address of a registered NGO (zero if unregistered).
     function payoutOf(address ngo) external view returns (address);
-
-    /// @notice NGO a field agent is bound to (zero if none).
-    function fieldAgentNgo(address agent) external view returns (address);
 
     /// @notice Global pause flag.
     function paused() external view returns (bool);

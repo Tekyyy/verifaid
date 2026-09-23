@@ -1,87 +1,69 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {ISemaphore} from "@semaphore-protocol/contracts/interfaces/ISemaphore.sol";
-
 /// @title IDeliveryManager
-/// @notice Ties deliveries to tranches using field evidence, anonymous beneficiary confirmations and verifier sign-off.
+/// @notice Unlocks every tranche after the first on the need's donors' say-so. The NGO shows how the money it was
+///         already paid was spent — photos, receipts, bank statements, listed in a manifest committed on chain — and
+///         once donors who gave a set share of what was raised approve it, the next tranche becomes releasable.
 interface IDeliveryManager {
     enum DeliveryStatus {
-        Open,
-        Challengeable,
-        Disputed,
-        Finalized,
-        Rejected
+        Open, // under review by the donors
+        Approved, // enough of the raised amount approved it; its tranche became releasable
+        Superseded // the NGO replaced this evidence before it was approved
     }
 
     struct Delivery {
         uint256 id;
         uint256 needId;
-        uint256 trancheIndex; // tranche this delivery unlocks (>= 1)
-        address fieldAgent;
-        uint32 expectedRecipients;
-        uint32 confirmations;
-        bytes32 evidenceAttestationUID;
-        bytes32 verifierAttestationUID;
-        address verifier; // attester of the DeliveryVerified attestation
-        uint64 challengeDeadline;
+        uint256 trancheIndex; // tranche this evidence unlocks (>= 1); it accounts for tranche `trancheIndex - 1`
+        address submitter;
+        bytes32 evidenceHash; // keccak256 of the manifest, whose full text is in `DeliverySubmitted`
+        uint256 approvedAmount; // sum of the donations of the donors who approved it
+        uint64 submittedAt;
+        uint64 approvedAt;
         DeliveryStatus status;
     }
 
-    event DeliveryOpened(
+    event DeliverySubmitted(
         uint256 indexed deliveryId,
         uint256 indexed needId,
         uint256 trancheIndex,
-        address indexed fieldAgent,
-        uint32 expectedRecipients
+        address indexed submitter,
+        bytes32 evidenceHash,
+        string manifest
     );
-    event DeliveryEvidenceLinked(uint256 indexed deliveryId, bytes32 attestationUID);
-    event ReceiptConfirmed(uint256 indexed deliveryId, uint256 nullifier, uint32 confirmations);
-    event DeliveryVerifiedLinked(
-        uint256 indexed deliveryId, bytes32 attestationUID, address indexed verifier, bool approved
+    event DeliverySuperseded(uint256 indexed deliveryId, uint256 indexed replacedBy);
+    event DeliveryApprovalAdded(
+        uint256 indexed deliveryId,
+        address indexed donor,
+        uint256 weight,
+        uint256 approvedAmount,
+        uint256 requiredAmount
     );
-    event DeliveryChallengeable(uint256 indexed deliveryId, uint64 challengeDeadline);
-    event DeliveryChallenged(uint256 indexed deliveryId, address indexed challenger, bytes32 reasonHash);
-    event DisputeResolved(uint256 indexed deliveryId, bool upheld);
-    event DeliveryCancelled(uint256 indexed deliveryId, address indexed by);
-    event DeliveryFinalized(uint256 indexed deliveryId, uint256 indexed needId, uint256 trancheIndex);
-    event DeliveryRejected(uint256 indexed deliveryId, uint256 indexed needId, uint256 trancheIndex);
-    event Wired(address resolver);
+    event DeliveryApproved(uint256 indexed deliveryId, uint256 indexed needId, uint256 trancheIndex);
 
-    /// @notice Opens a delivery for `trancheIndex` of `needId`. Caller must be a field agent of the need's NGO.
-    function openDelivery(uint256 needId, uint256 trancheIndex, uint32 expectedRecipients) external returns (uint256);
+    /// @notice The NGO files the evidence for its next locked tranche. Replaces any evidence still under review for
+    ///         that tranche, and with it every approval given so far: donors approved what they saw.
+    function submitEvidence(uint256 needId, string calldata manifest) external returns (uint256 deliveryId);
 
-    /// @notice Links a DeliveryEvidence attestation. Resolver only.
-    function onEvidenceAttested(uint256 deliveryId, bytes32 uid) external;
-
-    /// @notice Anonymous receipt confirmation by a beneficiary; anyone may relay the proof.
-    function confirmReceipt(uint256 deliveryId, ISemaphore.SemaphoreProof calldata proof) external;
-
-    /// @notice Several anonymous confirmations in one transaction, so a relayer pays the fixed costs once.
-    function confirmReceiptBatch(uint256 deliveryId, ISemaphore.SemaphoreProof[] calldata proofs) external;
-
-    /// @notice Links a DeliveryVerified attestation. Resolver only.
-    function onDeliveryVerified(uint256 deliveryId, address verifier, bool approved, bytes32 uid) external;
-
-    /// @notice Disputes a challengeable delivery before its deadline. Independent verifiers only.
-    function challenge(uint256 deliveryId, bytes32 reasonHash) external;
-
-    /// @notice Resolves a dispute. `uphold = true` rejects the delivery; dismissing it resumes the challenge
-    ///         window with the time that was left when the challenge was raised. Admin only.
-    function resolveDispute(uint256 deliveryId, bool uphold) external;
-
-    /// @notice Closes an abandoned delivery so its tranche can be attempted again. Admin only.
-    function cancelDelivery(uint256 deliveryId) external;
-
-    /// @notice Finalizes a delivery after its challenge period and unlocks the tranche. Callable by anyone.
-    function finalize(uint256 deliveryId) external;
+    /// @notice A donor to the need approves the evidence, with the weight of what they gave. Reaching the threshold
+    ///         makes the tranche releasable in the same transaction.
+    function approve(uint256 deliveryId) external;
 
     function getDelivery(uint256 deliveryId) external view returns (Delivery memory);
-    function minExpectedRecipients() external view returns (uint32);
-    function deliveryCount() external view returns (uint256);
-    function lastFinalizedDeliveryOf(uint256 needId) external view returns (uint256);
-    function activeDeliveryOf(uint256 needId, uint256 trancheIndex) external view returns (uint256);
 
-    /// @notice True while a verified delivery of the need is in its challenge window or under dispute.
-    function hasDeliveryInFlight(uint256 needId) external view returns (bool);
+    /// @notice Share of the raised amount that must approve, in basis points.
+    function approvalThresholdBps() external view returns (uint16);
+
+    /// @notice Amount of donations whose donors must approve a delivery of this need (0 before funding closes).
+    function requiredApproval(uint256 needId) external view returns (uint256);
+
+    /// @notice What `donor`'s approval of this need weighs: their donations, or 0 for the NGO, its payout address,
+    ///         the need's payees and anyone who did not give.
+    function approvalWeight(uint256 needId, address donor) external view returns (uint256);
+
+    function hasApproved(uint256 deliveryId, address donor) external view returns (bool);
+    function deliveryCount() external view returns (uint256);
+    function activeDeliveryOf(uint256 needId, uint256 trancheIndex) external view returns (uint256);
+    function lastApprovedDeliveryOf(uint256 needId) external view returns (uint256);
 }

@@ -13,7 +13,7 @@ import {Script} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
 
 /// @title SeedDemo
-/// @notice Registers the demo NGO, verifiers, suppliers and field agent, enrols the demo beneficiary commitments
+/// @notice Registers the demo NGO, verifiers and suppliers, enrols the demo beneficiary commitments
 ///         and creates three needs that between them show every term a need can carry:
 ///         - FOOD: deadlines, partial execution above 60%, a disclosed 1.5% cost cap;
 ///         - SHELTER: above the high-value threshold (two verifiers), all or nothing, no intermediary costs;
@@ -38,8 +38,6 @@ contract SeedDemo is Script, DeploymentIO {
         uint256 ngoKey;
         address ngo;
         address ngoPayout;
-        uint256 fieldAgentKey;
-        address fieldAgent;
         address verifier1;
         address verifier2;
         address donor1;
@@ -85,9 +83,8 @@ contract SeedDemo is Script, DeploymentIO {
         }
         vm.stopBroadcast();
 
-        // ── 2. the NGO onboards its field agent, program and beneficiaries ──
+        // ── 2. the NGO sets up its programme ──
         vm.startBroadcast(a.ngoKey);
-        if (roles.fieldAgentNgo(a.fieldAgent) == address(0)) roles.addFieldAgent(a.fieldAgent);
 
         uint256 programId = groups.createProgram(
             keccak256("demo-enrollment-policy-v1: households registered by the municipality"), "ipfs://demo-program"
@@ -124,7 +121,6 @@ contract SeedDemo is Script, DeploymentIO {
         console2.log("Demo data seeded");
         console2.log("  NGO            ", a.ngo);
         console2.log("  payout Safe    ", a.ngoPayout);
-        console2.log("  field agent    ", a.fieldAgent);
         console2.log("  verifiers      ", a.verifier1, a.verifier2);
         console2.log("  suppliers      ", a.foodSupplier, a.shelterSupplier, a.medicalSupplier);
         console2.log("  donors         ", a.donor1, a.donor2);
@@ -147,8 +143,7 @@ contract SeedDemo is Script, DeploymentIO {
         a.ngoKey = vm.deriveKey(mnemonic, 1);
         a.ngo = vm.addr(a.ngoKey);
         a.ngoPayout = vm.addr(vm.deriveKey(mnemonic, 2));
-        a.fieldAgentKey = vm.deriveKey(mnemonic, 3);
-        a.fieldAgent = vm.addr(a.fieldAgentKey);
+        // Index 3 was the field agent, whose checks donors now make themselves; left unused like index 6.
         a.verifier1 = vm.addr(vm.deriveKey(mnemonic, 4));
         a.verifier2 = vm.addr(vm.deriveKey(mnemonic, 5));
         // Index 6 was the payment provider; it is left unused so every other role keeps its address.
@@ -162,9 +157,10 @@ contract SeedDemo is Script, DeploymentIO {
     }
 
     /// @dev Tops up the role wallets that will have to send their own transactions during the demo — including
-    ///      the relayer, which submits every beneficiary confirmation so their wallets never appear on-chain.
+    ///      the donors, who approve each delivery themselves, and the relayer, which serves the sandbox on-ramp and
+    ///      sweeps deposit addresses.
     function _fundGas(Actors memory a) internal {
-        address[7] memory needsGas = [a.ngo, a.fieldAgent, a.verifier1, a.verifier2, a.donor1, a.donor2, a.relayer];
+        address[6] memory needsGas = [a.ngo, a.verifier1, a.verifier2, a.donor1, a.donor2, a.relayer];
         uint256 budget = a.admin.balance;
         vm.startBroadcast(a.adminKey);
         for (uint256 i; i < needsGas.length; ++i) {

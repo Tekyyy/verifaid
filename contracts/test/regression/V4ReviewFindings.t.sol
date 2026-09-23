@@ -34,7 +34,7 @@ contract V4ReviewFindingsTest is PoATest {
     ///      permissionless `releaseTranche` the NGO swaps payee 0 to supplier C and has it approved.
     function test_F1_anEarnedTrancheCannotBeRedirected() public {
         (uint256 needId,, AidVault vault) = _needInDelivery(TARGET); // supplier A takes every tranche
-        _runDelivery(needId, 1, 10); // A did the work: tranche 1 is now Releasable
+        _runDelivery(needId, 1); // A did the work: tranche 1 is now Releasable
 
         vm.prank(ngo);
         uint256 changeId = registry.proposePayeeChange(needId, 0, supplierC, 0, "C");
@@ -57,7 +57,7 @@ contract V4ReviewFindingsTest is PoATest {
     /// @notice F-1: a supplier that has lost its role is the exception — replacing it is the way to unblock a need.
     function test_F1_aRemovedSupplierIsStillReplaceableWithATrancheWaiting() public {
         (uint256 needId,, AidVault vault) = _needInDelivery(TARGET);
-        _runDelivery(needId, 1, 10);
+        _runDelivery(needId, 1);
         vm.prank(admin);
         roles.removeSupplier(supplierA);
         vm.expectRevert(Errors.SupplierInactive.selector);
@@ -91,34 +91,35 @@ contract V4ReviewFindingsTest is PoATest {
     }
 
     /// @notice F-2: "one address, one role" now holds for the address's whole history.
-    /// @dev The reviewer's sequence: the NGO removes its own field agent, and the admin — seeing a clean address —
-    ///      registers it as an "independent" supplier that then takes far more than the NGO's 25% cap allows.
-    function test_F2_aFormerFieldAgentCannotComeBackAsASupplier() public {
-        address insider = makeAddr("ngoInsider");
-        vm.prank(ngo);
-        roles.addFieldAgent(insider);
-        vm.prank(ngo);
-        roles.removeFieldAgent(insider);
-        assertFalse(roles.hasRole(roles.FIELD_AGENT_ROLE(), insider), "the live role is gone");
-        assertEq(roles.everHeldRole(insider), roles.FIELD_AGENT_ROLE(), "but the registry remembers");
+    /// @dev The reviewer's sequence used an NGO's own field agent, a role that no longer exists (§21); the rule it
+    ///      prompted still applies to every role left. A verifier the admin removed — seen as a clean address —
+    ///      must not come back as an "independent" supplier of the NGOs it used to check.
+    function test_F2_aFormerVerifierCannotComeBackAsASupplier() public {
+        address insider = makeAddr("formerVerifier");
+        vm.startPrank(admin);
+        roles.registerVerifier(insider);
+        roles.removeVerifier(insider);
+        vm.stopPrank();
+        assertFalse(roles.hasRole(roles.VERIFIER_ROLE(), insider), "the live role is gone");
+        assertEq(roles.everHeldRole(insider), roles.VERIFIER_ROLE(), "but the registry remembers");
 
         vm.prank(admin);
         vm.expectRevert(Errors.RoleConflict.selector);
         roles.registerSupplier(insider, keccak256("insider"), "ipfs://insider");
 
-        // The same role may still be re-granted: removing an agent by mistake is not a life sentence.
-        vm.prank(ngo);
-        roles.addFieldAgent(insider);
-        assertTrue(roles.hasRole(roles.FIELD_AGENT_ROLE(), insider));
+        // The same role may still be re-granted: removing a verifier by mistake is not a life sentence.
+        vm.prank(admin);
+        roles.registerVerifier(insider);
+        assertTrue(roles.hasRole(roles.VERIFIER_ROLE(), insider));
     }
 
-    /// @notice F-2: it holds in every direction — a removed supplier cannot become an NGO's field agent either.
-    function test_F2_aFormerSupplierCannotBecomeAFieldAgent() public {
-        vm.prank(admin);
+    /// @notice F-2: it holds in every direction — a removed supplier cannot become a verifier either.
+    function test_F2_aFormerSupplierCannotBecomeAVerifier() public {
+        vm.startPrank(admin);
         roles.removeSupplier(supplierC);
-        vm.prank(ngo);
         vm.expectRevert(Errors.RoleConflict.selector);
-        roles.addFieldAgent(supplierC);
+        roles.registerVerifier(supplierC);
+        vm.stopPrank();
     }
 
     /// @notice F-3: escrowed money always has a horizon, so a frozen plan can never trap it forever.
@@ -138,7 +139,7 @@ contract V4ReviewFindingsTest is PoATest {
         AidVault vault = AidVault(registry.vaultOf(needId));
         _donate(donor1, needId, TARGET);
         vault.releaseTranche(0);
-        _runDelivery(needId, 1, 10);
+        _runDelivery(needId, 1);
         vm.prank(admin);
         roles.removeSupplier(supplierA);
         vm.expectRevert(Errors.SupplierInactive.selector);
@@ -188,9 +189,9 @@ contract V4HeldPaymentTest is PoATest {
     /// @dev Releases every tranche with supplier B frozen from the last one on.
     function _releaseAllWithBFrozen() internal {
         vault.releaseTranche(0);
-        _runDelivery(needId, 1, 10);
+        _runDelivery(needId, 1);
         vault.releaseTranche(1);
-        _runDelivery(needId, 2, 10);
+        _runDelivery(needId, 2);
         blocklist.setBlocked(supplierB, true);
         vault.releaseTranche(2);
     }

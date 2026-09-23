@@ -12,18 +12,14 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 /// @notice Central role store for Proof of Aid. Every other contract calls `hasRole` / helper views on it.
 /// @dev The admin is a Safe multisig in production and the deployer EOA on testnets.
 ///      Operational roles can only be assigned through the registration functions so that the
-///      "one address, one role" rule and NGO/field-agent bindings are always enforced.
+///      "one address, one role" rule is always enforced.
 contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     bytes32 public constant NGO_ROLE = Roles.NGO_ROLE;
     bytes32 public constant VERIFIER_ROLE = Roles.VERIFIER_ROLE;
-    bytes32 public constant FIELD_AGENT_ROLE = Roles.FIELD_AGENT_ROLE;
     bytes32 public constant SUPPLIER_ROLE = Roles.SUPPLIER_ROLE;
 
     /// @notice NGO profiles (organization data only).
     mapping(address => NgoProfile) public ngos;
-
-    /// @inheritdoc IRoleRegistry
-    mapping(address => address) public fieldAgentNgo;
 
     /// @notice True for addresses registered as some NGO's payout Safe (they may not hold other roles).
     mapping(address => bool) public isPayoutAddress;
@@ -84,8 +80,8 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     }
 
     /// @inheritdoc IRoleRegistry
-    /// @dev A supplier is a separate party by construction: it cannot also be an NGO, a payout Safe, a verifier,
-    ///      or a field agent, so an NGO cannot list its own treasury as a "supplier".
+    /// @dev A supplier is a separate party by construction: it cannot also be an NGO, a payout Safe or a verifier,
+    ///      so an NGO cannot list its own treasury as a "supplier".
     function registerSupplier(address supplier, bytes32 credentialHash, string calldata uri)
         external
         onlyRole(DEFAULT_ADMIN_ROLE)
@@ -114,28 +110,6 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
         _unpause();
     }
 
-    // ─── NGO: field agents ─────────────────────────────────────────────────────
-
-    /// @inheritdoc IRoleRegistry
-    function addFieldAgent(address agent) external {
-        if (!isActiveNgo(msg.sender)) revert Errors.Unauthorized();
-        if (agent == address(0)) revert Errors.ZeroAddress();
-        if (fieldAgentNgo[agent] != address(0)) revert Errors.FieldAgentAlreadyBound();
-        _claimOperationalRole(agent, FIELD_AGENT_ROLE);
-
-        fieldAgentNgo[agent] = msg.sender;
-        _grantRole(FIELD_AGENT_ROLE, agent);
-        emit FieldAgentAdded(msg.sender, agent);
-    }
-
-    /// @inheritdoc IRoleRegistry
-    function removeFieldAgent(address agent) external {
-        if (fieldAgentNgo[agent] != msg.sender || msg.sender == address(0)) revert Errors.FieldAgentNotBound();
-        delete fieldAgentNgo[agent];
-        _revokeRole(FIELD_AGENT_ROLE, agent);
-        emit FieldAgentRemoved(msg.sender, agent);
-    }
-
     // ─── AccessControl hardening ───────────────────────────────────────────────
 
     /// @notice Only DEFAULT_ADMIN_ROLE can be granted directly; operational roles use the registration functions.
@@ -162,20 +136,14 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     // ─── views ─────────────────────────────────────────────────────────────────
 
     /// @inheritdoc IRoleRegistry
-    /// @dev Independence = holds VERIFIER_ROLE, is not the NGO, not the NGO's payout Safe, and not one of its field agents.
+    /// @dev Independence = holds VERIFIER_ROLE, is not the NGO and not the NGO's payout Safe.
     function isIndependent(address verifier, address ngo) external view returns (bool) {
-        return hasRole(VERIFIER_ROLE, verifier) && verifier != ngo && verifier != ngos[ngo].payoutAddress
-            && fieldAgentNgo[verifier] != ngo;
+        return hasRole(VERIFIER_ROLE, verifier) && verifier != ngo && verifier != ngos[ngo].payoutAddress;
     }
 
     /// @inheritdoc IRoleRegistry
     function isActiveNgo(address ngo) public view returns (bool) {
         return ngos[ngo].active && hasRole(NGO_ROLE, ngo);
-    }
-
-    /// @inheritdoc IRoleRegistry
-    function isFieldAgentOf(address agent, address ngo) external view returns (bool) {
-        return ngo != address(0) && fieldAgentNgo[agent] == ngo && hasRole(FIELD_AGENT_ROLE, agent);
     }
 
     /// @inheritdoc IRoleRegistry
@@ -207,15 +175,14 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     }
 
     /// @dev An address may hold at most one operational role, and may never be re-registered under a different
-    ///      one: without the memory, an NGO could remove its own field agent and have the admin register that
-    ///      same address as an "independent" supplier, taking the share the NGO cap exists to bound.
+    ///      one: without the memory, a verifier the admin removed could come back as a "supplier" of the NGOs it
+    ///      used to check, or an NGO's former payout Safe as one of its payees.
     function _requireNoOperationalRole(address account, bytes32 role) internal view {
         bytes32 everHeld = everHeldRole[account];
         if (everHeld != bytes32(0) && everHeld != role) revert Errors.RoleConflict();
         if (
             hasRole(NGO_ROLE, account) || hasRole(VERIFIER_ROLE, account) || hasRole(SUPPLIER_ROLE, account)
-                || fieldAgentNgo[account] != address(0) || ngos[account].payoutAddress != address(0)
-                || isPayoutAddress[account]
+                || ngos[account].payoutAddress != address(0) || isPayoutAddress[account]
         ) revert Errors.RoleConflict();
     }
 }

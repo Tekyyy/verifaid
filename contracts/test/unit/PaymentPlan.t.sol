@@ -148,9 +148,9 @@ contract PaymentPlanTest is PoATest {
         assertEq(token.balanceOf(supplierB), 600e6);
         assertEq(token.balanceOf(ngoPayout), 300e6, "only the NGO's disclosed share");
 
-        _runDelivery(needId, 1, 10);
+        _runDelivery(needId, 1);
         vault.releaseTranche(1);
-        _runDelivery(needId, 2, 10);
+        _runDelivery(needId, 2);
         vault.releaseTranche(2);
 
         assertEq(token.balanceOf(supplierA), 2100e6 + 2400e6 + 3000e6);
@@ -198,7 +198,7 @@ contract PaymentPlanTest is PoATest {
     function test_release_waitsForAReplacementWhenASupplierIsRemoved() public {
         (uint256 needId,, AidVault vault) = _needInDelivery(TARGET); // default plan: supplier A takes everything
         assertEq(token.balanceOf(supplierA), 3000e6);
-        _runDelivery(needId, 1, 10);
+        _runDelivery(needId, 1);
 
         vm.prank(admin);
         roles.removeSupplier(supplierA);
@@ -253,7 +253,7 @@ contract PaymentPlanTest is PoATest {
         vm.prank(ngo);
         uint256 changeId = registry.proposePayeeChange(needId, 1, supplierC, 0, "C");
 
-        vm.prank(fieldAgent);
+        vm.prank(outsider);
         vm.expectRevert(Errors.NotIndependent.selector);
         registry.approvePayeeChange(needId, changeId);
         vm.prank(ngo);

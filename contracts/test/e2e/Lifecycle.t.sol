@@ -2,7 +2,6 @@
 pragma solidity ^0.8.24;
 
 import {AidVault} from "../../src/funds/AidVault.sol";
-import {IAidVault} from "../../src/interfaces/IAidVault.sol";
 import {IDeliveryManager} from "../../src/interfaces/IDeliveryManager.sol";
 import {INeedsRegistry} from "../../src/interfaces/INeedsRegistry.sol";
 import {ITrancheLedger} from "../../src/interfaces/ITrancheLedger.sol";
@@ -12,110 +11,82 @@ import {
     AttestationRequest,
     AttestationRequestData
 } from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
-import {ISemaphore} from "@semaphore-protocol/contracts/interfaces/ISemaphore.sol";
 
-/// @notice The whole lifecycle of §7 of the spec, end to end, for a three-tranche need:
-///         registration → verification → funding (crypto + fiat) → pre-financing → delivery with anonymous
-///         confirmations → verifier sign-off → challenge window → tranche release → impact report.
+/// @notice The whole lifecycle end to end, for a three-tranche need:
+///         registration → verification → funding → pre-financing → the NGO accounts for each tranche it was paid
+///         and the donors approve it → next tranche released → impact report.
 contract LifecycleTest is PoATest {
     uint256 internal constant TARGET = 30_000e6; // above the high-value threshold → 2 verifiers required
-    uint32 internal constant EXPECTED_RECIPIENTS = 10;
 
     /// @dev Paid by card: the Coinbase on-ramp bought USDC into this wallet, which then donated it.
     address internal cardDonor = makeAddr("cardDonor");
 
     function test_fullLifecycle_threeTranches() public {
-        // ── 2. NGO creates a program and enrols beneficiary identity commitments ──
-        uint256 programId = _createProgram(ngo, EXPECTED_RECIPIENTS);
-        assertEq(groups.memberCount(programId), EXPECTED_RECIPIENTS);
-
-        // ── 3. NGO creates the need with a 30/40/30 tranche plan ──
+        // ── NGO creates a program and the need, with a 30/40/30 tranche plan ──
+        uint256 programId = _createProgram(ngo, 10);
         vm.prank(ngo);
         uint256 needId = registry.createNeed(_needParams(programId, TARGET, 2, _threeTrancheBps()));
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Pending);
 
-        // ── 4. Two independent verifiers attest → vault deployed, funding opens ──
+        // ── Two independent verifiers attest → vault deployed, funding opens ──
         _attestNeedVerified(verifier1, needId, true);
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Pending, "one of two");
         _attestNeedVerified(verifier2, needId, true);
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Funding);
-
         AidVault vault = AidVault(registry.vaultOf(needId));
-        assertTrue(address(vault) != address(0));
 
-        // ── 5. Donations: two wallet donors and one who paid by card through the on-ramp ──
-        uint256 receipt1 = _donate(donor1, needId, 12_000e6);
-        uint256 receipt2 = _donate(donor2, needId, 8000e6);
+        // ── Donations: two wallet donors and one who paid by card through the on-ramp ──
+        uint256 receipt1 = _donate(donor1, needId, 12_000e6); // 40%
+        _donate(donor2, needId, 8000e6); // 26.7%
+        uint256 receipt3 = _donate(cardDonor, needId, 10_000e6); // 33.3%
         assertEq(receipt.ownerOf(receipt1), donor1);
-        assertEq(receipt.ownerOf(receipt2), donor2);
-        assertEq(receipt.receiptOf(receipt1).amount, 12_000e6);
-
-        uint256 receipt3 = _donate(cardDonor, needId, 10_000e6);
         assertEq(receipt.ownerOf(receipt3), cardDonor, "a card donor holds a receipt like anyone else");
 
-        // ── 6. Target reached → funding closed → tranche 0 (pre-financing) released ──
-        assertEq(vault.totalDonated(), TARGET);
+        // ── Target reached → funding closed → tranche 0 (pre-financing) released ──
         assertTrue(vault.fundingClosed());
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Funded);
-
         vault.releaseTranche(0);
         assertEq(token.balanceOf(supplierA), 9000e6, "30% pre-financing");
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.InDelivery);
         assertVaultInvariant(vault);
 
-        // ── 7-10. One delivery per remaining tranche ──
-        uint256 delivery1 = _deliverTranche(needId, 1);
+        // ── Tranche 1: the NGO accounts for the pre-financing; donor2 alone (26.7%) is not enough ──
+        uint256 delivery1 = _submitEvidence(needId);
+        vm.prank(donor2);
+        deliveryManager.approve(delivery1);
+        assertEq(deliveryManager.getDelivery(delivery1).status, IDeliveryManager.DeliveryStatus.Open);
+        assertEq(vault.trancheStatus(1), ITrancheLedger.TrancheStatus.Locked);
+        vm.prank(cardDonor);
+        deliveryManager.approve(delivery1); // 60%
+        assertEq(deliveryManager.getDelivery(delivery1).status, IDeliveryManager.DeliveryStatus.Approved);
+
         vault.releaseTranche(1);
         assertEq(token.balanceOf(supplierA), 21_000e6, "30% + 40%");
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.InDelivery);
 
-        uint256 delivery2 = _deliverTranche(needId, 2);
+        // ── Tranche 2: donor1 (40%) is enough on its own ──
+        uint256 delivery2 = _submitEvidence(needId);
+        assertEq(deliveryManager.getDelivery(delivery2).trancheIndex, 2);
+        vm.prank(donor1);
+        deliveryManager.approve(delivery2);
         vault.releaseTranche(2);
         assertEq(token.balanceOf(supplierA), TARGET, "all tranches paid");
 
-        // ── 11. Last release completes the need ──
+        // ── Last release completes the need ──
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Completed);
         assertEq(token.balanceOf(address(vault)), 0);
+        assertEq(deliveryManager.lastApprovedDeliveryOf(needId), delivery2);
         assertVaultInvariant(vault);
 
-        // ── 12. NGO publishes the impact report, chained to the last verifier sign-off ──
+        // ── NGO publishes the impact report ──
         bytes32 reportUID = _attestImpactReport(ngo, needId, 480);
         assertEq(resolver.activeReportOf(needId), reportUID);
-
-        // the evidence chain is traversable in EAS: report → DeliveryVerified → DeliveryEvidence
-        IDeliveryManager.Delivery memory last = deliveryManager.getDelivery(delivery2);
-        assertEq(eas.getAttestation(reportUID).refUID, last.verifierAttestationUID, "report refs sign-off");
-        assertEq(
-            eas.getAttestation(last.verifierAttestationUID).refUID,
-            last.evidenceAttestationUID,
-            "sign-off refs evidence"
-        );
-        assertEq(deliveryManager.lastFinalizedDeliveryOf(needId), delivery2);
-        assertEq(deliveryManager.getDelivery(delivery1).status, IDeliveryManager.DeliveryStatus.Finalized);
-
-        // nothing on-chain identifies a beneficiary: confirmations are counts and nullifiers only
-        assertEq(deliveryManager.getDelivery(delivery1).confirmations, 7);
-        assertEq(deliveryManager.getDelivery(delivery2).confirmations, 7);
     }
 
-    /// @dev Evidence → anonymous confirmations → independent sign-off → challenge window → finalize.
-    function _deliverTranche(uint256 needId, uint256 trancheIndex) internal returns (uint256 deliveryId) {
-        vm.prank(fieldAgent);
-        deliveryId = deliveryManager.openDelivery(needId, trancheIndex, EXPECTED_RECIPIENTS);
-        _attestEvidence(fieldAgent, deliveryId);
-        _confirm(deliveryId, 7); // 70% of 10
-        _attestDeliveryVerified(verifier3, deliveryId, true);
-        assertEq(deliveryManager.getDelivery(deliveryId).status, IDeliveryManager.DeliveryStatus.Challengeable);
+    // ─── failure paths ─────────────────────────────────────────────────────────
 
-        vm.warp(block.timestamp + CHALLENGE_PERIOD);
-        deliveryManager.finalize(deliveryId);
-        assertEq(deliveryManager.getDelivery(deliveryId).status, IDeliveryManager.DeliveryStatus.Finalized);
-    }
-
-    // ─── failure paths the spec asks for ───────────────────────────────────────
-
-    function test_nonIndependentVerifierCannotVerifyNeedOrDelivery() public {
-        uint256 programId = _createProgram(ngo, EXPECTED_RECIPIENTS);
+    function test_nonIndependentVerifierCannotVerifyANeed() public {
+        uint256 programId = _createProgram(ngo, 10);
         uint256 needId = _createNeed(ngo, programId, 5000e6, 1);
 
         // The NGO cannot verify its own need…
@@ -137,109 +108,41 @@ contract LifecycleTest is PoATest {
 
         // …nor can its payout Safe, even if it were registered as a verifier.
         assertFalse(roles.isIndependent(ngoPayout, ngo));
-
-        _attestNeedVerified(verifier1, needId, true);
-        AidVault vault = AidVault(registry.vaultOf(needId));
-        _donate(donor1, needId, 5000e6);
-        vault.releaseTranche(0);
-
-        vm.prank(fieldAgent);
-        uint256 deliveryId = deliveryManager.openDelivery(needId, 1, EXPECTED_RECIPIENTS);
-        bytes32 evidenceUID = _attestEvidence(fieldAgent, deliveryId);
-        _confirm(deliveryId, 7);
-
-        // the NGO's own field agent cannot sign off on the delivery either
-        vm.prank(fieldAgent);
-        vm.expectRevert(Errors.NotIndependent.selector);
-        eas.attest(
-            AttestationRequest({
-                schema: deliveryVerifiedSchema,
-                data: AttestationRequestData({
-                    recipient: address(deliveryManager),
-                    expirationTime: 0,
-                    revocable: false,
-                    refUID: evidenceUID,
-                    data: abi.encode(deliveryId, true, REPORT_HASH),
-                    value: 0
-                })
-            })
-        );
-        assertEq(deliveryManager.getDelivery(deliveryId).status, IDeliveryManager.DeliveryStatus.Open);
     }
 
-    function test_beneficiaryCannotConfirmTwice() public {
-        (uint256 needId,,) = _needInDelivery(10_000e6);
-        vm.prank(fieldAgent);
-        uint256 deliveryId = deliveryManager.openDelivery(needId, 1, EXPECTED_RECIPIENTS);
-        _attestEvidence(fieldAgent, deliveryId);
+    /// @dev Donors who are not convinced simply do not approve. The tranche stays locked, and once the delivery
+    ///      deadline has passed anyone can expire the need and every donor takes back their share of what is left.
+    function test_evidenceDonorsDoNotApprove_expiresAndRefunds() public {
+        (uint256 needId,, AidVault vault) = _verifiedNeed(10_000e6);
+        _donate(donor1, needId, 2000e6); // 20%: not enough on its own
+        _donate(donor2, needId, 8000e6);
+        vault.releaseTranche(0); // 3,000 pre-financing
 
-        ISemaphore.SemaphoreProof memory proof = _proof(deliveryId, 0);
-        vm.prank(relayer);
-        deliveryManager.confirmReceipt(deliveryId, proof);
-
-        vm.prank(relayer);
-        vm.expectRevert(ISemaphore.Semaphore__YouAreUsingTheSameNullifierTwice.selector);
-        deliveryManager.confirmReceipt(deliveryId, proof);
-
-        // …but the same beneficiary may confirm a *different* delivery, because the scope changes the nullifier
-        assertEq(deliveryManager.getDelivery(deliveryId).confirmations, 1);
-    }
-
-    function test_challengedDeliveryIsRejectedAndRedone() public {
-        (uint256 needId,, AidVault vault) = _needInDelivery(10_000e6);
-
-        vm.prank(fieldAgent);
-        uint256 deliveryId = deliveryManager.openDelivery(needId, 1, EXPECTED_RECIPIENTS);
-        _attestEvidence(fieldAgent, deliveryId);
-        _confirm(deliveryId, 7);
-        _attestDeliveryVerified(verifier2, deliveryId, true);
-
-        // an independent verifier challenges before the deadline
-        vm.prank(verifier3);
-        deliveryManager.challenge(deliveryId, keccak256("beneficiary list does not match the manifest"));
-        assertEq(deliveryManager.getDelivery(deliveryId).status, IDeliveryManager.DeliveryStatus.Disputed);
-
-        // the challenge window can no longer be waited out while disputed
-        vm.warp(block.timestamp + CHALLENGE_PERIOD);
-        vm.expectRevert(Errors.InvalidDeliveryStatus.selector);
-        deliveryManager.finalize(deliveryId);
-
-        // the admin upholds it: the delivery is rejected and the tranche stays locked
-        vm.prank(admin);
-        deliveryManager.resolveDispute(deliveryId, true);
-        assertEq(deliveryManager.getDelivery(deliveryId).status, IDeliveryManager.DeliveryStatus.Rejected);
+        uint256 deliveryId = _submitEvidence(needId);
+        vm.prank(donor1);
+        deliveryManager.approve(deliveryId);
         assertEq(vault.trancheStatus(1), ITrancheLedger.TrancheStatus.Locked);
-        assertEq(token.balanceOf(supplierA), 3000e6, "only the pre-financing was paid");
 
-        // the field agent redoes the delivery properly and it goes through
-        uint256 redone = _deliverTranche(needId, 1);
-        vault.releaseTranche(1);
-        assertEq(deliveryManager.getDelivery(redone).status, IDeliveryManager.DeliveryStatus.Finalized);
-        assertEq(token.balanceOf(supplierA), 7000e6);
+        vm.warp(registry.getNeed(needId).executionDeadline + 1);
+        registry.expire(needId);
+        assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Expired);
+
+        vm.prank(donor1);
+        uint256 r1 = vault.claimRefund();
+        vm.prank(donor2);
+        uint256 r2 = vault.claimRefund();
+        assertEq(r1, 1400e6, "20% of the 7,000 left");
+        assertEq(r2, 5600e6);
         assertVaultInvariant(vault);
-    }
 
-    function test_dismissedChallengeLetsTheDeliveryProceed() public {
-        (uint256 needId,, AidVault vault) = _needInDelivery(10_000e6);
-        vm.prank(fieldAgent);
-        uint256 deliveryId = deliveryManager.openDelivery(needId, 1, EXPECTED_RECIPIENTS);
-        _attestEvidence(fieldAgent, deliveryId);
-        _confirm(deliveryId, 7);
-        _attestDeliveryVerified(verifier2, deliveryId, true);
-
-        vm.prank(verifier3);
-        deliveryManager.challenge(deliveryId, keccak256("looks off"));
-        vm.prank(admin);
-        deliveryManager.resolveDispute(deliveryId, false);
-
-        vm.warp(block.timestamp + CHALLENGE_PERIOD);
-        deliveryManager.finalize(deliveryId);
-        vault.releaseTranche(1);
-        assertEq(token.balanceOf(supplierA), 7000e6);
+        // an expired need can no longer be approved
+        vm.prank(donor2);
+        vm.expectRevert(Errors.InvalidNeedStatus.selector);
+        deliveryManager.approve(deliveryId);
     }
 
     function test_cancellationRefundsEveryDonorProRata() public {
-        uint256 programId = _createProgram(ngo, EXPECTED_RECIPIENTS);
+        uint256 programId = _createProgram(ngo, 10);
         vm.prank(ngo);
         uint256 needId = registry.createNeed(_needParams(programId, 20_000e6, 2, _threeTrancheBps()));
         _attestNeedVerified(verifier1, needId, true);
@@ -251,13 +154,8 @@ contract LifecycleTest is PoATest {
         _donate(cardDonor, needId, 10_000e6);
         vault.releaseTranche(0); // 30% = 6000 paid out as pre-financing
 
-        // a delivery goes wrong and the admin cancels the need
-        vm.prank(fieldAgent);
-        uint256 deliveryId = deliveryManager.openDelivery(needId, 1, EXPECTED_RECIPIENTS);
-        _attestEvidence(fieldAgent, deliveryId);
-        _attestDeliveryVerified(verifier3, deliveryId, false); // verifier rejects the delivery
-        assertEq(deliveryManager.getDelivery(deliveryId).status, IDeliveryManager.DeliveryStatus.Rejected);
-
+        // the NGO files evidence nobody approves, and the admin cancels the need
+        uint256 deliveryId = _submitEvidence(needId);
         vm.prank(admin);
         registry.cancelNeed(needId);
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Cancelled);
@@ -277,8 +175,7 @@ contract LifecycleTest is PoATest {
         assertEq(token.balanceOf(address(vault)), 0);
         assertVaultInvariant(vault);
 
-        // nothing more can be released: the rejected delivery never unlocked tranche 1, and a cancelled need
-        // cannot unlock anything either
+        // nothing more can be released or unlocked on a cancelled need
         vm.expectRevert(Errors.InvalidTrancheStatus.selector);
         vault.releaseTranche(1);
         vm.prank(address(deliveryManager));
@@ -291,9 +188,9 @@ contract LifecycleTest is PoATest {
         vm.prank(admin);
         roles.pause();
 
-        vm.prank(fieldAgent);
+        vm.prank(ngo);
         vm.expectRevert(Errors.SystemPaused.selector);
-        deliveryManager.openDelivery(needId, 1, EXPECTED_RECIPIENTS);
+        deliveryManager.submitEvidence(needId, MANIFEST);
 
         // cancelling and refunding after unpausing still works
         vm.prank(admin);

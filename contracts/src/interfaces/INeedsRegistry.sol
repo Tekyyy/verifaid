@@ -137,8 +137,8 @@ interface INeedsRegistry is IRoleAware {
     ///           `minFundingBps` (partial execution, tranches scale down), otherwise `Expired` with refunds open.
     ///           Past the execution deadline it always expires: there is no time left to deliver.
     ///         - `Funded` / `InDelivery` after the execution deadline → `Expired`, refunding the unreleased balance.
-    ///           Work already done wins during a grace period: while a tranche is releasable or a verified
-    ///           delivery is in its challenge window or disputed, expiry waits until `EXPIRY_GRACE_PERIOD` ends.
+    ///           Work already done wins during a grace period: while a tranche the donors approved is still
+    ///           unpaid, expiry waits until `EXPIRY_GRACE_PERIOD` ends.
     function expire(uint256 needId) external;
 
     /// @notice Proposes replacing the supplier at `index` of an on-chain need's payment plan with another

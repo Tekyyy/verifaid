@@ -479,7 +479,7 @@ contract AidVault is TrancheLedger, IAidVault {
         return free < headroom ? free : headroom;
     }
 
-    /// @dev Tranches a verified delivery has already unlocked: payable now, so they stay liquid now.
+    /// @dev Tranches the donors have already unlocked: payable now, so they stay liquid now.
     function _releasableAmount() internal view returns (uint256 total) {
         uint256 count = _trancheCount;
         for (uint256 i; i < count; ++i) {

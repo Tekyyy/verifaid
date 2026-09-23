@@ -5,7 +5,6 @@ import {RoleAware} from "../access/RoleAware.sol";
 import {IAidVault} from "../interfaces/IAidVault.sol";
 import {IAidVaultFactory} from "../interfaces/IAidVaultFactory.sol";
 import {IBeneficiaryGroups} from "../interfaces/IBeneficiaryGroups.sol";
-import {IDeliveryManager} from "../interfaces/IDeliveryManager.sol";
 import {INeedsRegistry} from "../interfaces/INeedsRegistry.sol";
 import {IRoleRegistry} from "../interfaces/IRoleRegistry.sol";
 import {ITrancheLedger} from "../interfaces/ITrancheLedger.sol";
@@ -25,7 +24,7 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     /// @notice Hard cap on disclosed intermediary costs: above 20% a need is not a credible aid channel.
     uint16 public constant MAX_THIRD_PARTY_COST_BPS = 2000;
     /// @notice After the execution deadline, work already done keeps priority over expiry for this long: a
-    ///         releasable tranche can still be paid and a verified delivery can still finish its challenge window.
+    ///         tranche the donors approved can still be paid.
     ///         Bounded, so a tranche nobody can release (a suspended NGO, a supplier that lost its role) cannot
     ///         block refunds forever.
     uint256 public constant EXPIRY_GRACE_PERIOD = 14 days;
@@ -308,13 +307,11 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         } else if (s == NeedStatus.Funded || s == NeedStatus.InDelivery) {
             if (!_passed(n.executionDeadline)) revert Errors.DeadlineNotReached();
             ITrancheLedger ledger = ITrancheLedger(n.vault);
-            // Work already done keeps priority for a bounded grace period: a tranche someone earned should be
-            // paid (releasing is permissionless on-chain), and a verified delivery should finish its challenge
-            // window or dispute, before the rest of the money goes back.
-            if (
-                block.timestamp < uint256(n.executionDeadline) + EXPIRY_GRACE_PERIOD
-                    && (ledger.hasReleasableTranche() || IDeliveryManager(deliveryManager).hasDeliveryInFlight(needId))
-            ) revert Errors.ReleasePending();
+            // Work already done keeps priority for a bounded grace period: a tranche the donors approved should be
+            // paid (releasing is permissionless on-chain) before the rest of the money goes back.
+            if (block.timestamp < uint256(n.executionDeadline) + EXPIRY_GRACE_PERIOD && ledger.hasReleasableTranche()) {
+                revert Errors.ReleasePending();
+            }
             _expire(needId, n, ledger.totalDonated());
         } else {
             revert Errors.InvalidNeedStatus();

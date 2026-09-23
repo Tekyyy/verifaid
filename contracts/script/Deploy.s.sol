@@ -28,9 +28,8 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
             eas: vm.envOr("EAS_ADDRESS", address(0)),
             semaphore: vm.envOr("SEMAPHORE_ADDRESS", address(0)),
             highValueThreshold: vm.envOr("HIGH_VALUE_THRESHOLD", uint256(10_000e6)),
-            confirmationThresholdBps: uint16(vm.envOr("CONFIRMATION_THRESHOLD_BPS", uint256(7000))),
-            challengePeriod: uint64(vm.envOr("CHALLENGE_PERIOD_SECONDS", uint256(600))),
-            minExpectedRecipients: uint32(vm.envOr("MIN_EXPECTED_RECIPIENTS", uint256(5))),
+            donorApprovalBps: uint16(vm.envOr("DONOR_APPROVAL_BPS", uint256(3000))),
+            minBeneficiariesServed: uint32(vm.envOr("MIN_BENEFICIARIES_SERVED", uint256(5))),
             dashboardBaseURI: vm.envOr("DASHBOARD_BASE_URI", string("http://localhost:3000/needs/")),
             yieldVenue: vm.envOr("YIELD_VENUE_ADDRESS", address(0)),
             yieldCapBps: uint16(vm.envOr("YIELD_CAP_BPS", uint256(0))),
@@ -144,10 +143,9 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         string memory externalJson = external_.serialize("Token", s.token);
 
         string memory protocolParams = "params";
-        protocolParams.serialize("confirmationThresholdBps", uint256(params.confirmationThresholdBps));
-        protocolParams.serialize("challengePeriodSeconds", uint256(params.challengePeriod));
+        protocolParams.serialize("donorApprovalBps", uint256(s.deliveryManager.approvalThresholdBps()));
         protocolParams.serialize("highValueThreshold", params.highValueThreshold);
-        protocolParams.serialize("minExpectedRecipients", uint256(params.minExpectedRecipients));
+        protocolParams.serialize("minBeneficiariesServed", uint256(params.minBeneficiariesServed));
         protocolParams.serialize("maxSlippageBps", uint256(params.conversion.maxSlippageBps));
         protocolParams.serialize("ethMaxSlippageBps", uint256(params.conversion.ethMaxSlippageBps));
         protocolParams.serialize("usdcPoolFee", uint256(params.conversion.usdcToTokenFee));
@@ -177,8 +175,6 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
     function _schemaPlaceholders() internal returns (string memory) {
         string memory schemas = "schemas";
         schemas.serialize("NeedVerified", bytes32(0));
-        schemas.serialize("DeliveryEvidence", bytes32(0));
-        schemas.serialize("DeliveryVerified", bytes32(0));
         schemas.serialize("Settlement", bytes32(0));
         return schemas.serialize("ImpactReport", bytes32(0));
     }

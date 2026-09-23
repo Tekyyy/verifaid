@@ -35,20 +35,18 @@ import {ISemaphore} from "@semaphore-protocol/contracts/interfaces/ISemaphore.so
 import {Test} from "forge-std/Test.sol";
 
 /// @title PoATest
-/// @notice Shared fixture: deploys the full Proof of Aid system (local EAS + MockSemaphore), registers the six
+/// @notice Shared fixture: deploys the full Proof of Aid system (local EAS + MockSemaphore), registers the three
 ///         schemas and provides helpers for the recurring flows (needs, donations, deliveries, attestations).
 abstract contract PoATest is Test, SystemDeployer {
     // ─── protocol parameters used in tests ─────────────────────────────────────
     uint256 internal constant HIGH_VALUE_THRESHOLD = 10_000e6;
-    uint16 internal constant CONFIRMATION_THRESHOLD_BPS = 7000;
-    uint64 internal constant CHALLENGE_PERIOD = 10 minutes;
-    uint32 internal constant MIN_EXPECTED_RECIPIENTS = 5;
+    uint16 internal constant DONOR_APPROVAL_BPS = 3000;
+    uint32 internal constant MIN_BENEFICIARIES_SERVED = 5;
     string internal constant DASHBOARD_BASE_URI = "https://proofofaid.example/needs/";
 
-    /// @dev Mirrors DeliveryManager.AID_RECEIVED_MESSAGE. Kept as a constant so building a proof never makes an
-    ///      external call (which would swallow a pending vm.prank / vm.expectRevert). Equality is asserted in
-    ///      DeliveryManagerTest.test_constants.
-    uint256 internal constant AID_RECEIVED_MESSAGE = uint256(keccak256("AID_RECEIVED"));
+    /// @dev What an NGO files for a delivery: the files by content hash, what each one is, and a note.
+    string internal constant MANIFEST =
+        '{"v":1,"note":"Materials bought and delivered","files":[{"kind":"receipt","sha256":"ab12"},{"kind":"photo","sha256":"cd34"}]}';
 
     bytes32 internal constant FOOD = keccak256("FOOD");
     bytes32 internal constant SHELTER = keccak256("SHELTER");
@@ -70,10 +68,8 @@ abstract contract PoATest is Test, SystemDeployer {
     address internal admin = makeAddr("admin");
     address internal ngo = makeAddr("ngo");
     address internal ngoPayout = makeAddr("ngoPayout");
-    address internal fieldAgent = makeAddr("fieldAgent");
     address internal ngo2 = makeAddr("ngo2");
     address internal ngo2Payout = makeAddr("ngo2Payout");
-    address internal fieldAgent2 = makeAddr("fieldAgent2");
     address internal verifier1 = makeAddr("verifier1");
     address internal verifier2 = makeAddr("verifier2");
     address internal verifier3 = makeAddr("verifier3");
@@ -119,8 +115,6 @@ abstract contract PoATest is Test, SystemDeployer {
     address internal keeper = makeAddr("sweepKeeper");
 
     bytes32 internal needVerifiedSchema;
-    bytes32 internal deliveryEvidenceSchema;
-    bytes32 internal deliveryVerifiedSchema;
     bytes32 internal settlementSchema;
     bytes32 internal impactReportSchema;
 
@@ -178,9 +172,8 @@ abstract contract PoATest is Test, SystemDeployer {
                 eas: eas_,
                 semaphore: semaphoreAddress,
                 highValueThreshold: HIGH_VALUE_THRESHOLD,
-                confirmationThresholdBps: CONFIRMATION_THRESHOLD_BPS,
-                challengePeriod: CHALLENGE_PERIOD,
-                minExpectedRecipients: MIN_EXPECTED_RECIPIENTS,
+                donorApprovalBps: DONOR_APPROVAL_BPS,
+                minBeneficiariesServed: MIN_BENEFICIARIES_SERVED,
                 dashboardBaseURI: DASHBOARD_BASE_URI,
                 yieldVenue: address(0),
                 yieldCapBps: 0,
@@ -216,15 +209,14 @@ abstract contract PoATest is Test, SystemDeployer {
     // ─── setup helpers ─────────────────────────────────────────────────────────
 
     function _registerSchemas() internal {
-        bytes32[5] memory uids;
-        for (uint256 i; i < 5; ++i) {
+        bytes32[3] memory uids;
+        for (uint256 i; i < 3; ++i) {
             (string memory schema, bool revocable, bytes32 expected) = resolver.schemaAt(i);
             uids[i] = schemaRegistry.register(schema, ISchemaResolver(address(resolver)), revocable);
             // The resolver derives the UIDs it accepts from its own address; the registry must agree.
             assertEq(uids[i], expected, "schema uid");
         }
-        (needVerifiedSchema, deliveryEvidenceSchema, deliveryVerifiedSchema) = (uids[0], uids[1], uids[2]);
-        (settlementSchema, impactReportSchema) = (uids[3], uids[4]);
+        (needVerifiedSchema, settlementSchema, impactReportSchema) = (uids[0], uids[1], uids[2]);
     }
 
     function _registerActors() internal {
@@ -237,11 +229,6 @@ abstract contract PoATest is Test, SystemDeployer {
         roles.registerSupplier(supplierA, keccak256("supplierA-registration"), "ipfs://supplierA");
         roles.registerSupplier(supplierB, keccak256("supplierB-registration"), "ipfs://supplierB");
         vm.stopPrank();
-
-        vm.prank(ngo);
-        roles.addFieldAgent(fieldAgent);
-        vm.prank(ngo2);
-        roles.addFieldAgent(fieldAgent2);
     }
 
     // ─── programs & needs ──────────────────────────────────────────────────────
@@ -406,36 +393,6 @@ abstract contract PoATest is Test, SystemDeployer {
         eas.revoke(RevocationRequest({schema: schema, data: RevocationRequestData({uid: uid, value: 0})}));
     }
 
-    function _attestEvidence(address agent, uint256 deliveryId) internal returns (bytes32 uid) {
-        return _attestEvidence(agent, deliveryId, REGION);
-    }
-
-    function _attestEvidence(address agent, uint256 deliveryId, bytes32 regionCode) internal returns (bytes32 uid) {
-        uid = _attest(
-            deliveryEvidenceSchema,
-            agent,
-            address(deliveryManager),
-            bytes32(0),
-            false,
-            abi.encode(deliveryId, EVIDENCE_HASH, EVIDENCE_CID, uint32(120), regionCode)
-        );
-    }
-
-    function _attestDeliveryVerified(address verifier, uint256 deliveryId, bool approved)
-        internal
-        returns (bytes32 uid)
-    {
-        bytes32 evidenceUID = deliveryManager.getDelivery(deliveryId).evidenceAttestationUID;
-        uid = _attest(
-            deliveryVerifiedSchema,
-            verifier,
-            address(deliveryManager),
-            evidenceUID,
-            false,
-            abi.encode(deliveryId, approved, REPORT_HASH)
-        );
-    }
-
     function _attestSettlement(address attester, uint256 needId, uint256 trancheIndex, uint256 gross, uint256 fee)
         internal
         returns (bytes32 uid)
@@ -454,14 +411,11 @@ abstract contract PoATest is Test, SystemDeployer {
         internal
         returns (bytes32 uid)
     {
-        uint256 lastDelivery = deliveryManager.lastFinalizedDeliveryOf(needId);
-        bytes32 refUID =
-            lastDelivery == 0 ? bytes32(0) : deliveryManager.getDelivery(lastDelivery).verifierAttestationUID;
         uid = _attest(
             impactReportSchema,
             attester,
             registry.vaultOf(needId),
-            refUID,
+            bytes32(0),
             true,
             abi.encode(needId, beneficiariesServed, KPI_HASH, REPORT_CID)
         );
@@ -489,51 +443,36 @@ abstract contract PoATest is Test, SystemDeployer {
 
     // ─── deliveries ────────────────────────────────────────────────────────────
 
-    /// @dev Builds a MockSemaphore-valid proof (points[0] == 1) with a unique nullifier.
-    function _proof(uint256 deliveryId, uint256 nullifierSeed)
-        internal
-        pure
-        returns (ISemaphore.SemaphoreProof memory proof)
-    {
-        uint256[8] memory points;
-        points[0] = 1;
-        proof = ISemaphore.SemaphoreProof({
-            merkleTreeDepth: 3,
-            merkleTreeRoot: uint256(keccak256("root")),
-            nullifier: uint256(keccak256(abi.encode(deliveryId, nullifierSeed))),
-            message: AID_RECEIVED_MESSAGE,
-            scope: deliveryId,
-            points: points
-        });
+    /// @dev The need's NGO files its evidence for the next locked tranche, which must be `trancheIndex`, and the
+    ///      fixture's donors approve it until the threshold unlocks the tranche.
+    function _runDelivery(uint256 needId, uint256 trancheIndex) internal returns (uint256 deliveryId) {
+        deliveryId = _submitEvidence(needId);
+        assertEq(deliveryManager.getDelivery(deliveryId).trancheIndex, trancheIndex, "delivery tranche");
+        _approveByDonors(deliveryId);
     }
 
-    /// @dev Submits `count` anonymous confirmations relayed by `relayer`. Nullifier seeds continue from the
-    ///      delivery's current count, so repeated calls never replay a nullifier.
-    function _confirm(uint256 deliveryId, uint256 count) internal {
-        uint256 start = deliveryManager.getDelivery(deliveryId).confirmations;
-        for (uint256 i; i < count; ++i) {
-            vm.prank(relayer);
-            deliveryManager.confirmReceipt(deliveryId, _proof(deliveryId, start + i));
+    function _submitEvidence(uint256 needId) internal returns (uint256 deliveryId) {
+        vm.prank(registry.ngoOf(needId));
+        deliveryId = deliveryManager.submitEvidence(needId, MANIFEST);
+    }
+
+    /// @dev Every fixture address that gave to the need approves, in turn, until the delivery is approved.
+    function _approveByDonors(uint256 deliveryId) internal {
+        uint256 needId = deliveryManager.getDelivery(deliveryId).needId;
+        address[7] memory candidates = [donor1, donor2, outsider, relayer, verifier1, verifier2, verifier3];
+        for (uint256 i; i < candidates.length; ++i) {
+            if (deliveryManager.getDelivery(deliveryId).status != IDeliveryManager.DeliveryStatus.Open) break;
+            address candidate = candidates[i];
+            if (deliveryManager.approvalWeight(needId, candidate) == 0) continue;
+            if (deliveryManager.hasApproved(deliveryId, candidate)) continue;
+            vm.prank(candidate);
+            deliveryManager.approve(deliveryId);
         }
-    }
-
-    /// @dev Evidence + threshold confirmations + approving verifier, then waits out the challenge period.
-    function _runDelivery(uint256 needId, uint256 trancheIndex, uint32 expectedRecipients)
-        internal
-        returns (uint256 deliveryId)
-    {
-        vm.prank(fieldAgent);
-        deliveryId = deliveryManager.openDelivery(needId, trancheIndex, expectedRecipients);
-        _attestEvidence(fieldAgent, deliveryId);
-        _confirm(deliveryId, _requiredConfirmations(expectedRecipients));
-        _attestDeliveryVerified(verifier2, deliveryId, true);
-        vm.warp(block.timestamp + CHALLENGE_PERIOD);
-        deliveryManager.finalize(deliveryId);
-    }
-
-    function _requiredConfirmations(uint32 expectedRecipients) internal pure returns (uint256) {
-        uint256 numerator = uint256(expectedRecipients) * CONFIRMATION_THRESHOLD_BPS;
-        return (numerator + 9999) / 10_000;
+        assertEq(
+            uint8(deliveryManager.getDelivery(deliveryId).status),
+            uint8(IDeliveryManager.DeliveryStatus.Approved),
+            "donors did not reach the approval threshold"
+        );
     }
 
     // ─── assertions ────────────────────────────────────────────────────────────

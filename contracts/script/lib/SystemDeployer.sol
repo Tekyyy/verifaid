@@ -59,9 +59,8 @@ abstract contract SystemDeployer is CommonBase {
         address eas;
         address semaphore;
         uint256 highValueThreshold;
-        uint16 confirmationThresholdBps;
-        uint64 challengePeriod;
-        uint32 minExpectedRecipients;
+        uint16 donorApprovalBps; // share of the raised amount whose donors must approve a delivery; zero → 3000
+        uint32 minBeneficiariesServed; // k-anonymity floor for impact reports
         string dashboardBaseURI;
         ConversionParams conversion;
     }
@@ -134,14 +133,10 @@ abstract contract SystemDeployer is CommonBase {
         s.registry = new NeedsRegistry(roles, p.highValueThreshold);
         s.groups = new BeneficiaryGroups(roles, ISemaphore(p.semaphore));
         s.deliveryManager = new DeliveryManager(
-            roles,
-            INeedsRegistry(address(s.registry)),
-            s.groups,
-            p.confirmationThresholdBps,
-            p.challengePeriod,
-            p.minExpectedRecipients
+            roles, INeedsRegistry(address(s.registry)), p.donorApprovalBps == 0 ? 3000 : p.donorApprovalBps
         );
-        s.resolver = new ProofOfAidResolver(IEAS(p.eas), roles, INeedsRegistry(address(s.registry)), s.deliveryManager);
+        s.resolver =
+            new ProofOfAidResolver(IEAS(p.eas), roles, INeedsRegistry(address(s.registry)), p.minBeneficiariesServed);
         s.factory = new AidVaultFactory(roles);
         s.receipt = new DonationReceipt(roles, IAidVaultFactory(address(s.factory)), p.dashboardBaseURI);
 
@@ -162,7 +157,6 @@ abstract contract SystemDeployer is CommonBase {
         _approveYieldVenue(s, p);
         s.factory.wire(address(s.registry), s.token, address(s.vaultImplementation));
         s.groups.wire(address(s.deliveryManager));
-        s.deliveryManager.wire(address(s.resolver));
     }
 
     /// @dev The router, the forwarder implementation and its factory, configured with feeds and routes.

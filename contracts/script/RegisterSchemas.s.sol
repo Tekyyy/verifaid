@@ -18,7 +18,7 @@ import {console2} from "forge-std/console2.sol";
 ///      forge script script/RegisterSchemas.s.sol --rpc-url base_sepolia --broadcast
 contract RegisterSchemas is Script, DeploymentIO {
     /// @dev Deployment-file keys, in `ProofOfAidResolver.schemaAt` order.
-    string[5] internal NAMES = ["NeedVerified", "DeliveryEvidence", "DeliveryVerified", "Settlement", "ImpactReport"];
+    string[3] internal NAMES = ["NeedVerified", "Settlement", "ImpactReport"];
 
     function run() external {
         string memory deployment = _readDeployment();
@@ -30,7 +30,7 @@ contract RegisterSchemas is Script, DeploymentIO {
         if (deployerKey != 0) vm.startBroadcast(deployerKey);
         else vm.startBroadcast();
 
-        bytes32[5] memory uids;
+        bytes32[3] memory uids;
         for (uint256 i; i < NAMES.length; ++i) {
             (string memory schema, bool revocable, bytes32 expected) = resolver.schemaAt(i);
             uids[i] = _register(registry, schema, address(resolver), revocable);

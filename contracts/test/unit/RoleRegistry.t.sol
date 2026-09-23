@@ -84,10 +84,6 @@ contract RoleRegistryTest is PoATest {
 
         vm.prank(admin);
         vm.expectRevert(Errors.RoleConflict.selector);
-        roles.registerNgo(fieldAgent, makeAddr("p2"), keccak256("c"), "");
-
-        vm.prank(admin);
-        vm.expectRevert(Errors.RoleConflict.selector);
         roles.registerNgo(supplierA, makeAddr("p3"), keccak256("c"), "");
 
         // an address already serving as some NGO's payout Safe
@@ -102,8 +98,6 @@ contract RoleRegistryTest is PoATest {
         roles.registerNgo(makeAddr("n1"), verifier1, keccak256("c"), "");
         vm.expectRevert(Errors.RoleConflict.selector);
         roles.registerNgo(makeAddr("n2"), supplierA, keccak256("c"), "");
-        vm.expectRevert(Errors.RoleConflict.selector);
-        roles.registerNgo(makeAddr("n3"), fieldAgent, keccak256("c"), "");
         vm.stopPrank();
     }
 
@@ -189,8 +183,6 @@ contract RoleRegistryTest is PoATest {
         vm.expectRevert(Errors.RoleConflict.selector);
         roles.registerVerifier(ngo);
         vm.expectRevert(Errors.RoleConflict.selector);
-        roles.registerVerifier(fieldAgent);
-        vm.expectRevert(Errors.RoleConflict.selector);
         roles.registerVerifier(supplierA);
         vm.expectRevert(Errors.RoleConflict.selector);
         roles.registerVerifier(ngoPayout);
@@ -214,65 +206,6 @@ contract RoleRegistryTest is PoATest {
         roles.removeVerifier(verifier1);
     }
 
-    // ─── field agents ──────────────────────────────────────────────────────────
-
-    function test_addFieldAgent() public {
-        address agent = makeAddr("agent3");
-        vm.expectEmit(true, true, false, false, address(roles));
-        emit IRoleRegistry.FieldAgentAdded(ngo, agent);
-        vm.prank(ngo);
-        roles.addFieldAgent(agent);
-        assertEq(roles.fieldAgentNgo(agent), ngo);
-        assertTrue(roles.isFieldAgentOf(agent, ngo));
-        assertFalse(roles.isFieldAgentOf(agent, ngo2));
-    }
-
-    function test_addFieldAgent_reverts() public {
-        vm.prank(outsider);
-        vm.expectRevert(Errors.Unauthorized.selector);
-        roles.addFieldAgent(makeAddr("a"));
-
-        vm.prank(admin);
-        roles.setNgoActive(ngo, false);
-        vm.prank(ngo);
-        vm.expectRevert(Errors.Unauthorized.selector);
-        roles.addFieldAgent(makeAddr("a"));
-        vm.prank(admin);
-        roles.setNgoActive(ngo, true);
-
-        vm.startPrank(ngo);
-        vm.expectRevert(Errors.ZeroAddress.selector);
-        roles.addFieldAgent(address(0));
-        vm.expectRevert(Errors.FieldAgentAlreadyBound.selector);
-        roles.addFieldAgent(fieldAgent);
-        vm.expectRevert(Errors.RoleConflict.selector);
-        roles.addFieldAgent(verifier1);
-        vm.expectRevert(Errors.RoleConflict.selector);
-        roles.addFieldAgent(ngo2);
-        vm.stopPrank();
-    }
-
-    function test_addFieldAgent_revertsWhenBoundToAnotherNgo() public {
-        vm.prank(ngo2);
-        vm.expectRevert(Errors.FieldAgentAlreadyBound.selector);
-        roles.addFieldAgent(fieldAgent);
-    }
-
-    function test_removeFieldAgent() public {
-        vm.expectEmit(true, true, false, false, address(roles));
-        emit IRoleRegistry.FieldAgentRemoved(ngo, fieldAgent);
-        vm.prank(ngo);
-        roles.removeFieldAgent(fieldAgent);
-        assertEq(roles.fieldAgentNgo(fieldAgent), address(0));
-        assertFalse(roles.isFieldAgentOf(fieldAgent, ngo));
-    }
-
-    function test_removeFieldAgent_revertsForOtherNgo() public {
-        vm.prank(ngo2);
-        vm.expectRevert(Errors.FieldAgentNotBound.selector);
-        roles.removeFieldAgent(fieldAgent);
-    }
-
     // ─── independence ──────────────────────────────────────────────────────────
 
     function test_isIndependent() public {
@@ -287,18 +220,6 @@ contract RoleRegistryTest is PoATest {
         address newNgo = makeAddr("ngo3");
         // registering an NGO whose payout is a verifier is blocked, so exercise the check directly
         assertTrue(roles.isIndependent(v, newNgo), "unrelated ngo");
-    }
-
-    function test_isIndependent_falseForOwnFieldAgent() public {
-        // Field agents cannot hold VERIFIER_ROLE, so the binding check is belt-and-braces:
-        // grant the role through a fresh registry where the agent is registered as verifier first.
-        RoleRegistry fresh = new RoleRegistry(admin);
-        address agent = makeAddr("dualRole");
-        vm.startPrank(admin);
-        fresh.registerNgo(ngo, ngoPayout, keccak256("c"), "");
-        fresh.registerVerifier(agent);
-        vm.stopPrank();
-        assertTrue(fresh.isIndependent(agent, ngo));
     }
 
     // ─── role hardening ────────────────────────────────────────────────────────

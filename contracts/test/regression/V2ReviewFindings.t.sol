@@ -50,9 +50,11 @@ contract V2ReviewFindingsTest is PoATest {
     // Structurally gone since §20: there is no off-chain custody, so there is no custodian to name, validate or
     // impersonate. Every need's money is in its own vault, and only the vault's rules move it.
 
-    // ─── F2: expiry waits for a verified delivery ──────────────────────────────
+    // ─── F2: expiry waits for a tranche already earned ─────────────────────────
+    // The challenge window this finding was about is gone since donors approve deliveries directly (§21). What
+    // remains of it: a tranche the donors approved before the deadline is still paid before the rest goes back.
 
-    function test_F2_aFrivolousChallengeCannotPushAnEarnedTranchePastTheDeadline() public {
+    function test_F2_aTrancheApprovedBeforeTheDeadlineIsStillPaid() public {
         INeedsRegistry.CreateNeedParams memory p = _needParams(programId, 1000e6, 1, _threeTrancheBps());
         uint256 deadline = block.timestamp + 1 days;
         p.executionDeadline = uint64(deadline);
@@ -61,34 +63,23 @@ contract V2ReviewFindingsTest is PoATest {
         _donate(donor1, needId, 1000e6);
         vault.releaseTranche(0);
 
-        vm.warp(deadline - 30 minutes);
-        vm.prank(fieldAgent);
-        uint256 d = deliveryManager.openDelivery(needId, 1, 10);
-        _attestEvidence(fieldAgent, d);
-        _confirm(d, 7);
-        _attestDeliveryVerified(verifier2, d, true);
-        vm.warp(deadline - 21 minutes);
-        vm.prank(verifier3);
-        deliveryManager.challenge(d, keccak256("frivolous"));
         vm.warp(deadline - 5 minutes);
-        vm.prank(admin);
-        deliveryManager.resolveDispute(d, false);
+        uint256 d = _submitEvidence(needId);
+        vm.prank(donor1);
+        deliveryManager.approve(d);
 
-        // the deadline passes while the delivery finishes its (resumed) window: expiry must wait
+        // the deadline passes before anyone released it: expiry must wait
         vm.warp(deadline);
         vm.prank(outsider);
         vm.expectRevert(Errors.ReleasePending.selector);
         registry.expire(needId);
 
-        // the resumed window (1 minute was left) ended before the deadline; finishing still wins
-        assertLt(deliveryManager.getDelivery(d).challengeDeadline, deadline);
-        deliveryManager.finalize(d);
         vault.releaseTranche(1);
-        assertEq(token.balanceOf(supplierA), 700e6, "the NGO is paid for the delivery it made");
+        assertEq(token.balanceOf(supplierA), 700e6, "the NGO is paid for what the donors approved");
 
         registry.expire(needId);
         vm.prank(donor1);
-        assertEq(vault.claimRefund(), 300e6, "only the undelivered tranche goes back");
+        assertEq(vault.claimRefund(), 300e6, "only the unapproved tranche goes back");
         assertVaultInvariant(vault);
     }
 

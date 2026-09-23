@@ -2,7 +2,6 @@
 pragma solidity ^0.8.24;
 
 import {AidVault} from "../../src/funds/AidVault.sol";
-import {IDeliveryManager} from "../../src/interfaces/IDeliveryManager.sol";
 import {INeedsRegistry} from "../../src/interfaces/INeedsRegistry.sol";
 import {Errors} from "../../src/libraries/Errors.sol";
 import {ProofOfAidResolver} from "../../src/resolvers/ProofOfAidResolver.sol";
@@ -149,8 +148,8 @@ contract ResolversTest is PoATest {
             })
         );
 
-        // its field agent
-        vm.prank(fieldAgent);
+        // its payout Safe
+        vm.prank(ngoPayout);
         vm.expectRevert(Errors.NotIndependent.selector);
         eas.attest(
             AttestationRequest({
@@ -187,181 +186,6 @@ contract ResolversTest is PoATest {
         _revoke(needVerifiedSchema, verifier1, uid);
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Pending);
         assertEq(registry.getNeed(needId).verificationCount, 0);
-    }
-
-    // ─── DeliveryEvidence ──────────────────────────────────────────────────────
-
-    function _deliveryReady() internal returns (uint256 deliveryId) {
-        _attestNeedVerified(verifier1, needId, true);
-        vault = AidVault(registry.vaultOf(needId));
-        _donate(donor1, needId, TARGET);
-        vault.releaseTranche(0);
-        vm.prank(fieldAgent);
-        deliveryId = deliveryManager.openDelivery(needId, 1, 10);
-    }
-
-    function test_deliveryEvidence_happyPath() public {
-        uint256 deliveryId = _deliveryReady();
-        bytes32 uid = _attestEvidence(fieldAgent, deliveryId);
-        assertEq(deliveryManager.getDelivery(deliveryId).evidenceAttestationUID, uid);
-        (, bool revocable,) = resolver.schemaAt(2);
-        assertFalse(revocable);
-    }
-
-    function test_deliveryEvidence_onlyTheDeliverysFieldAgent() public {
-        uint256 deliveryId = _deliveryReady();
-
-        vm.prank(fieldAgent2);
-        vm.expectRevert(Errors.Unauthorized.selector);
-        eas.attest(
-            AttestationRequest({
-                schema: deliveryEvidenceSchema,
-                data: _data(
-                    address(deliveryManager),
-                    bytes32(0),
-                    false,
-                    abi.encode(deliveryId, EVIDENCE_HASH, EVIDENCE_CID, uint32(10), REGION)
-                )
-            })
-        );
-
-        // an agent removed from the NGO can no longer file evidence
-        vm.prank(ngo);
-        roles.removeFieldAgent(fieldAgent);
-        vm.prank(fieldAgent);
-        vm.expectRevert(Errors.Unauthorized.selector);
-        eas.attest(
-            AttestationRequest({
-                schema: deliveryEvidenceSchema,
-                data: _data(
-                    address(deliveryManager),
-                    bytes32(0),
-                    false,
-                    abi.encode(deliveryId, EVIDENCE_HASH, EVIDENCE_CID, uint32(10), REGION)
-                )
-            })
-        );
-    }
-
-    function test_deliveryEvidence_validatesPayload() public {
-        uint256 deliveryId = _deliveryReady();
-
-        vm.startPrank(fieldAgent);
-        vm.expectRevert(Errors.InvalidParameter.selector);
-        eas.attest(
-            AttestationRequest({
-                schema: deliveryEvidenceSchema,
-                data: _data(
-                    address(deliveryManager),
-                    bytes32(0),
-                    false,
-                    abi.encode(deliveryId, bytes32(0), EVIDENCE_CID, uint32(10), REGION)
-                )
-            })
-        );
-
-        vm.expectRevert(Errors.InvalidParameter.selector);
-        eas.attest(
-            AttestationRequest({
-                schema: deliveryEvidenceSchema,
-                data: _data(
-                    address(deliveryManager),
-                    bytes32(0),
-                    false,
-                    abi.encode(deliveryId, EVIDENCE_HASH, "", uint32(10), REGION)
-                )
-            })
-        );
-
-        vm.expectRevert(Errors.InvalidParameter.selector);
-        eas.attest(
-            AttestationRequest({
-                schema: deliveryEvidenceSchema,
-                data: _data(
-                    address(deliveryManager),
-                    bytes32(0),
-                    false,
-                    abi.encode(deliveryId, EVIDENCE_HASH, EVIDENCE_CID, uint32(0), REGION)
-                )
-            })
-        );
-
-        // region must match the need's coarse region
-        vm.expectRevert(Errors.RegionMismatch.selector);
-        eas.attest(
-            AttestationRequest({
-                schema: deliveryEvidenceSchema,
-                data: _data(
-                    address(deliveryManager),
-                    bytes32(0),
-                    false,
-                    abi.encode(deliveryId, EVIDENCE_HASH, EVIDENCE_CID, uint32(10), bytes32("FR-75"))
-                )
-            })
-        );
-        vm.stopPrank();
-    }
-
-    function test_deliveryEvidence_rejectsSecondEvidence() public {
-        uint256 deliveryId = _deliveryReady();
-        _attestEvidence(fieldAgent, deliveryId);
-        vm.prank(fieldAgent);
-        vm.expectRevert(Errors.EvidenceAlreadyLinked.selector);
-        eas.attest(
-            AttestationRequest({
-                schema: deliveryEvidenceSchema,
-                data: _data(
-                    address(deliveryManager),
-                    bytes32(0),
-                    false,
-                    abi.encode(deliveryId, keccak256("other"), EVIDENCE_CID, uint32(10), REGION)
-                )
-            })
-        );
-    }
-
-    // ─── DeliveryVerified ──────────────────────────────────────────────────────
-
-    function test_deliveryVerified_requiresRefUidPointingAtTheEvidence() public {
-        uint256 deliveryId = _deliveryReady();
-        bytes32 evidenceUID = _attestEvidence(fieldAgent, deliveryId);
-
-        vm.prank(verifier2);
-        vm.expectRevert(Errors.InvalidRefUID.selector);
-        eas.attest(
-            AttestationRequest({
-                schema: deliveryVerifiedSchema,
-                data: _data(address(deliveryManager), bytes32(0), false, abi.encode(deliveryId, true, REPORT_HASH))
-            })
-        );
-
-        bytes32 uid = _attestDeliveryVerified(verifier2, deliveryId, true);
-        assertEq(deliveryManager.getDelivery(deliveryId).verifierAttestationUID, uid);
-        assertEq(eas.getAttestation(uid).refUID, evidenceUID, "evidence chain");
-    }
-
-    function test_deliveryVerified_requiresEvidenceAndIndependence() public {
-        uint256 deliveryId = _deliveryReady();
-
-        vm.prank(verifier2);
-        vm.expectRevert(Errors.EvidenceMissing.selector);
-        eas.attest(
-            AttestationRequest({
-                schema: deliveryVerifiedSchema,
-                data: _data(address(deliveryManager), bytes32(0), false, abi.encode(deliveryId, true, REPORT_HASH))
-            })
-        );
-
-        bytes32 evidenceUID = _attestEvidence(fieldAgent, deliveryId);
-
-        vm.prank(ngo);
-        vm.expectRevert(Errors.NotIndependent.selector);
-        eas.attest(
-            AttestationRequest({
-                schema: deliveryVerifiedSchema,
-                data: _data(address(deliveryManager), evidenceUID, false, abi.encode(deliveryId, true, REPORT_HASH))
-            })
-        );
     }
 
     // ─── conversion costs ──────────────────────────────────────────────────────
@@ -524,8 +348,8 @@ contract ResolversTest is PoATest {
         assertEq(resolver.activeReportOf(completed), corrected);
     }
 
-    /// @dev The same k-anonymity floor deliveries enforce: "2 beneficiaries served" in a known category and
-    ///      region is a small-count disclosure about identifiable people.
+    /// @dev A k-anonymity floor: "2 beneficiaries served" in a known category and region is a small-count
+    ///      disclosure about identifiable people.
     function test_impactReport_enforcesTheKAnonymityFloor() public {
         uint256 completed = _completedNeed();
         address vaultAddress = registry.vaultOf(completed);
@@ -540,7 +364,7 @@ contract ResolversTest is PoATest {
         );
 
         // at the floor it is accepted
-        bytes32 uid = _attestImpactReport(ngo, completed, MIN_EXPECTED_RECIPIENTS);
+        bytes32 uid = _attestImpactReport(ngo, completed, MIN_BENEFICIARIES_SERVED);
         assertEq(resolver.activeReportOf(completed), uid);
     }
 
@@ -591,7 +415,7 @@ contract ResolversTest is PoATest {
         );
         vm.stopPrank();
 
-        // a need with no finalized delivery must reference nothing
+        // an impact report references nothing: donors approve deliveries directly, so there is no sign-off to chain
         bytes32 strayRef = _attestNeedVerified(verifier2, needId, true);
         vm.prank(ngo);
         vm.expectRevert(Errors.InvalidRefUID.selector);
@@ -605,34 +429,28 @@ contract ResolversTest is PoATest {
 
     // ─── irrevocability ────────────────────────────────────────────────────────
 
-    /// @dev Evidence, sign-offs and settlements are registered as non-revocable schemas, so EAS itself
-    ///      refuses the revocation before the resolver's `NotRevocable` guard is ever reached.
-    function test_evidenceAndSignOffCannotBeRevoked() public {
-        bytes4 irrevocable = bytes4(keccak256("Irrevocable()"));
-        uint256 deliveryId = _deliveryReady();
-        bytes32 evidenceUID = _attestEvidence(fieldAgent, deliveryId);
-
-        vm.expectRevert(irrevocable);
-        _revoke(deliveryEvidenceSchema, fieldAgent, evidenceUID);
-
-        bytes32 signOffUID = _attestDeliveryVerified(verifier2, deliveryId, true);
-        vm.expectRevert(irrevocable);
-        _revoke(deliveryVerifiedSchema, verifier2, signOffUID);
+    /// @dev Settlements are registered as a non-revocable schema, so EAS itself refuses the revocation before the
+    ///      resolver's `NotRevocable` guard is ever reached: a payment that happened stays recorded.
+    function test_settlementCannotBeRevoked() public {
+        uint256 completed = _completedNeed();
+        bytes32 uid = _attestSettlement(ngo, completed, 0, 1000e6, 0);
+        vm.expectRevert(bytes4(keccak256("Irrevocable()")));
+        _revoke(settlementSchema, ngo, uid);
     }
 
     function test_schemaAtRejectsUnknownIndex() public {
         vm.expectRevert(Errors.InvalidParameter.selector);
-        resolver.schemaAt(5);
-        assertEq(resolver.SCHEMA_COUNT(), 5);
+        resolver.schemaAt(3);
+        assertEq(resolver.SCHEMA_COUNT(), 3);
     }
 
     // ─── constructor guards ────────────────────────────────────────────────────
 
-    function test_resolverConstructorRejectsZeroAddresses() public {
+    function test_resolverConstructorRejectsZeroAddressesAndNoFloor() public {
         vm.expectRevert(Errors.ZeroAddress.selector);
-        new ProofOfAidResolver(eas, roles, INeedsRegistry(address(0)), deliveryManager);
+        new ProofOfAidResolver(eas, roles, INeedsRegistry(address(0)), MIN_BENEFICIARIES_SERVED);
 
-        vm.expectRevert(Errors.ZeroAddress.selector);
-        new ProofOfAidResolver(eas, roles, registry, IDeliveryManager(address(0)));
+        vm.expectRevert(Errors.InvalidParameter.selector);
+        new ProofOfAidResolver(eas, roles, registry, 0);
     }
 }

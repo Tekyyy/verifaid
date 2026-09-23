@@ -19,8 +19,6 @@ library Errors {
     error NgoNotRegistered();
     error NgoInactive();
     error RoleConflict();
-    error FieldAgentAlreadyBound();
-    error FieldAgentNotBound();
     error NotIndependent();
 
     // ─── needs ─────────────────────────────────────────────────────────────────
@@ -72,19 +70,9 @@ library Errors {
     // ─── deliveries ────────────────────────────────────────────────────────────
     error DeliveryNotFound();
     error InvalidDeliveryStatus();
-    error DeliveryAlreadyActive();
+    /// @dev Only a donor to the need, other than the NGO, its payout address and its payees, may approve its evidence.
+    error NotADonor();
     error TooFewRecipients();
-    error TooManyRecipients();
-    error EvidenceMissing();
-    error EvidenceAlreadyLinked();
-    error VerificationAlreadyLinked();
-    error InvalidScope();
-    error InvalidMessage();
-    error TooManyConfirmations();
-    error ChallengePeriodOver();
-    error ChallengePeriodActive();
-    error AlreadyChallenged();
-    error AlreadyRejected();
 
     // ─── conversions and forwarders ────────────────────────────────────────────
     error PriceFeedNotSet();
@@ -107,7 +95,6 @@ library Errors {
     error InvalidRefUID();
     error ExpiringAttestation();
     error NotRevocable();
-    error RegionMismatch();
     error FeeExceedsDisclosure();
     error AmountMismatch();
     error SettlementAlreadyRecorded();
