@@ -1,7 +1,9 @@
 import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
-import { NgoNeedManagement } from '@/components/NgoConsole'
+import { NgoCampaignDashboard } from '@/components/NgoCampaignDashboard'
+import { MissingDeployment } from '@/components/Notice'
 import { Link } from '@/i18n/navigation'
+import { deployment } from '@/lib/config'
 
 export async function generateMetadata({
   params: { locale },
@@ -26,7 +28,7 @@ export default async function NgoManagePage() {
           {t('backToSetup')}
         </Link>
       </header>
-      <NgoNeedManagement />
+      {deployment ? <NgoCampaignDashboard /> : <MissingDeployment />}
     </div>
   )
 }
