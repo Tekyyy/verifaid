@@ -34,11 +34,18 @@ export interface IndexerError {
 const TIMEOUT_MS = 6_000
 
 /**
- * Server reads are cached for a few seconds: chain data moves in blocks, not in milliseconds, and a page that
+ * Server reads are shared for a few seconds: chain data moves in blocks, not in milliseconds, and a page that
  * refetched everything on every navigation felt slow for no gain. The browser always reads fresh, because a
  * donor who just signed a transaction should see it.
+ *
+ * Never served past that, though. Next's own `revalidate` hands out the expired copy first and refreshes behind
+ * it, so a page nobody had opened for an hour showed hour-old data once — a need still "pending" long after its
+ * verification, a donation still there after it was withdrawn. Here an expired read is fetched again and waited
+ * for, and the cache lives in memory, so a restart (or a redeploy) starts it empty.
  */
-const SERVER_REVALIDATE_SECONDS = 5
+const SERVER_TTL_MS = 5_000
+const SERVER_CACHE_LIMIT = 500
+const serverCache = new Map<string, { at: number; result: Promise<Result<unknown>> }>()
 
 /**
  * From the browser the calls go through `/api/indexer/*` on this origin, so the dashboard does not depend on
@@ -46,13 +53,10 @@ const SERVER_REVALIDATE_SECONDS = 5
  */
 const baseUrl = (): string => (typeof window === 'undefined' ? indexerUrl : '/api/indexer')
 
-const get = async <T>(path: string): Promise<Result<T>> => {
-  const url = `${baseUrl()}${path}`
+const fetchJson = async <T>(url: string): Promise<Result<T>> => {
   try {
     const response = await fetch(url, {
-      ...(typeof window === 'undefined'
-        ? { next: { revalidate: SERVER_REVALIDATE_SECONDS } }
-        : { cache: 'no-store' as const }),
+      cache: 'no-store',
       headers: { accept: 'application/json' },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     })
@@ -65,6 +69,26 @@ const get = async <T>(path: string): Promise<Result<T>> => {
     const kind = detail.includes('JSON') ? 'malformed' : 'unreachable'
     return { ok: false, error: { kind, detail } }
   }
+}
+
+const get = async <T>(path: string): Promise<Result<T>> => {
+  const url = `${baseUrl()}${path}`
+  if (typeof window !== 'undefined') return fetchJson<T>(url)
+
+  const now = Date.now()
+  const hit = serverCache.get(url)
+  if (hit && now - hit.at < SERVER_TTL_MS) return hit.result as Promise<Result<T>>
+
+  if (serverCache.size >= SERVER_CACHE_LIMIT) {
+    for (const [key, entry] of serverCache) if (now - entry.at >= SERVER_TTL_MS) serverCache.delete(key)
+  }
+  const result = fetchJson<T>(url)
+  serverCache.set(url, { at: now, result })
+  // A failure is not worth remembering: the next render should ask again.
+  void result.then((answer) => {
+    if (!answer.ok) serverCache.delete(url)
+  })
+  return result
 }
 
 export interface NeedFilters {
