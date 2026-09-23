@@ -671,6 +671,13 @@ address an NGO picks. A need opts in through its NGO while it is still `Pending`
 donation — because this changes what a donation is exposed to and that belongs on the page beforehand, not
 switched on over the heads of people who already gave.
 
+**What the NGO sees.** The NGO console opens on its campaigns and, for the long ones (at least 90 days between
+funding closing and the delivery deadline), lists Morpho's listed USDC vaults on Base with live net APY, size and
+what can be withdrawn right now, plus what the campaign's waiting escrow could earn in each — an upper bound, since
+tranches leave as deliveries are verified. It is market information, not a choice: the list is sorted by
+withdrawable liquidity because escrow has to come back the day a tranche is due, and money still only goes to the
+venue approved on chain. On a test network the rates are Base mainnet's and the approved venue is a mock.
+
 **Where the earnings go.** To the NGO, once the need is over and the position is closed, under its own event. A
 loss is charged against them first. If a loss exceeds everything earned, the need is short the difference and
 says so: `SleeveLoss` is on the timeline and on the need page, because a need that lost donors' money has to

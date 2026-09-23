@@ -1030,5 +1030,54 @@
     "harvestButton": "Retirar lo ganado",
     "payButton": "Pagar lo ganado",
     "manageHint": "El dinero que un proveedor pueda reclamar ahora mismo nunca sale, y cualquier pago recupera antes lo que necesite. Lo ganado solo se paga cuando la necesidad ha terminado y no queda nada prestado."
+  },
+  "campaigns": {
+    "title": "Tus campañas",
+    "body": "Cada necesidad de esta cartera que sigue recaudando o entregando, leída de la cadena y actualizada cada 30 segundos.",
+    "connect": "Conecta la cartera de la ONG para ver sus campañas.",
+    "empty": "Esta cartera no tiene ahora ninguna campaña recaudando o entregando.",
+    "active": "Campañas en marcha",
+    "raised": "Recaudado",
+    "stillNeeded": "Falta por recaudar",
+    "waiting": "Esperando en una bóveda de préstamo",
+    "earnedSoFar": "{amount} {unit} ganados hasta ahora",
+    "needLabel": "Necesidad n.º {id} · {category}",
+    "long": "Campaña larga · {months, plural, one {# mes} other {# meses}} para entregar",
+    "optIn": {
+      "optedIn": "Rinde mientras espera",
+      "canOptIn": "Aún puede activarlo",
+      "notOptedIn": "No presta"
+    },
+    "progressLabel": "Progreso de la recaudación de la necesidad n.º {id}",
+    "raisedOf": "{raised} de {target} {unit} · {share} %",
+    "fundingCloses": "La recaudación cierra",
+    "deliverBy": "Entregar antes del",
+    "noDeadline": "sin plazo",
+    "venuesTitle": "Dónde puede esperar el dinero de una campaña larga",
+    "venuesBody": "Cuando cierra la recaudación, el dinero en custodia que ningún proveedor puede cobrar todavía puede esperar en una bóveda de préstamo y generar rendimiento para la campaña. Abajo están las bóvedas USDC listadas de Morpho en Base con su rendimiento en vivo: las opciones que la plataforma puede aprobar. El dinero solo va a la bóveda aprobada en cadena, nunca a una elegida aquí.",
+    "approvedVenue": "Bóveda aprobada en este despliegue:",
+    "approvedIsTest": "(una bóveda de prueba en esta red)",
+    "capNote": "como mucho el {cap} % del fondo de una campaña a la vez",
+    "noVenue": "No hay ninguna bóveda de préstamo aprobada en este despliegue, así que el dinero de cada campaña se queda en su propia custodia.",
+    "campaignPicker": "Campaña larga",
+    "couldWaitTarget": "si se financia por completo, hasta {amount} {unit} podrían esperar {months, plural, one {# mes} other {# meses}}.",
+    "couldWaitRaised": "hasta {amount} {unit} podrían esperar {months, plural, one {# mes} other {# meses}}.",
+    "optInExplain": {
+      "optedIn": "Esta campaña lo activó, así que presta en cuanto cierre la recaudación.",
+      "canOptIn": "Sigue pendiente, así que puede activarlo antes de abrirse a donaciones.",
+      "notOptedIn": "No lo activó antes de abrirse a donaciones, así que estas cifras muestran lo que deja de ganar."
+    },
+    "venuesUnavailable": "No se ha podido cargar la lista de bóvedas de Morpho. Vuelve a intentarlo en unos minutos.",
+    "col": {
+      "vault": "Bóveda",
+      "curator": "Gestor",
+      "apy": "APY neto",
+      "size": "Tamaño",
+      "liquid": "Retirable ya",
+      "earn": "Gana hasta ({unit})"
+    },
+    "approvedTag": "aprobada",
+    "venuesFootnote": "Ordenadas por lo que se puede retirar ahora mismo, porque la custodia tiene que volver el día que vence un tramo. El rendimiento es variable y el pasado no promete nada. «Gana hasta» supone que todo espera hasta el plazo de entrega; los tramos salen a medida que se verifican las entregas, así que cuenta con menos. Datos de Morpho a las {time}.",
+    "venuesTestnet": "Son bóvedas de Base mainnet; esta red de pruebas presta a una bóveda simulada."
   }
 }

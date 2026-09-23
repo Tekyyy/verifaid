@@ -110,7 +110,12 @@ export function SelectField({
   onChange,
   options,
   hint,
-}: Omit<BaseProps, 'placeholder' | 'inputMode'> & { options: readonly string[] }) {
+  labelOf = (option) => option,
+}: Omit<BaseProps, 'placeholder' | 'inputMode'> & {
+  options: readonly string[]
+  /** What to show for an option, when its value is not readable on its own (an id, a code). */
+  labelOf?: (option: string) => string
+}) {
   const id = useId()
   return (
     <div>
@@ -120,7 +125,7 @@ export function SelectField({
       <select id={id} className="input" value={value} onChange={(event) => onChange(event.target.value)}>
         {options.map((option) => (
           <option key={option} value={option}>
-            {option}
+            {labelOf(option)}
           </option>
         ))}
       </select>

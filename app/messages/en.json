@@ -1030,5 +1030,54 @@
     "harvestButton": "Take the earnings",
     "payButton": "Pay the earnings out",
     "manageHint": "Money a supplier can claim this instant never goes out, and any payout pulls back what it needs first. The earnings can only be paid once the need is over and nothing is lent."
+  },
+  "campaigns": {
+    "title": "Your campaigns",
+    "body": "Every need this wallet runs that is still raising or delivering, read from the chain and refreshed every 30 seconds.",
+    "connect": "Connect the NGO wallet to see its campaigns.",
+    "empty": "This wallet has no campaign raising or delivering right now.",
+    "active": "Campaigns under way",
+    "raised": "Raised",
+    "stillNeeded": "Still to raise",
+    "waiting": "Waiting in a lending vault",
+    "earnedSoFar": "{amount} {unit} earned so far",
+    "needLabel": "Need #{id} · {category}",
+    "long": "Long campaign · {months, plural, one {# month} other {# months}} to deliver",
+    "optIn": {
+      "optedIn": "Earns while it waits",
+      "canOptIn": "Can still opt in",
+      "notOptedIn": "Not lending"
+    },
+    "progressLabel": "Funding progress of need #{id}",
+    "raisedOf": "{raised} of {target} {unit} · {share}%",
+    "fundingCloses": "Funding closes",
+    "deliverBy": "Deliver by",
+    "noDeadline": "no deadline",
+    "venuesTitle": "Where a long campaign’s money can wait",
+    "venuesBody": "Once funding closes, escrow that no supplier can claim yet can wait in a lending vault and earn for the campaign. Below are Morpho’s listed USDC vaults on Base with their live rates: the options the platform can approve. Money only ever goes to the one vault approved on chain, never one picked here.",
+    "approvedVenue": "Approved vault on this deployment:",
+    "approvedIsTest": "(a test vault on this network)",
+    "capNote": "at most {cap}% of a campaign’s pot at once",
+    "noVenue": "No lending vault is approved on this deployment, so every campaign’s money stays in its own escrow.",
+    "campaignPicker": "Long campaign",
+    "couldWaitTarget": "if fully funded, up to {amount} {unit} could wait for {months, plural, one {# month} other {# months}}.",
+    "couldWaitRaised": "up to {amount} {unit} could wait for {months, plural, one {# month} other {# months}}.",
+    "optInExplain": {
+      "optedIn": "This campaign opted in, so it lends once funding closes.",
+      "canOptIn": "It is still pending, so it can opt in before it opens for donations.",
+      "notOptedIn": "It did not opt in before opening for donations, so these figures show what it forgoes."
+    },
+    "venuesUnavailable": "Morpho’s vault list could not be loaded right now. Try again in a few minutes.",
+    "col": {
+      "vault": "Vault",
+      "curator": "Curator",
+      "apy": "Net APY",
+      "size": "Size",
+      "liquid": "Withdrawable now",
+      "earn": "Earns up to ({unit})"
+    },
+    "approvedTag": "approved",
+    "venuesFootnote": "Sorted by what can be withdrawn right now, since escrow has to come back the day a tranche is due. Rates are variable and past rates promise nothing. “Earns up to” assumes everything waits until the delivery deadline; tranches leave as deliveries are verified, so expect less. Morpho data as of {time}.",
+    "venuesTestnet": "These are Base mainnet vaults; this test network lends to a mock vault instead."
   }
 }

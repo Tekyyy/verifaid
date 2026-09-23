@@ -11,6 +11,7 @@ import { CreateNeedPanel } from '@/components/CreateNeedPanel'
 import { Advanced, FormError, Panel, TextArea, TextField } from '@/components/form'
 import { IdleCapitalPanel } from '@/components/IdleCapitalPanel'
 import { NeedPresentationPanel } from '@/components/NeedPresentationPanel'
+import { NgoCampaignDashboard } from '@/components/NgoCampaignDashboard'
 import { MissingDeployment } from '@/components/Notice'
 import { ProposePayeeChangePanel } from '@/components/PayeeChangePanel'
 import { ProgramPicker } from '@/components/ProgramPicker'
@@ -28,6 +29,7 @@ export function NgoConsole() {
 
   return (
     <div className="space-y-6">
+      <NgoCampaignDashboard />
       <CreateProgram />
       <AddMembers />
       <CreateNeedPanel />
