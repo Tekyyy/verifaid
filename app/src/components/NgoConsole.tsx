@@ -15,6 +15,7 @@ import { MissingDeployment } from '@/components/Notice'
 import { ProposePayeeChangePanel } from '@/components/PayeeChangePanel'
 import { ProgramPicker } from '@/components/ProgramPicker'
 import { PublishPhotosPanel } from '@/components/PublishPhotosPanel'
+import { ReleaseTranchePanel } from '@/components/ReleaseTranchePanel'
 import { SettlementPanel } from '@/components/SettlementPanel'
 import { TaxStatusPanel } from '@/components/TaxStatusPanel'
 import { TxStatus } from '@/components/TxStatus'
@@ -35,7 +36,7 @@ export function NgoConsole() {
       <CreateNeedPanel />
       <NeedPresentationPanel />
       <CloseFunding />
-      <ReleaseTranche />
+      <ReleaseTranchePanel />
       <IdleCapitalPanel />
       <ProposePayeeChangePanel />
       <SettlementPanel />
@@ -219,41 +220,6 @@ function CloseFunding() {
         }
       >
         {t('closeFunding')}
-      </button>
-      <TxStatus state={tx} />
-    </Panel>
-  )
-}
-
-function ReleaseTranche() {
-  const t = useTranslations('ngo')
-  const tx = useTx()
-  const [needId, setNeedId] = useState('')
-  const [index, setIndex] = useState('0')
-  const vault = useLedger(needId)
-
-  return (
-    <Panel title={t('releaseTitle')} description={t('releaseBody')}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <TextField label={t('needId')} value={needId} onChange={setNeedId} inputMode="numeric" />
-        <TextField label={t('trancheIndex')} value={index} onChange={setIndex} inputMode="numeric" />
-      </div>
-      <p className="hint mono">{vault ?? '—'}</p>
-      <button
-        type="button"
-        className="btn-primary"
-        disabled={!vault || !/^\d+$/.test(index) || tx.phase === 'signing' || tx.phase === 'pending'}
-        onClick={() =>
-          vault &&
-          tx.run({
-            address: vault,
-            abi: aidVaultAbi,
-            functionName: 'releaseTranche',
-            args: [BigInt(index)],
-          })
-        }
-      >
-        {t('releaseTranche')}
       </button>
       <TxStatus state={tx} />
     </Panel>
