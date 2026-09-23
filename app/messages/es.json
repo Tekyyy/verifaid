@@ -167,6 +167,8 @@
   "needs": {
     "title": "Necesidades",
     "subtitle": "Todas las necesidades registradas en cadena, con lo recaudado para cada una.",
+    "filters": "Filtros",
+    "filtersActive": "Filtros ({count} activos)",
     "filterStatus": "Estado",
     "filterCategory": "Categoría",
     "filterRegion": "Región",
@@ -299,6 +301,8 @@
     "manageTitle": "Gestión de necesidades",
     "manageSubtitle": "Cada campaña de esta cartera que sigue recaudando o entregando, y dónde puede esperar el dinero de las campañas largas.",
     "backToSetup": "← Consola de la ONG",
+    "jumpLabel": "Ir a",
+    "jumpPlaceholder": "Elige una sección…",
     "notNgoTitle": "Esta cartera no es una ONG registrada",
     "notNgoBody": "Solo las organizaciones que el administrador de la plataforma ha registrado pueden crear programas y necesidades o gestionarlos; los contratos rechazan cualquier otra cartera, por eso tu cartera avisa de que la transacción probablemente fallará. Conecta la cartera de la ONG o pide al administrador que registre {address}.",
     "programTitle": "1. A quién atiendes",

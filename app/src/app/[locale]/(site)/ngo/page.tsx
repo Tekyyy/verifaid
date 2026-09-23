@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
 import { NgoConsole } from '@/components/NgoConsole'
 import { NgoRoleNotice } from '@/components/NgoRoleNotice'
+import { SectionJump } from '@/components/SectionJump'
 import { Link } from '@/i18n/navigation'
 
 export async function generateMetadata({
@@ -28,6 +29,7 @@ export default async function NgoPage() {
         </Link>
       </header>
       <NgoRoleNotice />
+      <SectionJump label={t('jumpLabel')} placeholder={t('jumpPlaceholder')} />
       <NgoConsole />
     </div>
   )

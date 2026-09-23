@@ -18,6 +18,11 @@
   a {
     @apply underline-offset-2;
   }
+
+  /* An in-page jump (#donate) should land below the sticky header, not under it. */
+  [id] {
+    scroll-margin-top: 7rem;
+  }
 }
 
 @layer components {
@@ -54,9 +59,10 @@
     @apply block text-sm font-medium text-slate-700;
   }
 
+  /* 16px on phones: iOS zooms the whole page into any field whose text is smaller. */
   .input {
-    @apply mt-1 block w-full min-h-[44px] rounded-md border border-slate-300 bg-white px-3 py-2 text-sm
-      text-slate-900 placeholder:text-slate-400;
+    @apply mt-1 block w-full min-h-[44px] rounded-md border border-slate-300 bg-white px-3 py-2 text-base
+      text-slate-900 placeholder:text-slate-400 sm:text-sm;
   }
 
   .hint {
@@ -77,5 +83,16 @@
 
   .mono {
     @apply font-mono text-xs break-all text-slate-700;
+  }
+}
+
+@layer utilities {
+  /* A row that scrolls sideways by swiping, without a scrollbar eating its height. */
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }

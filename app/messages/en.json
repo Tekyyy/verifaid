@@ -167,6 +167,8 @@
   "needs": {
     "title": "Needs",
     "subtitle": "Every need registered on chain, with what has been raised against it.",
+    "filters": "Filters",
+    "filtersActive": "Filters ({count} on)",
     "filterStatus": "Status",
     "filterCategory": "Category",
     "filterRegion": "Region",
@@ -299,6 +301,8 @@
     "manageTitle": "Need management",
     "manageSubtitle": "Every campaign this wallet runs that is still raising or delivering, and where long campaigns’ money can wait.",
     "backToSetup": "← NGO console",
+    "jumpLabel": "Go to",
+    "jumpPlaceholder": "Choose a section…",
     "notNgoTitle": "This wallet is not a registered NGO",
     "notNgoBody": "Only organisations the platform admin has registered can create programmes and needs or manage them; the contracts refuse any other wallet, which is why your wallet warns that the transaction is likely to fail. Connect the NGO’s wallet, or ask the admin to register {address}.",
     "programTitle": "1. Who you serve",

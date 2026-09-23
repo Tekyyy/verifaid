@@ -1,6 +1,7 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
+import { useEffect, useRef } from 'react'
 import { Link, usePathname } from '@/i18n/navigation'
 
 /**
@@ -26,11 +27,22 @@ export function SiteNav() {
   const tCommon = useTranslations('common')
   const pathname = usePathname()
   const isCurrent = (href: string) => pathname === href || pathname.startsWith(`${href}/`)
+  const navRef = useRef<HTMLElement>(null)
+
+  // On a phone the bar is one row that scrolls sideways; keep the page you are on in view.
+  useEffect(() => {
+    const current = navRef.current?.querySelector<HTMLElement>('[aria-current="page"]')
+    const bar = navRef.current?.parentElement
+    if (!current || !bar || bar.scrollWidth <= bar.clientWidth) return
+    const offset = current.getBoundingClientRect().left - bar.getBoundingClientRect().left
+    bar.scrollLeft += offset - (bar.clientWidth - current.offsetWidth) / 2
+  }, [pathname])
 
   return (
     <nav
+      ref={navRef}
       aria-label={tCommon('mainNavigation')}
-      className="flex w-full flex-wrap items-center justify-between gap-x-2 gap-y-1"
+      className="flex w-max items-center gap-2 sm:w-full sm:flex-wrap sm:justify-between sm:gap-x-2 sm:gap-y-1"
     >
       {PUBLIC_ROUTES.map((route) => (
         <NavLink key={route.href} href={route.href} current={isCurrent(route.href)}>
@@ -63,7 +75,7 @@ function NavLink({
       aria-current={current ? 'page' : undefined}
       // prefetch: a click should not wait for the page to be fetched from scratch
       prefetch
-      className={`rounded-md px-3 py-1.5 text-sm no-underline transition-all ${
+      className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm no-underline transition-all ${
         current
           ? 'bg-teal-600 font-semibold text-white shadow'
           : muted

@@ -9,6 +9,7 @@ import { DonationList } from '@/components/DonationList'
 import { ExpireButton } from '@/components/ExpireButton'
 import { ExplorerLink } from '@/components/ExplorerLink'
 import { IdleCapitalNote } from '@/components/IdleCapitalNote'
+import { MobileDonateBar } from '@/components/MobileDonateBar'
 import { NeedBadgeRow } from '@/components/NeedBadgeRow'
 import { NeedPresentation } from '@/components/NeedPresentation'
 import { IndexerNotice, Notice } from '@/components/Notice'
@@ -76,7 +77,18 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
   const refundable = data.status === 'Cancelled' || data.status === 'Expired'
 
   return (
-    <div className="space-y-8">
+    // Room at the bottom on a phone for the donate bar, so it never covers the last panel.
+    <div className={`space-y-8 ${fundingOpen ? 'pb-20 lg:pb-0' : ''}`}>
+      {fundingOpen ? (
+        <MobileDonateBar
+          label={t('donateTitle')}
+          summary={t('raisedOfTarget', {
+            raised: amount(data.totalDonated),
+            target: amount(data.targetAmount),
+            unit: tCommon('amountUnit'),
+          })}
+        />
+      ) : null}
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{t('title', { id: data.id })}</h1>

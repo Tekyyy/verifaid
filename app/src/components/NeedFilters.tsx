@@ -2,6 +2,7 @@
 
 import { CATEGORIES, NEED_SORTS, NEED_STATUS } from '@poa/shared'
 import { useTranslations } from 'next-intl'
+import { useState } from 'react'
 import { useRouter } from '@/i18n/navigation'
 import { flagEmoji } from '@/lib/format'
 import type { NeedFilters as NeedFilterValues } from '@/lib/indexer'
@@ -17,6 +18,9 @@ export function NeedFilters({ values, countries }: { values: NeedFilterValues; c
   const tCommon = useTranslations('common')
   const tStatus = useTranslations('needStatus')
   const router = useRouter()
+  // On a phone five fields would fill the first screen before a single need: they fold away until asked for.
+  const [open, setOpen] = useState(false)
+  const active = TEXT_KEYS.filter((key) => values[key]).length + (values.open ? 1 : 0)
 
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -32,90 +36,105 @@ export function NeedFilters({ values, countries }: { values: NeedFilterValues; c
   }
 
   return (
-    <form className="card grid gap-3 sm:grid-cols-2 lg:grid-cols-4" onSubmit={submit}>
-      <div>
-        <label className="label" htmlFor="filter-status">
-          {t('filterStatus')}
-        </label>
-        <select id="filter-status" name="status" className="input" defaultValue={values.status ?? ''}>
-          <option value="">{tCommon('all')}</option>
-          {NEED_STATUS.map((status) => (
-            <option key={status} value={status}>
-              {tStatus(status)}
-            </option>
-          ))}
-        </select>
-      </div>
+    <form className="card" onSubmit={submit}>
+      <button
+        type="button"
+        className="flex min-h-[44px] w-full items-center justify-between text-sm font-semibold text-slate-800 sm:hidden"
+        aria-expanded={open}
+        aria-controls="need-filters"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span>{active ? t('filtersActive', { count: active }) : t('filters')}</span>
+        <span aria-hidden="true">{open ? '▲' : '▼'}</span>
+      </button>
+      <div
+        id="need-filters"
+        className={`${open ? 'mt-2 grid' : 'hidden'} gap-3 sm:mt-0 sm:grid sm:grid-cols-2 lg:grid-cols-4`}
+      >
+        <div>
+          <label className="label" htmlFor="filter-status">
+            {t('filterStatus')}
+          </label>
+          <select id="filter-status" name="status" className="input" defaultValue={values.status ?? ''}>
+            <option value="">{tCommon('all')}</option>
+            {NEED_STATUS.map((status) => (
+              <option key={status} value={status}>
+                {tStatus(status)}
+              </option>
+            ))}
+          </select>
+        </div>
 
-      <div>
-        <label className="label" htmlFor="filter-category">
-          {t('filterCategory')}
-        </label>
-        <select id="filter-category" name="category" className="input" defaultValue={values.category ?? ''}>
-          <option value="">{tCommon('all')}</option>
-          {CATEGORIES.map((category) => (
-            <option key={category} value={category}>
-              {category}
-            </option>
-          ))}
-        </select>
-      </div>
+        <div>
+          <label className="label" htmlFor="filter-category">
+            {t('filterCategory')}
+          </label>
+          <select id="filter-category" name="category" className="input" defaultValue={values.category ?? ''}>
+            <option value="">{tCommon('all')}</option>
+            {CATEGORIES.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+        </div>
 
-      <div>
-        <label className="label" htmlFor="filter-country">
-          {t('filterCountry')}
-        </label>
-        <select id="filter-country" name="country" className="input" defaultValue={values.country ?? ''}>
-          <option value="">{tCommon('all')}</option>
-          {countries.map((country) => (
-            <option key={country} value={country}>
-              {`${flagEmoji(country)} ${country}`.trim()}
-            </option>
-          ))}
-        </select>
-      </div>
+        <div>
+          <label className="label" htmlFor="filter-country">
+            {t('filterCountry')}
+          </label>
+          <select id="filter-country" name="country" className="input" defaultValue={values.country ?? ''}>
+            <option value="">{tCommon('all')}</option>
+            {countries.map((country) => (
+              <option key={country} value={country}>
+                {`${flagEmoji(country)} ${country}`.trim()}
+              </option>
+            ))}
+          </select>
+        </div>
 
-      <div>
-        <label className="label" htmlFor="filter-region">
-          {t('filterRegion')}
-        </label>
-        <input
-          id="filter-region"
-          name="region"
-          className="input"
-          defaultValue={values.region ?? ''}
-          placeholder={t('filterRegionPlaceholder')}
-        />
-      </div>
+        <div>
+          <label className="label" htmlFor="filter-region">
+            {t('filterRegion')}
+          </label>
+          <input
+            id="filter-region"
+            name="region"
+            className="input"
+            defaultValue={values.region ?? ''}
+            placeholder={t('filterRegionPlaceholder')}
+          />
+        </div>
 
-      <div>
-        <label className="label" htmlFor="filter-sort">
-          {t('sort')}
-        </label>
-        <select id="filter-sort" name="sort" className="input" defaultValue={values.sort ?? ''}>
-          <option value="">{t('sortDefault')}</option>
-          {NEED_SORTS.map((sort) => (
-            <option key={sort} value={sort}>
-              {t(`sort_${sort}`)}
-            </option>
-          ))}
-        </select>
-      </div>
+        <div>
+          <label className="label" htmlFor="filter-sort">
+            {t('sort')}
+          </label>
+          <select id="filter-sort" name="sort" className="input" defaultValue={values.sort ?? ''}>
+            <option value="">{t('sortDefault')}</option>
+            {NEED_SORTS.map((sort) => (
+              <option key={sort} value={sort}>
+                {t(`sort_${sort}`)}
+              </option>
+            ))}
+          </select>
+        </div>
 
-      <div className="flex items-end">
-        <label className="flex min-h-[44px] items-center gap-2 text-sm font-medium text-slate-700">
-          <input type="checkbox" name="open" value="true" defaultChecked={values.open ?? false} />
-          {t('filterOpen')}
-        </label>
-      </div>
+        <div className="flex items-end">
+          <label className="flex min-h-[44px] items-center gap-2 text-sm font-medium text-slate-700">
+            <input type="checkbox" name="open" value="true" defaultChecked={values.open ?? false} />
+            {t('filterOpen')}
+          </label>
+        </div>
 
-      <div className="flex items-end gap-2">
-        <button type="submit" className="btn-primary">
-          {tCommon('apply')}
-        </button>
-        <button type="button" className="btn-secondary" onClick={() => router.push('/needs')}>
-          {tCommon('reset')}
-        </button>
+        <div className="flex items-end gap-2">
+          <button type="submit" className="btn-primary">
+            {tCommon('apply')}
+          </button>
+          <button type="button" className="btn-secondary" onClick={() => router.push('/needs')}>
+            {tCommon('reset')}
+          </button>
+        </div>
       </div>
     </form>
   )
