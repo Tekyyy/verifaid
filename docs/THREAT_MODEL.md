@@ -139,7 +139,10 @@ Stated plainly, because most of the security rests on them:
   `ImpactReport.refUID` must equal the `DeliveryVerified` UID of the last finalized delivery. An impact report
   for a need with no verified delivery cannot be published at all.
 
-### 3.9 Bank-partner and fiat path
+### 3.9 Bank-partner and fiat path (retired in v7)
+
+Kept as a record of what v2–v6 defended. Since v7 the contracts have no bank-partner role and no
+`donateOnBehalf`, so none of the attacks below has an entry point; see §3.19 and `docs/DECISIONS.md` §20.
 
 - **Mitigation.** `donateOnBehalf` is restricted to `BANK_PARTNER_ROLE`; a provider's payment reference can be
   consumed once system-wide (enforced in the factory, not just per vault, and scoped per provider so one
@@ -152,7 +155,10 @@ Stated plainly, because most of the security rests on them:
 - **Residual risk.** The partner is trusted to actually have received the fiat. This is a regulated-entity
   assumption, not a cryptographic one.
 
-### 3.11 Off-chain custody (Model A)
+### 3.11 Off-chain custody (Model A, retired in v7)
+
+Kept as a record of what v2–v6 defended. Since v7 every need is escrowed in its own vault and there is no
+custodian to trust.
 
 - **Threat.** A need's money never touches the chain, so a dishonest provider could record payments it did not
   receive (inflating "funded"), or report paying out tranches it kept.

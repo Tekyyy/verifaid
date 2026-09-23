@@ -69,7 +69,7 @@ that needs no account.
 
 ## Live on Base Sepolia
 
-v6 is deployed and every contract is source-verified on Basescan; its schemas are registered in the real EAS
+v7 is deployed and every contract is source-verified on Basescan; its schemas are registered in the real EAS
 SchemaRegistry. The vaults hold a test USDC, so a donation in USDC never touches a pool. Euro donations convert on
 Uniswap v3's own Base Sepolia deployment under Chainlink's USDC/USD feed; Base Sepolia has no EUR/USD feed and no
 liquid pool for test tokens, so those two are mocked and the deploy creates the mock EURC / USDC pool at the oracle
@@ -82,24 +82,24 @@ need is still raising can take their donation back, up to two days before its fu
 
 | | |
 |---|---|
-| `NeedsRegistry` | [`0xC463634d663b610E93Fc92b8f5017f78E086bdeF`](https://sepolia.basescan.org/address/0xC463634d663b610E93Fc92b8f5017f78E086bdeF) |
-| `DeliveryManager` | [`0x43F77A6e406506503fC5983A1E694470A6a870D6`](https://sepolia.basescan.org/address/0x43F77A6e406506503fC5983A1E694470A6a870D6) |
-| `ProofOfAidResolver` | [`0xf2E94923c0fbc2D568348Cd5C2639a57F28a471f`](https://sepolia.basescan.org/address/0xf2E94923c0fbc2D568348Cd5C2639a57F28a471f) |
-| `RoleRegistry` | [`0x3E1FC207c10d1994aA6383ED4Bcd1d5927674dB0`](https://sepolia.basescan.org/address/0x3E1FC207c10d1994aA6383ED4Bcd1d5927674dB0) |
-| `AidVaultFactory` | [`0xc986335eA83De1E763DC7675ef01e43ed04A2Dcc`](https://sepolia.basescan.org/address/0xc986335eA83De1E763DC7675ef01e43ed04A2Dcc) |
-| `BeneficiaryGroups` | [`0x9f9de11C9Ebc81f3bC1B0396615b39Ea7279c658`](https://sepolia.basescan.org/address/0x9f9de11C9Ebc81f3bC1B0396615b39Ea7279c658) |
-| `DonationReceipt` | [`0xb9f6318c036d2d0A3bDFAC03B5B5Fe401C30bDd6`](https://sepolia.basescan.org/address/0xb9f6318c036d2d0A3bDFAC03B5B5Fe401C30bDd6) |
-| `ConversionRouter` | [`0x13E2585BA64E232ff10Ddbfef44D5DA017A4778a`](https://sepolia.basescan.org/address/0x13E2585BA64E232ff10Ddbfef44D5DA017A4778a) |
-| `DonationForwarderFactory` | [`0x7a752FDB53CD1B2e86cefF77767ac5E1484529bf`](https://sepolia.basescan.org/address/0x7a752FDB53CD1B2e86cefF77767ac5E1484529bf) |
-| vault currency, test USDC (mUSDC) | [`0x2b55a998Ea617d494a1BeE85F21d4b10Df8329ff`](https://sepolia.basescan.org/address/0x2b55a998Ea617d494a1BeE85F21d4b10Df8329ff) |
-| test EURC (mEURC), converted on the way in | [`0x2C3a6eB95b63dd0fb006067147E4916eDa3f570D`](https://sepolia.basescan.org/address/0x2C3a6eB95b63dd0fb006067147E4916eDa3f570D) |
-| idle-capital venue (mock ERC-4626) | [`0x49A1B718FB4f0c7822e08fb2cAa1fDF0473f6d37`](https://sepolia.basescan.org/address/0x49A1B718FB4f0c7822e08fb2cAa1fDF0473f6d37) |
+| `NeedsRegistry` | [`0x0Dd9B7368cF1fC105C26dBadC4Cc300c28B3337b`](https://sepolia.basescan.org/address/0x0Dd9B7368cF1fC105C26dBadC4Cc300c28B3337b) |
+| `DeliveryManager` | [`0x01e72Bdd6c2F4b9A9368779983D96DDc480ecb61`](https://sepolia.basescan.org/address/0x01e72Bdd6c2F4b9A9368779983D96DDc480ecb61) |
+| `ProofOfAidResolver` | [`0xDbA10d7752a02250E75204772b26445777cde022`](https://sepolia.basescan.org/address/0xDbA10d7752a02250E75204772b26445777cde022) |
+| `RoleRegistry` | [`0x4b47C5F9785b1eeABa9873BFF8E02AD32c23F6ae`](https://sepolia.basescan.org/address/0x4b47C5F9785b1eeABa9873BFF8E02AD32c23F6ae) |
+| `AidVaultFactory` | [`0x7cD2e055BB3BAeBD10FA72a3b975048aD0293a4C`](https://sepolia.basescan.org/address/0x7cD2e055BB3BAeBD10FA72a3b975048aD0293a4C) |
+| `BeneficiaryGroups` | [`0xcf2965B6D1D42b6069772E704980cb83f05c920B`](https://sepolia.basescan.org/address/0xcf2965B6D1D42b6069772E704980cb83f05c920B) |
+| `DonationReceipt` | [`0x14333d2F56D9d6Ace68468C575ca639633080E5C`](https://sepolia.basescan.org/address/0x14333d2F56D9d6Ace68468C575ca639633080E5C) |
+| `ConversionRouter` | [`0x2A622A75B029746E5C48a3Ad3E7f89b4f83BE700`](https://sepolia.basescan.org/address/0x2A622A75B029746E5C48a3Ad3E7f89b4f83BE700) |
+| `DonationForwarderFactory` | [`0x5255F0AA422115C1A2c06aEc9533dcaC83115DB5`](https://sepolia.basescan.org/address/0x5255F0AA422115C1A2c06aEc9533dcaC83115DB5) |
+| vault currency, test USDC (mUSDC) | [`0x1c2c7cc327B3831C26b2F693A7Ae8313E93694bC`](https://sepolia.basescan.org/address/0x1c2c7cc327B3831C26b2F693A7Ae8313E93694bC) |
+| test EURC (mEURC), converted on the way in | [`0x8610062BE5Ed0370a9008369A0eee4E515A406f4`](https://sepolia.basescan.org/address/0x8610062BE5Ed0370a9008369A0eee4E515A406f4) |
+| idle-capital venue (mock ERC-4626) | [`0x124aEC642D75618f017A97ecCC37A999716dF279`](https://sepolia.basescan.org/address/0x124aEC642D75618f017A97ecCC37A999716dF279) |
 
 Every address and schema UID is in [`deployments/base-sepolia.json`](deployments/base-sepolia.json); the schemas are
 browsable on the [Base Sepolia EAS explorer](https://base-sepolia.easscan.org). EAS, Semaphore v4, Uniswap v3 and
 the Chainlink feeds are the ones already deployed on Base Sepolia — this project deploys none of them. Earlier
 releases stay on-chain and are recorded in `deployments/base-sepolia.v1.json` through
-[`deployments/base-sepolia.v5.json`](deployments/base-sepolia.v5.json).
+[`deployments/base-sepolia.v6.json`](deployments/base-sepolia.v6.json).
 
 ## Repository layout
 

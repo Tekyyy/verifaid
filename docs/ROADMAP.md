@@ -44,14 +44,14 @@ Semaphore identities. Redemption *is* the delivery confirmation, so the evidence
 programmes. Needs merchant onboarding and a settlement path, and careful thought about coercion: a voucher that
 can be redeemed by anyone holding the card is as coercible as cash.
 
-## 5. Real banking integration (PSD2 / ISO 20022)
+## 5. Live card on-ramp on mainnet
 
-**Closes:** the bank partner is currently trusted to have actually received the fiat — the mock webhook asserts
-it.
+**Closes:** on Base Sepolia the "Pay by card" panel uses a mock on-ramp that mints test USDC, because the Coinbase
+Onramp only delivers on mainnet. (The bank-partner path this item used to be about was removed in v7; money now
+only arrives on chain, `docs/DECISIONS.md` §20.)
 
-**Shape:** the connector consumes signed PSD2 account-information feeds and reconciles `endToEndId` against real
-`camt.053` statements before depositing on-chain. The salted-reference design already matches ISO 20022 fields,
-so this is an integration problem rather than a redesign.
+**Shape:** a mainnet deployment plus CDP credentials (`CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`) switch the panel to
+the real Onramp session-token flow already built; nothing in the contracts changes.
 
 ## 6. ZK aggregate impact proofs and differential privacy
 

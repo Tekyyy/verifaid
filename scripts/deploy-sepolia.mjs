@@ -12,7 +12,7 @@
  * to the child process through its environment only.
  */
 import { spawnSync } from 'node:child_process'
-import { copyFileSync, existsSync, readFileSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, rmSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -134,6 +134,10 @@ if (wanted('verify')) run('VerifyDemoNeeds.s.sol')
 // Also a keeper: re-run `pnpm deploy:sepolia liquidity` to put the pool back at the oracle price.
 if (wanted('liquidity')) run('SeedLiquidity.s.sol')
 
+// The app's server cache outlives restarts, and its first render after one would show the previous release's needs.
+if (wanted('deploy'))
+  rmSync(join(root, 'app', '.next', 'cache', 'fetch-cache'), { recursive: true, force: true })
+
 if (existsSync(deployment)) {
   const { contracts: addresses, schemas, startBlock } = JSON.parse(readFileSync(deployment, 'utf8'))
   console.log('\n✓ Live on Base Sepolia\n')
@@ -148,4 +152,5 @@ if (existsSync(deployment)) {
   console.log(
     '\n  Next:  pnpm sync:deployments  &&  pnpm --filter @poa/shared build  &&  pnpm demo:run base-sepolia',
   )
+  console.log('         restart the indexer with indexer/.ponder/pglite deleted, and restart the app')
 }

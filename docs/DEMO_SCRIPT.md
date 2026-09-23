@@ -32,7 +32,7 @@ pnpm services:up                  # optional: evidence, pii-vault, notifier (ale
 Put a funded deployer key and a Basescan key in `.env` (with `CHALLENGE_PERIOD_SECONDS=60`), then:
 
 ```bash
-pnpm deploy:sepolia    # deploy + verify, register the six schemas, seed, create the test Uniswap pool;
+pnpm deploy:sepolia    # deploy + verify, register the five schemas, seed, create the test Uniswap pool;
                        # archives the previous release first
 ```
 

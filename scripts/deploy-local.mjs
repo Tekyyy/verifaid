@@ -10,7 +10,7 @@
  *   pnpm deploy:local
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -82,6 +82,9 @@ if (sync.status !== 0) {
   )
   process.exit(sync.status ?? 1)
 }
+
+// Same addresses, different chain state: the app's server cache would render the previous run's needs once.
+rmSync(join(root, 'app', '.next', 'cache', 'fetch-cache'), { recursive: true, force: true })
 
 const deployment = join(root, 'deployments', 'anvil.json')
 if (existsSync(deployment)) {

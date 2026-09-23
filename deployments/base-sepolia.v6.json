@@ -1,0 +1,65 @@
+{
+  "admin": "0x7642C9178a738Dd623Aac1F943bAFB81589E9050",
+  "chainId": 84532,
+  "communitySchemas": {
+    "DonationAcknowledged": "0xb0238f10b1e25f1f1ea1b9e3fe3836e7e1b74821619156274f541a40a2fbecb1",
+    "NeedPresentation": "0x811fda6dea28935a49127774da6f617589c306c99049c68617c8e62418f2df84",
+    "OrgTaxStatus": "0x270388d26307fe2438309f7019a0b3e0380d10245b4e3b3d4c0dac0e40042e02",
+    "SupplierApplication": "0x5132ffaa7311d63e5cbfeea90075c4ecdaeb061bbce301ea9c81097ed6c8bb9c",
+    "WorkPhotos": "0x7f9f55f9579e964ddb61a70457b3bd3cee16bda465bda02204c9579a7ef1c46a"
+  },
+  "contracts": {
+    "AidVaultFactory": "0xc986335eA83De1E763DC7675ef01e43ed04A2Dcc",
+    "AidVaultImplementation": "0x4E2399263122F7446265cf6E893b84a6F4DF02Fe",
+    "BeneficiaryGroups": "0x9f9de11C9Ebc81f3bC1B0396615b39Ea7279c658",
+    "ConversionRouter": "0x13E2585BA64E232ff10Ddbfef44D5DA017A4778a",
+    "DeliveryManager": "0x43F77A6e406506503fC5983A1E694470A6a870D6",
+    "DonationForwarderFactory": "0x7a752FDB53CD1B2e86cefF77767ac5E1484529bf",
+    "DonationForwarderImplementation": "0x4374dEc00E5a58fED35b943b93c081672596365c",
+    "DonationReceipt": "0xb9f6318c036d2d0A3bDFAC03B5B5Fe401C30bDd6",
+    "NeedsRegistry": "0xC463634d663b610E93Fc92b8f5017f78E086bdeF",
+    "NonCustodialLedgerImplementation": "0x78984f3D2c7766dE122F7Ef38F3AE887f5F61483",
+    "ProofOfAidResolver": "0xf2E94923c0fbc2D568348Cd5C2639a57F28a471f",
+    "RoleRegistry": "0x3E1FC207c10d1994aA6383ED4Bcd1d5927674dB0"
+  },
+  "deployer": "0x7642C9178a738Dd623Aac1F943bAFB81589E9050",
+  "external": {
+    "EAS": "0x4200000000000000000000000000000000000021",
+    "EURC": "0x2C3a6eB95b63dd0fb006067147E4916eDa3f570D",
+    "EthUsdFeed": "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
+    "EurUsdFeed": "0xb02043a765741cB9c0913a4fF9c27deF27587AA8",
+    "SchemaRegistry": "0x4200000000000000000000000000000000000020",
+    "Semaphore": "0x8A1fd199516489B0Fb7153EB5f075cDAC83c693D",
+    "SemaphoreVerifier": "0x0000000000000000000000000000000000000000",
+    "SequencerUptimeFeed": "0x0000000000000000000000000000000000000000",
+    "SwapRouter": "0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4",
+    "Token": "0x2b55a998Ea617d494a1BeE85F21d4b10Df8329ff",
+    "USDC": "0x2b55a998Ea617d494a1BeE85F21d4b10Df8329ff",
+    "UsdcUsdFeed": "0xd30e2101a97dcbAeBCBC04F14C3f624E67A35165",
+    "WETH": "0x4200000000000000000000000000000000000006",
+    "YieldVenue": "0x49A1B718FB4f0c7822e08fb2cAa1fDF0473f6d37"
+  },
+  "network": "base-sepolia",
+  "params": {
+    "challengePeriodSeconds": 60,
+    "confirmationThresholdBps": 7000,
+    "dashboardBaseURI": "http://localhost:3000/needs/",
+    "ethDonations": false,
+    "ethMaxSlippageBps": 150,
+    "highValueThreshold": 10000000000,
+    "maxSlippageBps": 100,
+    "minExpectedRecipients": 5,
+    "mockSwapRouter": false,
+    "usdcPoolFee": 100
+  },
+  "schemas": {
+    "DeliveryEvidence": "0x1c095d65f119c8f5b8d875fd19bf746972722f500a97dd1cf44d123613793a8b",
+    "DeliveryVerified": "0x24e09fd7107805dbe03ae23d6f5887a98bf75cbe29921a721d7d1054e5ec0e72",
+    "FundingRecorded": "0x72dde1e76b460a3c154b06c392638abbf87f0775cdeab3e3ed812fd086d7cacf",
+    "ImpactReport": "0x8883aac320325866e0a497954c25ee08eda99f5cd5050a43ef0ff24f6ae90a0e",
+    "NeedVerified": "0xe8cfecdce4f881de87ea5ae1276a9329144a99fbca679ea137edfafb1541eb86",
+    "Settlement": "0x74968a4f233701d7a3f87c60fb40d7ed942b5331aa309551af32775ea1328829"
+  },
+  "startBlock": 47165474,
+  "version": 6
+}
