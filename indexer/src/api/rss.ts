@@ -46,26 +46,14 @@ export const timelineTitle = (row: TimelineRow): string => {
       return `Tranche ${String(data.trancheIndex)} settled: ${amount(data, 'net')} to suppliers, fees ${amount(data, 'fee')}`
     case 'Refunded':
       return `Refund of ${amount(data, 'amount')}`
-    case 'DeliveryOpened':
-      return `Delivery #${String(data.deliveryId ?? '')} started`
-    case 'DeliveryEvidenceLinked':
-      return 'Field evidence filed'
-    case 'ReceiptConfirmed':
-      return 'Anonymous beneficiary confirmation'
-    case 'DeliveryVerifiedLinked':
-      return data.approved
-        ? 'Delivery signed off by an independent verifier'
-        : 'Delivery rejected by a verifier'
-    case 'DeliveryChallengeable':
-      return 'Delivery verified: challenge window open'
-    case 'DeliveryChallenged':
-      return 'Delivery challenged'
-    case 'DisputeResolved':
-      return data.upheld ? 'Challenge upheld: delivery rejected' : 'Challenge dismissed'
-    case 'DeliveryFinalized':
-      return 'Delivery finalized'
-    case 'DeliveryRejected':
-      return 'Delivery rejected'
+    case 'DeliverySubmitted':
+      return `The NGO accounted for tranche ${Number(data.trancheIndex ?? 1) - 1}: evidence open to donors`
+    case 'DeliverySuperseded':
+      return `Evidence #${String(data.deliveryId ?? '')} replaced by newer evidence`
+    case 'DeliveryApprovalAdded':
+      return `A donor approved the evidence (${amount(data, 'approvedAmount')} of ${amount(data, 'requiredAmount')} needed)`
+    case 'DeliveryApproved':
+      return `Donors approved the evidence: tranche ${String(data.trancheIndex)} unlocked`
     case 'ImpactReportPublished':
       return `Impact report published: ${String(data.beneficiariesServed)} beneficiaries served`
     default:
@@ -89,8 +77,8 @@ export const renderRss = (options: FeedOptions): string => {
     .sort((a, b) =>
       a.blockNumber === b.blockNumber ? b.logIndex - a.logIndex : Number(b.blockNumber - a.blockNumber),
     )
-    // A delivery can collect hundreds of confirmations; one item per confirmation would drown the feed.
-    .filter((row) => row.type !== 'ReceiptConfirmed')
+    // A delivery can collect many donor approvals; one item each would drown the feed. The outcome is its own item.
+    .filter((row) => row.type !== 'DeliveryApprovalAdded')
     .slice(0, 100)
     .map(
       (row) => `    <item>

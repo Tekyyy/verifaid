@@ -87,13 +87,14 @@ const STAGE_MEANING: Record<DonorStage, string> = {
   Funded: 'Funding closed: the money raised is committed to this need.',
   Settled: 'A payout to the supplier was reconciled on-chain by a Settlement attestation.',
   Delivered:
-    'A delivery passed all three checks (recipient confirmations, evidence, a verifier) and its challenge window.',
-  ImpactConfirmed: 'The NGO published its impact report, chained to the last verified delivery.',
+    'The NGO showed how a tranche was spent (photos, receipts, bank statements) and donors who gave at least 30% of the money approved it.',
+  ImpactConfirmed: 'The NGO published its impact report.',
 }
 
 const OUTCOME_MEANING: Record<DonationOutcome, string> = {
   InProgress: 'In progress.',
-  Completed: 'The need is complete: every tranche was delivered and verified.',
+  Completed:
+    'The need is complete: every tranche was paid, each after donors approved how the previous one was spent.',
   Refundable: 'The need did not go ahead as planned: this donation can be refunded.',
   Refunded: 'This donation was refunded.',
   Expired: 'The need expired before reaching its funding threshold; refunds are open.',

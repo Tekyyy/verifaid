@@ -48,23 +48,6 @@ services:
       retries: 20
       start_period: 10s
 
-  evidence:
-    <<: *service-base
-    build:
-      context: .
-      dockerfile: services/evidence/Dockerfile
-    ports:
-      - '${EVIDENCE_PORT:-4001}:4001'
-    environment:
-      <<: *service-env
-      PORT: '4001'
-      SIWE_DOMAIN: ${EVIDENCE_SIWE_DOMAIN:-localhost:4001}
-      PINATA_JWT: ${PINATA_JWT:-}
-      IPFS_LOCAL_DIR: /data/ipfs
-    volumes:
-      - poa-keys:/run/secrets
-      - poa-ipfs:/data/ipfs
-
   pii-vault:
     <<: *service-base
     build:
@@ -105,4 +88,3 @@ volumes:
   # The master KEK lives on a named volume shared by the services: losing it makes every stored record
   # permanently unreadable, which is the same property that makes crypto-shredding work.
   poa-keys:
-  poa-ipfs:

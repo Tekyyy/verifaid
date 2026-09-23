@@ -13,6 +13,7 @@ import {
 import type { Hex } from 'viem'
 import {
   type AcknowledgmentRow,
+  type DeliveryApprovalRow,
   type DeliveryRow,
   type DonationRow,
   type ImpactReportRow,
@@ -51,6 +52,8 @@ export interface TrackInputs {
   sameDonorDonations: DonationRow[]
   tranches: TrancheRow[]
   deliveries: DeliveryRow[]
+  /** Donor approvals of those deliveries. */
+  approvals: DeliveryApprovalRow[]
   settlements: SettlementRow[]
   reports: ImpactReportRow[]
   refunds: RefundRow[]
@@ -146,35 +149,29 @@ export const buildDonationTrack = (inputs: TrackInputs): DonationTrack => {
   )
 
   // ── Delivered ──
-  const finalized = deliveries
-    .filter((delivery) => delivery.status === 'Finalized' && delivery.finalizedAt !== null)
-    .sort((a, b) => (a.finalizedAt ?? 0) - (b.finalizedAt ?? 0))[0]
-  const finalizedEvent = finalized
+  // The first delivery the donors approved: they have seen, and accepted, how the money was spent.
+  const approved = deliveries
+    .filter((delivery) => delivery.status === 'Approved' && delivery.approvedAt !== null)
+    .sort((a, b) => (a.approvedAt ?? 0) - (b.approvedAt ?? 0))[0]
+  const approvedEvent = approved
     ? timeline.find(
         (row) =>
-          row.type === 'DeliveryFinalized' &&
-          (row.data as { deliveryId?: string }).deliveryId === finalized.id.toString(),
+          row.type === 'DeliveryApproved' &&
+          (row.data as { deliveryId?: string }).deliveryId === approved.id.toString(),
       )
     : undefined
-  const active = deliveries.find((delivery) =>
-    ['Open', 'Challengeable', 'Disputed'].includes(delivery.status),
-  )
-  let deliveredPending: string | null = null
-  if (active) {
-    deliveredPending =
-      active.status === 'Open'
-        ? `Delivery #${active.id}: ${active.confirmations} of ${active.expectedRecipients} beneficiary confirmations`
-        : active.status === 'Challengeable'
-          ? `Delivery #${active.id} verified; challenge window open`
-          : `Delivery #${active.id} under dispute`
-  }
+  const active = deliveries.find((delivery) => delivery.status === 'Open')
+  const pct = (part: bigint, whole: bigint) => (whole === 0n ? 0 : Number((part * 100n) / whole))
+  const deliveredPending = active
+    ? `Delivery #${active.id}: donors who gave ${pct(active.approvedAmount, need.totalDonated)}% of the raised amount have approved; ${pct(active.requiredAmount, need.totalDonated)}% is needed`
+    : null
   const deliveredStage = stage(
     'Delivered',
-    finalized
+    approved
       ? {
-          timestamp: finalized.finalizedAt ?? finalizedEvent?.timestamp ?? 0,
-          txHash: finalizedEvent?.txHash ?? null,
-          attestationUID: finalized.verifierUID,
+          timestamp: approved.approvedAt ?? approvedEvent?.timestamp ?? 0,
+          txHash: approvedEvent?.txHash ?? null,
+          attestationUID: null,
         }
       : undefined,
     deliveredPending,
@@ -238,7 +235,7 @@ export const buildDonationTrack = (inputs: TrackInputs): DonationTrack => {
     releasedToNgo: releasedToNgo.toString(),
     refunded: refunded.toString(),
     tranches: donorTranches,
-    deliveries: deliveries.map(toDeliveryView),
+    deliveries: deliveries.map((delivery) => toDeliveryView(delivery, inputs.approvals)),
     settlements: settlements.map(toSettlementView),
     impactReport: report ? toImpactReportView(report) : null,
     deposit: inputs.deposit,

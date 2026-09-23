@@ -99,11 +99,8 @@ export const eventArg = <T>(receipt: TransactionReceipt, abi: Abi, eventName: st
   return value as T
 }
 
-/**
- * Waits out the challenge period: instantly on anvil, in real time on a public testnet
- * (which is why the demo deployment uses a short CHALLENGE_PERIOD_SECONDS).
- */
-export const waitChallengePeriod = async (ctx: DemoContext, seconds: number): Promise<void> => {
+/** Lets `seconds` pass: instantly on anvil, in real time on a public testnet. */
+export const waitSeconds = async (ctx: DemoContext, seconds: number): Promise<void> => {
   if (ctx.isLocal) {
     await ctx.publicClient.request({ method: 'evm_increaseTime', params: [seconds + 1] } as never)
     await ctx.publicClient.request({ method: 'evm_mine', params: [] } as never)
@@ -112,7 +109,7 @@ export const waitChallengePeriod = async (ctx: DemoContext, seconds: number): Pr
   const deadline = Date.now() + (seconds + 5) * 1000
   while (Date.now() < deadline) {
     const remaining = Math.ceil((deadline - Date.now()) / 1000)
-    process.stdout.write(`\r    waiting out the challenge window: ${remaining}s   `)
+    process.stdout.write(`\r    waiting: ${remaining}s   `)
     await new Promise((r) => setTimeout(r, 5000))
   }
   process.stdout.write('\r                                                   \r')

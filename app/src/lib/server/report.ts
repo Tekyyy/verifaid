@@ -162,25 +162,26 @@ export const renderNeedReport = async (need: NeedDetail, timeline: TimelineEvent
   )
 
   report.heading('Deliveries')
-  if (need.deliveries.length === 0) report.paragraph('No deliveries opened yet.', { size: 8.5 })
+  if (need.deliveries.length === 0) report.paragraph('No evidence filed yet.', { size: 8.5 })
   for (const delivery of need.deliveries) {
     report.paragraph(
-      `Delivery #${delivery.id} - unlocks tranche ${delivery.trancheIndex} - ${delivery.status}`,
-      {
-        bold: true,
-      },
+      `Delivery #${delivery.id} - accounts for tranche ${delivery.trancheIndex - 1}, unlocks tranche ${delivery.trancheIndex} - ${delivery.status}`,
+      { bold: true },
     )
+    if (delivery.manifest?.note) report.paragraph(delivery.manifest.note, { size: 8.5 })
     report.keyValues([
       [
-        'Confirmations',
-        `${delivery.confirmations} of ${delivery.expectedRecipients} (${Math.round(delivery.confirmationRatio * 100)}%)`,
+        'Donor approval',
+        `${amount(delivery.approvedAmount)} of ${amount(delivery.requiredAmount)} ${UNIT} required (${delivery.approvals.length} donors)`,
       ],
-      ['Field agent', delivery.fieldAgent],
-      ['Verifier', delivery.verifier],
-      ['Evidence attestation', isZeroUid(delivery.evidenceUID) ? null : delivery.evidenceUID],
-      ['Verifier attestation', isZeroUid(delivery.verifierUID) ? null : delivery.verifierUID],
-      ['Evidence CID', delivery.evidenceCID],
-      ['Challenge window closes', delivery.challengeDeadline ? timestamp(delivery.challengeDeadline) : null],
+      ['Filed', timestamp(delivery.submittedAt)],
+      ['Approved', delivery.approvedAt ? timestamp(delivery.approvedAt) : null],
+      ['Manifest hash (on chain)', delivery.evidenceHash],
+      ['Transaction', delivery.txHash],
+      ...(delivery.manifest?.files ?? []).map((file): [string, string] => [
+        `${file.kind.replace('_', ' ')}: ${file.name}`,
+        `sha256 ${file.sha256}`,
+      ]),
     ])
     report.spacer(4)
   }

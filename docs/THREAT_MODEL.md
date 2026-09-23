@@ -54,53 +54,52 @@ Stated plainly, because most of the security rests on them:
 *Funds are released although nothing was delivered.*
 
 - **Mitigation.** Only tranche 0 (pre-financing, a deliberate design choice so NGOs can actually buy goods) is
-  released without evidence. Every later tranche requires **three independent signals**: evidence attested by
-  the field agent, anonymous confirmations from at least `confirmationThresholdBps` of the expected recipients,
-  and an approving attestation from an independent verifier — followed by a challenge window in which any other
-  independent verifier can freeze it.
-- **No path around it.** `AidVault.markReleasable` is callable only by the `DeliveryManager`, which only calls it
-  from `finalize`, which requires `Challengeable` status and an elapsed deadline. Releases pay the registered
-  payout address; the amount comes from the tranche plan fixed when funding closed.
+  released without evidence. Every later tranche requires the NGO to account for the one before it — photos,
+  receipts and bank statements committed on chain by hash — and **donors who gave 30% of the raised amount** to
+  approve that account (§21 of DECISIONS).
+- **No path around it.** `AidVault.markReleasable` is callable only by `DeliveryManager`, which calls it only from
+  `approve`, once the approving donors' combined donations reach the threshold. Releases pay the need's registered
+  suppliers; the amount comes from the tranche plan fixed when funding closed.
 - **Residual risk.** The first tranche is unproven by construction. Keep it small for unfamiliar partners —
   the tranche plan is per need, and a 10/45/45 split is as valid as 30/40/30.
 
 ### 3.3 Fabricated evidence
 
-*Photos and manifests that do not correspond to a real distribution.*
+*Photos, receipts and statements that do not correspond to what the money bought.*
 
-- **Mitigation.** Hash anchoring proves the evidence existed at a point in time and has not changed since; the
-  verifier reviews the decrypted bundle; the challenge window lets a second verifier object; the region in the
-  evidence must match the need's region.
-- **Residual risk.** **Hashing proves integrity, not truth.** A staged photo hashes just as well as a real one.
-  This is the single most important thing to say out loud to judges. The defence is the combination with
-  *beneficiary confirmations*, which are hard to fake at scale without real people, and with a verifier who is
-  not paid by the NGO.
+- **Mitigation.** Each file is committed by its SHA-256 in a manifest the NGO signs, so it cannot be swapped after
+  donors have seen it; filing new evidence discards every approval of the old. The files are public, so any donor —
+  and anyone else — can check an invoice against its supplier or a statement against the payouts the vault made,
+  which are themselves on chain.
+- **Residual risk.** **Hashing proves integrity, not truth.** A staged photo or a forged receipt hashes just as
+  well as a real one. The defence is people with money at stake reading the documents, 30% of the raised amount
+  having to agree, and the supplier payments being visible on chain for comparison. It is weaker than an
+  independent field audit, and says so.
 
-### 3.4 Double claiming and inflated confirmation counts
+### 3.4 Manufactured approval
 
-*The same person confirms twice; or the NGO manufactures confirmations.*
+*The NGO, or someone close to it, approves its own account.*
 
-- **Mitigation.** Semaphore nullifiers are scoped to the delivery (`scope = deliveryId`), so one identity can
-  confirm each delivery exactly once — enforced by the Semaphore contract, not by us. Confirmations are capped
-  at `expectedRecipients`, and `expectedRecipients` may not exceed the program's enrolled member count.
-- **Residual risk.** Sybil enrollment: an NGO that enrols 200 fake identities can produce 200 real proofs. This
-  is a human problem and is where verifier sampling of the enrollment register matters. `enrollmentPolicyHash`
-  commits publicly to the eligibility rules so an auditor can check the process that was promised.
+- **Mitigation.** The NGO, its payout address and the need's payees have no say, whatever they gave. A vote weighs
+  what the voter's wallet donated (`donatedBy`, frozen once funding closes), so splitting a gift across wallets
+  gains nothing. To approve its own evidence through fresh wallets an NGO must itself have donated 30% of the
+  raised amount — money that then goes to registered suppliers, not back to it.
+- **Residual risk.** Collusion between an NGO and a large "donor", or an NGO and one of its suppliers funding the
+  approving wallets. Verifier vetting of suppliers and the 25% cap on the NGO's own share bound what such a scheme
+  can take; public payouts make it traceable.
 
 ### 3.5 De-anonymizing beneficiaries
 
 *Working out who received aid from public data.*
 
-- **Mitigation.** No personal data, no GPS, no photos and no unsalted hashes of personal data ever reach the
-  chain. Beneficiaries appear only as Poseidon identity commitments. A confirmation emits a nullifier and a
-  counter. Regions are coarse ISO 3166-2 subdivisions. Deliveries with fewer than `MIN_EXPECTED_RECIPIENTS`
-  (5) expected recipients are refused, so a count cannot point at one household. Confirmations are relayed, so
-  the beneficiary's own wallet never appears in a transaction — without this, the ZK proof would be pointless.
-- **Residual risk.** *Timing correlation.* If a kiosk submits confirmations one at a time in the order people
-  queue, an observer who watches the queue and the chain can link them. Mitigations: batch submissions, random
-  delays, and a shared relayer across deliveries. *Small groups.* A programme with six members in one village
-  is barely anonymous whatever the contract enforces. *The relayer sees the submission order* and must be
-  treated as a semi-trusted party; it never learns identities, only nullifiers.
+- **Mitigation.** No personal data, no GPS and no unsalted hashes of personal data reach the chain. Beneficiaries
+  appear only as Poseidon identity commitments enrolled in a programme. Evidence photos are stripped of EXIF and
+  text metadata (GPS, camera serials, timestamps) before they are hashed and stored, and the upload form tells the
+  NGO to black out names, faces and account numbers first. Regions are coarse ISO 3166-2 subdivisions, and impact
+  reports below five people served are refused so a count cannot point at one household.
+- **Residual risk.** *The evidence is public by design.* An NGO that uploads an unredacted statement or a photo of
+  identifiable people publishes it, and its hash on chain cannot be removed. The file itself can be taken down from
+  this app's storage; the need then shows a hash with no document behind it.
 
 ### 3.6 Coercion
 

@@ -19,6 +19,7 @@ import {
   type PayeeChangeView,
   type PayeePaymentView,
   type PayeeView,
+  parseManifest,
   regionLabel,
   resolveNetwork,
   type SettlementView,
@@ -41,6 +42,7 @@ import { type Address, type Hex, zeroAddress } from 'viem'
 export type NeedRow = typeof schema.need.$inferSelect
 export type TrancheRow = typeof schema.tranche.$inferSelect
 export type DeliveryRow = typeof schema.delivery.$inferSelect
+export type DeliveryApprovalRow = typeof schema.deliveryApproval.$inferSelect
 export type DonationRow = typeof schema.donation.$inferSelect
 export type SettlementRow = typeof schema.settlement.$inferSelect
 export type RefundRow = typeof schema.refund.$inferSelect
@@ -179,23 +181,34 @@ export const toDonorTrancheSlice = (row: TrancheRow, donorShare: bigint): DonorT
   donorShare: donorShare.toString(),
 })
 
-export const toDeliveryView = (row: DeliveryRow): DeliveryView => ({
+/** A delivery with the donors who approved it, oldest approval first. */
+export const toDeliveryView = (
+  row: DeliveryRow,
+  approvals: readonly DeliveryApprovalRow[],
+): DeliveryView => ({
   id: row.id.toString(),
   needId: row.needId.toString(),
   trancheIndex: row.trancheIndex,
-  fieldAgent: row.fieldAgent as Address,
-  expectedRecipients: row.expectedRecipients,
-  confirmations: row.confirmations,
-  confirmationRatio:
-    row.expectedRecipients === 0
-      ? 0
-      : Math.round((row.confirmations / row.expectedRecipients) * 10_000) / 10_000,
+  submitter: row.submitter as Address,
   status: row.status as DeliveryStatus,
-  evidenceUID: (row.evidenceUID as Hex | null) ?? null,
-  evidenceCID: row.evidenceCID,
-  verifierUID: (row.verifierUID as Hex | null) ?? null,
-  verifier: (row.verifier as Address | null) ?? null,
-  challengeDeadline: row.challengeDeadline,
+  evidenceHash: row.evidenceHash as Hex,
+  manifest: parseManifest(row.manifest),
+  manifestText: row.manifest,
+  approvedAmount: row.approvedAmount.toString(),
+  requiredAmount: row.requiredAmount.toString(),
+  approvals: approvals
+    .filter((approval) => approval.deliveryId === row.id)
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .map((approval) => ({
+      donor: approval.donor as Address,
+      weight: approval.weight.toString(),
+      at: approval.timestamp,
+      txHash: approval.txHash as Hex,
+    })),
+  submittedAt: row.submittedAt,
+  approvedAt: row.approvedAt,
+  supersededBy: row.supersededBy?.toString() ?? null,
+  txHash: row.txHash as Hex,
 })
 
 /** What the swap did for a CONVERTED donation; null for every other kind. */

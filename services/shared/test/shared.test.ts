@@ -5,7 +5,8 @@ import { createSessionToken, verifySessionToken, verifyWebhookSignature } from '
 import { hmac, open, openEnvelope, seal, sealEnvelope } from '../src/crypto.js'
 import { getDeployment, hasDeployment } from '../src/deployment.js'
 import { categoryHash, categoryLabel, countryOf, regionCode, regionLabel } from '../src/format.js'
-import { AID_RECEIVED_MESSAGE, ROLES } from '../src/roles.js'
+import { buildManifest, MAX_MANIFEST_BYTES, manifestBytes, parseManifest } from '../src/manifest.js'
+import { ROLES } from '../src/roles.js'
 import {
   computeSchemaUid,
   decodeSchemaData,
@@ -19,15 +20,7 @@ describe('roles', () => {
   it('matches the identifiers in Roles.sol', () => {
     expect(ROLES.NGO).toBe(keccak256(stringToHex('NGO_ROLE')))
     expect(ROLES.VERIFIER).toBe(keccak256(stringToHex('VERIFIER_ROLE')))
-    expect(ROLES.FIELD_AGENT).toBe(keccak256(stringToHex('FIELD_AGENT_ROLE')))
     expect(ROLES.DEFAULT_ADMIN).toBe(`0x${'00'.repeat(32)}`)
-  })
-
-  it('signs the same message DeliveryManager expects', () => {
-    // keccak256("AID_RECEIVED"), verified against `cast keccak AID_RECEIVED`
-    expect(`0x${AID_RECEIVED_MESSAGE.toString(16)}`).toBe(
-      '0xa38d8f830de9adfa309e797e220a5a01d6849cba51fc1c77c9f8dac6ce3bc059',
-    )
   })
 })
 
@@ -42,26 +35,11 @@ describe('schemas', () => {
     const decoded = decodeSchemaData<[bigint, `0x${string}`, boolean, `0x${string}`]>('NeedVerified', encoded)
     expect(decoded[0]).toBe(1n)
     expect(decoded[2]).toBe(true)
-
-    const evidence = encodeSchemaData('DeliveryEvidence', [
-      7n,
-      keccak256(stringToHex('ciphertext')),
-      'bafkreiabc',
-      42,
-      regionCode('ES-CM'),
-    ])
-    const decodedEvidence = decodeSchemaData<[bigint, `0x${string}`, string, number, `0x${string}`]>(
-      'DeliveryEvidence',
-      evidence,
-    )
-    expect(decodedEvidence[2]).toBe('bafkreiabc')
-    expect(decodedEvidence[3]).toBe(42)
-    expect(regionLabel(decodedEvidence[4])).toBe('ES-CM')
   })
 
   it.runIf(hasDeployment('anvil'))('derives the same schema UIDs the SchemaRegistry assigned', () => {
     const deployment = getDeployment('anvil')
-    // one resolver serves all five schemas
+    // one resolver serves all three schemas
     const resolver = deployment.contracts.ProofOfAidResolver
     for (const name of SCHEMA_NAMES) {
       const definition = SCHEMAS[name]
@@ -82,6 +60,57 @@ describe('schemas', () => {
       keccak256(stringToHex('fx')),
     ])
     expect(decodeSchemaData<SettlementData>('Settlement', settlement)[4]).toBe(297_000000n)
+  })
+})
+
+describe('evidence manifests', () => {
+  const file = {
+    kind: 'receipt' as const,
+    name: 'factura-017.pdf',
+    type: 'application/pdf',
+    size: 48_213,
+    sha256: 'AB'.repeat(32),
+    url: '/api/files/abab',
+  }
+
+  it('serialises the same evidence to the same bytes, whatever order the fields came in', () => {
+    const shuffled = {
+      url: file.url,
+      sha256: file.sha256,
+      size: file.size,
+      type: file.type,
+      name: file.name,
+      kind: file.kind,
+    }
+    expect(buildManifest('  Tejas y lonas  ', [file])).toBe(buildManifest('Tejas y lonas', [shuffled]))
+    expect(buildManifest('x', [file])).toContain(
+      '"sha256":"abababababababababababababababababababababababababababababababab"',
+    )
+  })
+
+  it('reads back what it wrote, and refuses what is not a manifest', () => {
+    const text = buildManifest('Tejas y lonas', [file])
+    expect(parseManifest(text)?.files[0]?.sha256).toBe('ab'.repeat(32))
+    expect(parseManifest(text)?.note).toBe('Tejas y lonas')
+    expect(parseManifest('not json')).toBeNull()
+    expect(parseManifest(JSON.stringify({ v: 2, note: '', files: [] }))).toBeNull()
+    expect(parseManifest(JSON.stringify({ v: 1, note: '', files: [{ sha256: 'nope' }] }))).toBeNull()
+  })
+
+  it('never hands a script link to the page', () => {
+    const text = JSON.stringify({
+      v: 1,
+      note: '',
+      files: [{ ...file, url: 'javascript:alert(1)', kind: 'weird' }],
+    })
+    const parsed = parseManifest(text)
+    expect(parsed?.files[0]?.url).toBe('')
+    expect(parsed?.files[0]?.kind).toBe('other')
+  })
+
+  it('measures size in UTF-8 bytes, as the contract does', () => {
+    expect(manifestBytes('ñ')).toBe(2)
+    expect(MAX_MANIFEST_BYTES).toBe(8192)
   })
 })
 

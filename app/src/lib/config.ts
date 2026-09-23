@@ -40,10 +40,6 @@ export const indexerUrl: string = (process.env.NEXT_PUBLIC_INDEXER_URL ?? 'http:
   '',
 )
 
-export const evidenceServiceUrl: string = (
-  process.env.NEXT_PUBLIC_EVIDENCE_SERVICE_URL ?? 'http://localhost:4001'
-).replace(/\/$/, '')
-
 export const piiVaultUrl: string = (process.env.NEXT_PUBLIC_PII_VAULT_URL ?? 'http://localhost:4002').replace(
   /\/$/,
   '',

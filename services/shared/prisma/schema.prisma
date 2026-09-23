@@ -1,6 +1,6 @@
 // Data layer for the Proof of Aid off-chain services.
 //
-// One schema, one database, four services (evidence, pii-vault, bank-connector, notifier). Nothing here is ever written
+// One schema, one database, two services (pii-vault, notifier). Nothing here is ever written
 // to the chain: personal data lives only in `ciphertext` columns whose data keys are wrapped by a KEK derived
 // per NGO. Deleting `wrappedDek` (crypto-shredding) makes a record permanently unreadable, which is how the
 // right to erasure is honoured without removing rows that on-chain hashes refer to.
@@ -45,42 +45,6 @@ model Dossier {
   createdAt  DateTime @default(now())
 
   @@index([ngoAddress])
-}
-
-/// Encrypted delivery evidence. The ciphertext itself lives on IPFS; only its key and metadata are stored here.
-model Evidence {
-  cid           String   @id
-  /// keccak256 of the ciphertext — the value anchored in the DeliveryEvidence attestation.
-  evidenceHash  String   @unique
-  deliveryId    String
-  ngoAddress    String
-  uploader      String
-  wrappedDek    Bytes?
-  /// Non-personal manifest: item counts, coarse region, file names and sizes.
-  manifest      Json
-  attestationUID String?
-  createdAt     DateTime @default(now())
-
-  grants KeyGrant[]
-
-  @@index([deliveryId])
-  @@index([ngoAddress])
-}
-
-/// Per-grantee wrapped key: how an NGO shares one evidence bundle with one verifier.
-model KeyGrant {
-  id             String   @id @default(uuid())
-  evidenceCid    String
-  granteeAddress String
-  /// The evidence DEK, re-wrapped for this grantee.
-  wrappedKey     Bytes
-  grantedBy      String
-  createdAt      DateTime @default(now())
-
-  evidence Evidence @relation(fields: [evidenceCid], references: [cid], onDelete: Cascade)
-
-  @@unique([evidenceCid, granteeAddress])
-  @@index([granteeAddress])
 }
 
 /// A donation alert subscription keyed by a tracking reference (or a whole need). There is no account: the

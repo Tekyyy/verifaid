@@ -13,11 +13,9 @@ const NEED_TONES: Record<NeedStatus, string> = {
 }
 
 const DELIVERY_TONES: Record<DeliveryStatus, string> = {
-  Open: 'bg-slate-200 text-slate-800',
-  Challengeable: 'bg-amber-100 text-amber-900',
-  Disputed: 'bg-orange-100 text-orange-900',
-  Finalized: 'bg-emerald-100 text-emerald-900',
-  Rejected: 'bg-red-100 text-red-900',
+  Open: 'bg-amber-100 text-amber-900',
+  Approved: 'bg-emerald-100 text-emerald-900',
+  Superseded: 'bg-slate-200 text-slate-800',
 }
 
 const TRANCHE_TONES: Record<TrancheStatus, string> = {

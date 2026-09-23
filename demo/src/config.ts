@@ -23,7 +23,7 @@ export const ROLE_INDEX = {
   admin: 0,
   ngo: 1,
   ngoPayout: 2,
-  fieldAgent: 3,
+  // 3 was the field agent, whose checks donors now make themselves; left unused like 6.
   verifier1: 4,
   verifier2: 5,
   // 6 was the payment provider; it stays unused so every other role keeps its address.
@@ -49,7 +49,6 @@ export interface DemoContext {
   /** Where the dashboard is served, for the links printed at the end. */
   dashboardUrl: string
   indexerUrl: string
-  evidenceServiceUrl: string | null
   identitySeed: string
   isLocal: boolean
   /** Dossier hash per need created in this run; the verifier has to attest the exact same value. */
@@ -103,7 +102,6 @@ export const createContext = (networkArg?: string): DemoContext => {
     wallets,
     dashboardUrl: (process.env.DEMO_DASHBOARD_URL ?? 'http://localhost:3000').replace(/\/$/, ''),
     indexerUrl: (process.env.NEXT_PUBLIC_INDEXER_URL ?? 'http://localhost:42069').replace(/\/$/, ''),
-    evidenceServiceUrl: process.env.EVIDENCE_SERVICE_URL?.replace(/\/$/, '') ?? null,
     identitySeed: process.env.DEMO_IDENTITY_SEED ?? 'proof-of-aid-demo',
     isLocal,
     dossierHashByNeed: new Map(),

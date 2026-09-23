@@ -89,13 +89,13 @@ const stageView = (
 
 /**
  * Need-level stages for subscriptions that follow a whole need rather than one donation. Same five stages, read
- * from the need: verification threshold met, funding closed, a Settlement attestation, a finalized delivery, an
+ * from the need: verification threshold met, funding closed, a Settlement attestation, a donor-approved delivery, an
  * unrevoked impact report. Refunds are per donation, so a need's final outcome is only Completed, Expired or
  * Cancelled.
  */
 export const needProgress = (need: NeedDetail): Progress => {
   const settlement = need.settlements[0]
-  const delivered = need.deliveries.find((delivery) => delivery.status === 'Finalized')
+  const delivered = need.deliveries.find((delivery) => delivery.status === 'Approved')
   const impact = need.impactReport && !need.impactReport.revoked ? need.impactReport : null
   const verified =
     VERIFIED_STATUSES.includes(need.status) ||
@@ -115,7 +115,11 @@ export const needProgress = (need: NeedDetail): Progress => {
         txHash: settlement?.txHash,
         attestationUID: settlement?.uid,
       }),
-      stageView('Delivered', Boolean(delivered), { attestationUID: delivered?.verifierUID }),
+      // The approval that crossed the threshold is the last one recorded.
+      stageView('Delivered', Boolean(delivered), {
+        at: delivered?.approvedAt ?? undefined,
+        txHash: delivered?.approvals.at(-1)?.txHash,
+      }),
       stageView('ImpactConfirmed', Boolean(impact), { at: impact?.timestamp, attestationUID: impact?.uid }),
     ],
     outcome,

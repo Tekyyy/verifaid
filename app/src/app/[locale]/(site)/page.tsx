@@ -18,8 +18,8 @@ export default async function HomePage() {
         { label: t('released'), value: `${amount(summary.data.totals.released)} ${tCommon('amountUnit')}` },
         { label: t('needs'), value: String(summary.data.totals.needs) },
         { label: t('completed'), value: String(summary.data.totals.needsCompleted) },
-        { label: t('deliveries'), value: String(summary.data.totals.deliveriesFinalized) },
-        { label: t('confirmations'), value: String(summary.data.totals.confirmations) },
+        { label: t('deliveries'), value: String(summary.data.totals.deliveriesApproved) },
+        { label: t('confirmations'), value: String(summary.data.totals.approvals) },
         { label: t('beneficiaries'), value: String(summary.data.totals.beneficiariesServed) },
       ]
     : []

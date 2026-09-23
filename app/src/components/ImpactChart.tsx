@@ -67,7 +67,7 @@ export function ImpactChart({
             </div>
             <div>
               <dt className="text-slate-600">{t('finalized')}</dt>
-              <dd className="font-semibold tabular-nums">{bucket.deliveriesFinalized}</dd>
+              <dd className="font-semibold tabular-nums">{bucket.deliveriesApproved}</dd>
             </div>
             <div>
               <dt className="text-slate-600">{t('beneficiaries')}</dt>

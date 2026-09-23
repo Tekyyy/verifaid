@@ -2,8 +2,6 @@ import { ponder } from 'ponder:registry'
 import schema from 'ponder:schema'
 import {
   type CommunitySchemaName,
-  type DeliveryEvidenceData,
-  type DeliveryVerifiedData,
   decodeSchemaData,
   easAbi,
   getDeployment,
@@ -20,19 +18,19 @@ import { recordCommunityAttestation, revokeCommunityAttestation } from './commun
 import { appendTimeline, seconds } from './lib/timeline.js'
 
 /**
- * EAS attestations are the evidence layer: they are what verifiers, field agents and NGOs sign.
+ * EAS attestations are the evidence layer: they are what verifiers and NGOs sign.
  * The `Attested` log only carries the uid and the schema, so the payload is read back with `getAttestation`
  * and decoded with the same schema definitions the attesting code used (@poa/shared).
  *
  * EAS emits `Attested` *before* it calls the resolver, so the core-contract events triggered by an attestation
- * (NeedVerificationRecorded, DeliveryEvidenceLinked, …) always carry a higher log index in the same
+ * (NeedVerificationRecorded, SettlementLinked, …) always carry a higher log index in the same
  * transaction. Nothing here depends on state those handlers write.
  */
 
 const deployment = getDeployment(resolveNetwork(process.env.PONDER_NETWORK ?? 'anvil'))
 const easAddress = deployment.external.EAS
 
-/** The six official schema UIDs of this deployment. Attestations under any other schema are ignored. */
+/** The official schema UIDs of this deployment. Attestations under any other schema are ignored. */
 const SCHEMA_BY_UID = new Map<string, SchemaName>(
   Object.entries(deployment.schemas).map(([name, uid]) => [uid.toLowerCase(), name as SchemaName]),
 )
@@ -105,27 +103,10 @@ ponder.on('EAS:Attested', async ({ event, context }) => {
   const refUID = record.refUID === ZERO_UID ? null : record.refUID
 
   let needId: bigint | null = null
-  let deliveryId: bigint | null = null
 
   switch (schemaName) {
     case 'NeedVerified': {
       needId = (values as NeedVerifiedData)[0]
-      break
-    }
-    case 'DeliveryEvidence': {
-      const [id, evidenceHash, evidenceCID, itemsDelivered] = values as DeliveryEvidenceData
-      deliveryId = id
-      const delivery = await context.db.find(schema.delivery, { id })
-      needId = delivery?.needId ?? null
-      if (delivery) {
-        await context.db.update(schema.delivery, { id }).set({ evidenceCID, evidenceHash, itemsDelivered })
-      }
-      break
-    }
-    case 'DeliveryVerified': {
-      const [id] = values as DeliveryVerifiedData
-      deliveryId = id
-      needId = (await context.db.find(schema.delivery, { id }))?.needId ?? null
       break
     }
     case 'Settlement': {
@@ -193,7 +174,6 @@ ponder.on('EAS:Attested', async ({ event, context }) => {
     recipient: event.args.recipient,
     refUID,
     needId,
-    deliveryId,
     decoded,
     revoked: false,
     revokedAt: null,

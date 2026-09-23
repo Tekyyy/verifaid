@@ -19,7 +19,6 @@ const ROLE_ROUTES = [
   { href: '/donor', key: 'donor' },
   { href: '/ngo', key: 'ngo' },
   { href: '/verifier', key: 'verifier' },
-  { href: '/field', key: 'field' },
 ] as const
 
 export function SiteNav() {

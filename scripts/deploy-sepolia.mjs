@@ -87,7 +87,7 @@ const rpcUrl = env.BASE_SEPOLIA_RPC_URL?.trim() || 'https://sepolia.base.org'
 console.log('Deploying Proof of Aid to Base Sepolia')
 console.log(`  rpc              ${rpcUrl}`)
 console.log(`  verify on scan   ${verify ? 'yes' : 'no'}`)
-console.log(`  challenge period ${env.CHALLENGE_PERIOD_SECONDS ?? '600'}s`)
+console.log(`  donor approval   ${Number(env.DONOR_APPROVAL_BPS ?? '3000') / 100}% of the raised amount`)
 console.log(
   '  cost             ~0.0005 ETH to deploy, plus up to 0.0035 ETH to top the demo role wallets up\n',
 )

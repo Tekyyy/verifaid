@@ -740,3 +740,49 @@ tracking reference is a receipt id or a deposit address, nothing else.
   a Singapore donor to give to the organisation directly if they want the deduction.
 - A donor who paid by card has a receipt and a wallet like any other donor, so refunds and withdrawals go back to
   that wallet. There is no refund by payment reference to administer.
+
+## 21. Donors approve each tranche (v8)
+
+Until v7 every tranche after the first waited for three independent signals: evidence filed by the NGO's field
+agent, anonymous Semaphore confirmations from enrolled beneficiaries, an independent verifier's sign-off, then a
+challenge window. It was thorough, and nobody could run it: an NGO created from the app had no field agent, no
+enrolled beneficiaries who could prove anything, and no verifier assigned to its deliveries, so its money stopped
+at tranche 0. The user's call: something simpler, where the people who paid decide.
+
+**How it works now.** Once a tranche has been paid, the NGO accounts for it: photos of the work, supplier receipts,
+bank statements and a note. The app stores each file under its SHA-256 (photo metadata stripped first); the NGO
+signs a manifest listing the files by hash with `DeliveryManager.submitEvidence`, which keeps the manifest's hash
+and emits its text. Donors to the need read it on the need page and approve it with `approve`. When donors who
+gave **30% of the raised amount** have approved, the next tranche becomes releasable in the same transaction, and
+anyone can release it to the payment plan's suppliers as before.
+
+**Weighted by money, not by wallets.** A donor's say is `AidVault.donatedBy` — what their wallet gave, frozen once
+funding closes. One donor, one vote would let anyone split a gift across a hundred wallets; weighting by amount
+makes a vote cost what it claims to represent. A deposit address that credited itself (no wallet given) counts
+towards the raised amount but cannot vote.
+
+**Who has no say.** The NGO, its payout address and every payee of the need, however much they gave: they would be
+approving their own accounts. The rest of the escrow's guarantees are untouched — payees are still registered,
+vetted suppliers, the NGO's own share is still capped at 25%, and a need whose donors never approve still expires
+at its deadline and refunds what was not released.
+
+**New evidence starts from nothing.** Filing again replaces the evidence under review and discards its approvals:
+donors approved what they saw. The NGO can correct a mistake; it cannot keep old approvals for new documents.
+
+**What went.** Field agents and their role; Semaphore receipt confirmations and the relayer that submitted them;
+the verifier's delivery sign-off; the challenge window and admin-resolved disputes; the `DeliveryEvidence` and
+`DeliveryVerified` schemas (the resolver serves three); the evidence service, which encrypted bundles for a
+verifier to open. Verifiers still verify needs before funding opens and still approve supplier changes. Programmes
+stay, so a need still states who it serves; enrolment is no longer needed to deliver.
+
+**What it costs.** Anonymity no longer does the work: the evidence is public, to every donor, so it is the NGO's job
+to black out account numbers, names and faces before uploading, and the upload form says so. A staged photo and a
+forged receipt still hash perfectly well; what stands against them is donors with money at stake reading the
+documents, and 30% of them having to agree. Donor apathy is the new failure mode — a legitimate NGO can stall if
+nobody looks — and its remedy is the donor's own interest: alerts when evidence is filed, and a refund at the
+deadline if it is never approved.
+
+**Still to come.** Pinning evidence files beyond this app's server (IPFS or object storage; the hashes on chain
+would not change), a "flag" for donors who object rather than only approvals that never come, and letting an NGO
+choose a higher threshold per need.
+

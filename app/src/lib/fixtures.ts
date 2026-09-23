@@ -47,9 +47,9 @@ import type { NeedFilters, Result } from './indexer'
  */
 
 const NGO = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8' as Address
-const FIELD_AGENT = '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC' as Address
 const VERIFIER = '0x90F79bf6EB2c4f870365E785982E1f101E93b906' as Address
 const DONOR = '0x976EA74026E726554dB657fA54763abd0C3a0aa9' as Address
+const DONOR_2 = '0x14dC79964da2C08b23698B3D3cc7Ca32193d9955' as Address
 /** A donor who paid by card: the Coinbase on-ramp bought USDC into this wallet, which then gave it. */
 const CARD_DONOR = '0x14dC79964da2C08b23698B3D3cc7Ca32193d9956' as Address
 /** The NGO's payout Safe: where its own disclosed share of a tranche goes. */
@@ -314,36 +314,63 @@ const tranche = (
   releaseTxHash: status === 'Released' ? tx(10 + index) : null,
 })
 
+const MANIFEST_1 = {
+  v: 1 as const,
+  note: 'Tranche 0 bought 120 food kits from Mayorista Central; delivered 12-14 September to the enrolled households.',
+  files: [
+    {
+      kind: 'receipt' as const,
+      name: 'factura-mayorista-0917.pdf',
+      type: 'application/pdf',
+      size: 48_213,
+      sha256: 'a1'.repeat(32),
+      url: '',
+    },
+    {
+      kind: 'bank_statement' as const,
+      name: 'extracto-septiembre.pdf',
+      type: 'application/pdf',
+      size: 91_004,
+      sha256: 'b2'.repeat(32),
+      url: '',
+    },
+  ],
+}
+
 const DELIVERIES: DeliveryView[] = [
   {
     id: '1',
     needId: '1',
     trancheIndex: 1,
-    fieldAgent: FIELD_AGENT,
-    expectedRecipients: 120,
-    confirmations: 97,
-    confirmationRatio: 0.808,
-    status: 'Challengeable',
-    evidenceUID: uid(1),
-    evidenceCID: 'bafybeigdyrztdemofoodkitdelivery0001',
-    verifierUID: uid(2),
-    verifier: VERIFIER,
-    challengeDeadline: 1_757_900_000,
+    submitter: NGO,
+    status: 'Approved',
+    evidenceHash: uid(1),
+    manifest: MANIFEST_1,
+    manifestText: JSON.stringify(MANIFEST_1),
+    approvedAmount: '4200000000',
+    requiredAmount: '2745000000',
+    approvals: [{ donor: DONOR, weight: '4200000000', at: 1_757_400_000, txHash: `0x${'c3'.repeat(32)}` }],
+    submittedAt: 1_757_210_000,
+    approvedAt: 1_757_400_000,
+    supersededBy: null,
+    txHash: `0x${'d4'.repeat(32)}`,
   },
   {
     id: '2',
     needId: '1',
     trancheIndex: 2,
-    fieldAgent: FIELD_AGENT,
-    expectedRecipients: 120,
-    confirmations: 14,
-    confirmationRatio: 0.117,
+    submitter: NGO,
     status: 'Open',
-    evidenceUID: uid(3),
-    evidenceCID: 'bafybeigdyrztdemofoodkitdelivery0002',
-    verifierUID: null,
-    verifier: null,
-    challengeDeadline: null,
+    evidenceHash: uid(3),
+    manifest: { v: 1, note: 'Tranche 1: second round of kits.', files: [] },
+    manifestText: '{"v":1,"note":"Tranche 1: second round of kits.","files":[]}',
+    approvedAmount: '900000000',
+    requiredAmount: '2745000000',
+    approvals: [{ donor: DONOR_2, weight: '900000000', at: 1_757_700_000, txHash: `0x${'e5'.repeat(32)}` }],
+    submittedAt: 1_757_600_000,
+    approvedAt: null,
+    supersededBy: null,
+    txHash: `0x${'f6'.repeat(32)}`,
   },
 ]
 
@@ -718,38 +745,26 @@ const TIMELINES: Record<string, TimelineEvent[]> = {
     event(
       '1',
       8,
-      'DeliveryOpened',
-      { deliveryId: '1', trancheIndex: 1, expectedRecipients: 120 },
+      'DeliverySubmitted',
+      { deliveryId: '1', trancheIndex: 1, evidenceHash: uid(1) },
       201,
-      1_757_200_000,
+      1_757_210_000,
     ),
     event(
       '1',
       9,
-      'DeliveryEvidenceLinked',
-      { deliveryId: '1', itemsDelivered: 120 },
-      205,
-      1_757_210_000,
-      uid(1),
-    ),
-    event('1', 10, 'ReceiptConfirmed', { deliveryId: '1', confirmations: 97 }, 240, 1_757_300_000),
-    event(
-      '1',
-      11,
-      'DeliveryVerifiedLinked',
-      { deliveryId: '1', verifier: VERIFIER, approved: true },
-      250,
-      1_757_400_000,
-      uid(2),
-    ),
-    event(
-      '1',
-      12,
-      'DeliveryChallengeable',
-      { deliveryId: '1', challengeDeadline: 1_757_900_000 },
+      'DeliveryApprovalAdded',
+      {
+        deliveryId: '1',
+        donor: DONOR,
+        weight: '4200000000',
+        approvedAmount: '4200000000',
+        requiredAmount: '2745000000',
+      },
       250,
       1_757_400_000,
     ),
+    event('1', 10, 'DeliveryApproved', { deliveryId: '1', trancheIndex: 1 }, 250, 1_757_400_000),
   ],
   '5': [
     event(
@@ -856,8 +871,8 @@ export const impactSummary: ImpactSummary = {
     donated: '24150000000',
     released: '7600000000',
     refunded: '400000000',
-    deliveriesFinalized: 1,
-    confirmations: 111,
+    deliveriesApproved: 1,
+    approvals: 3,
     beneficiariesServed: 340,
   },
   byCategory: [
@@ -867,7 +882,7 @@ export const impactSummary: ImpactSummary = {
       needs: 2,
       donated: '14100000000',
       released: '3600000000',
-      deliveriesFinalized: 1,
+      deliveriesApproved: 1,
       beneficiariesServed: 0,
     },
     {
@@ -876,7 +891,7 @@ export const impactSummary: ImpactSummary = {
       needs: 1,
       donated: '2400000000',
       released: '0',
-      deliveriesFinalized: 0,
+      deliveriesApproved: 0,
       beneficiariesServed: 0,
     },
     {
@@ -885,7 +900,7 @@ export const impactSummary: ImpactSummary = {
       needs: 1,
       donated: '4000000000',
       released: '4000000000',
-      deliveriesFinalized: 0,
+      deliveriesApproved: 0,
       beneficiariesServed: 340,
     },
     {
@@ -894,7 +909,7 @@ export const impactSummary: ImpactSummary = {
       needs: 1,
       donated: '1450000000',
       released: '0',
-      deliveriesFinalized: 0,
+      deliveriesApproved: 0,
       beneficiariesServed: 0,
     },
     {
@@ -903,7 +918,7 @@ export const impactSummary: ImpactSummary = {
       needs: 1,
       donated: '1200000000',
       released: '0',
-      deliveriesFinalized: 0,
+      deliveriesApproved: 0,
       beneficiariesServed: 0,
     },
     {
@@ -912,7 +927,7 @@ export const impactSummary: ImpactSummary = {
       needs: 1,
       donated: '0',
       released: '0',
-      deliveriesFinalized: 0,
+      deliveriesApproved: 0,
       beneficiariesServed: 0,
     },
   ],
@@ -923,7 +938,7 @@ export const impactSummary: ImpactSummary = {
       needs: 3,
       donated: '17200000000',
       released: '7600000000',
-      deliveriesFinalized: 1,
+      deliveriesApproved: 1,
       beneficiariesServed: 340,
     },
     {
@@ -932,7 +947,7 @@ export const impactSummary: ImpactSummary = {
       needs: 1,
       donated: '2400000000',
       released: '0',
-      deliveriesFinalized: 0,
+      deliveriesApproved: 0,
       beneficiariesServed: 0,
     },
     {
@@ -941,7 +956,7 @@ export const impactSummary: ImpactSummary = {
       needs: 1,
       donated: '1450000000',
       released: '0',
-      deliveriesFinalized: 0,
+      deliveriesApproved: 0,
       beneficiariesServed: 0,
     },
     {
@@ -950,7 +965,7 @@ export const impactSummary: ImpactSummary = {
       needs: 1,
       donated: '2100000000',
       released: '0',
-      deliveriesFinalized: 0,
+      deliveriesApproved: 0,
       beneficiariesServed: 0,
     },
     {
@@ -959,7 +974,7 @@ export const impactSummary: ImpactSummary = {
       needs: 1,
       donated: '0',
       released: '0',
-      deliveriesFinalized: 0,
+      deliveriesApproved: 0,
       beneficiariesServed: 0,
     },
   ],

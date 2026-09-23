@@ -69,7 +69,7 @@ import {
  * exported by @poa/shared, with bigints serialized as decimal strings in token base units (6 decimals).
  *
  * Nothing here can expose a beneficiary: the only person-adjacent data indexed at all are Semaphore identity
- * commitments (public, unlinkable, and required to build a Merkle proof) and confirmation counts.
+ * commitments (public and unlinkable). Donors appear as the wallets that gave and approved, already public on chain.
  */
 
 const network = resolveNetwork(process.env.PONDER_NETWORK ?? 'anvil')
@@ -322,6 +322,7 @@ app.get('/needs/:id', async (c) => {
     ])
 
   const live = liveReport(reports)
+  const approvals = await approvalsOf([id])
 
   const photos = await db
     .select()
@@ -340,7 +341,7 @@ app.get('/needs/:id', async (c) => {
     presentation: presentations.get(row.id) ?? null,
     taxStatus: taxStatus.get(row.ngo.toLowerCase()) ?? null,
     tranches: tranches.map((tranche) => toTrancheView(tranche)),
-    deliveries: deliveries.map(toDeliveryView),
+    deliveries: deliveries.map((delivery) => toDeliveryView(delivery, approvals)),
     donations: donations.map(toDonationView),
     settlements: settlements.map(toSettlementView),
     impactReport: live ? toImpactReportView(live) : null,
@@ -572,7 +573,7 @@ app.get('/supplier-applications', async (c) => {
 /**
  * "Follow my money". For every receipt the donor holds: the need it funded, the donor's share of that need's
  * funding, each tranche with both its real amount and this donor's slice of it, and the deliveries whose
- * confirmations unlocked those releases.
+ * approval by donors unlocked those releases.
  */
 app.get('/donors/:address/trace', async (c) => {
   const address = c.req.param('address').toLowerCase()
@@ -611,6 +612,7 @@ app.get('/donors/:address/trace', async (c) => {
         .where(and(eq(schema.refund.needId, need.id), eq(schema.refund.account, donor))),
     ])
 
+    const approvals = await approvalsOf([need.id])
     // Shares are pro-rata of what the vault actually collected, which is frozen once funding closes.
     const funded = need.totalDonated
     const share = (amount: bigint): bigint => (funded === 0n ? 0n : (amount * receipt.amount) / funded)
@@ -633,7 +635,7 @@ app.get('/donors/:address/trace', async (c) => {
       releasedToNgo: releasedToNgo.toString(),
       refunded: refunds.reduce((sum, refund) => sum + refund.amount, 0n).toString(),
       tranches: donorTranches,
-      deliveries: deliveries.map(toDeliveryView),
+      deliveries: deliveries.map((delivery) => toDeliveryView(delivery, approvals)),
     })
   }
 
@@ -643,18 +645,18 @@ app.get('/donors/:address/trace', async (c) => {
 // ─── impact ──────────────────────────────────────────────────────────────────
 
 app.get('/impact/summary', async (c) => {
-  const [needs, deliveries, reports, confirmations] = await Promise.all([
+  const [needs, deliveries, reports, approvals] = await Promise.all([
     db.select().from(schema.need),
     db.select().from(schema.delivery),
     db.select().from(schema.impactReport),
-    db.select({ id: schema.confirmation.id }).from(schema.confirmation),
+    db.select({ id: schema.deliveryApproval.id }).from(schema.deliveryApproval),
   ])
 
-  const finalizedByNeed = new Map<string, number>()
+  const approvedByNeed = new Map<string, number>()
   for (const delivery of deliveries) {
-    if (delivery.status !== 'Finalized') continue
+    if (delivery.status !== 'Approved') continue
     const key = delivery.needId.toString()
-    finalizedByNeed.set(key, (finalizedByNeed.get(key) ?? 0) + 1)
+    approvedByNeed.set(key, (approvedByNeed.get(key) ?? 0) + 1)
   }
 
   // Revoked reports are excluded: `beneficiariesServed` must reflect live attestations only.
@@ -671,7 +673,7 @@ app.get('/impact/summary', async (c) => {
     needs: 0,
     donated: 0n,
     released: 0n,
-    deliveriesFinalized: 0,
+    deliveriesApproved: 0,
     beneficiariesServed: 0,
   })
 
@@ -685,7 +687,7 @@ app.get('/impact/summary', async (c) => {
 
   for (const need of needs) {
     const key = need.id.toString()
-    const finalized = finalizedByNeed.get(key) ?? 0
+    const approved = approvedByNeed.get(key) ?? 0
     const served = servedByNeed.get(key) ?? 0
 
     donated += need.totalDonated
@@ -701,7 +703,7 @@ app.get('/impact/summary', async (c) => {
       acc.needs += 1
       acc.donated += need.totalDonated
       acc.released += need.totalReleased
-      acc.deliveriesFinalized += finalized
+      acc.deliveriesApproved += approved
       acc.beneficiariesServed += served
       map.set(code, acc)
     }
@@ -714,8 +716,8 @@ app.get('/impact/summary', async (c) => {
       donated: donated.toString(),
       released: released.toString(),
       refunded: refunded.toString(),
-      deliveriesFinalized: deliveries.filter((delivery) => delivery.status === 'Finalized').length,
-      confirmations: confirmations.length,
+      deliveriesApproved: deliveries.filter((delivery) => delivery.status === 'Approved').length,
+      approvals: approvals.length,
       beneficiariesServed: [...servedByNeed.values()].reduce((sum, value) => sum + value, 0),
     },
     byCategory: [...byCategory.values()].map(serializeBucket),
@@ -754,7 +756,7 @@ app.get('/programs/:id/members', async (c) => {
 
 // ─── deliveries ──────────────────────────────────────────────────────────────
 
-/** The verifier queue: `?status=Open` is what needs a sign-off, `?status=Challengeable` what can be disputed. */
+/** Every delivery, or `?status=Open` for the evidence donors are still reviewing. */
 app.get('/deliveries', async (c) => {
   const status = c.req.query('status')
   const rows = await db
@@ -762,8 +764,9 @@ app.get('/deliveries', async (c) => {
     .from(schema.delivery)
     .where(status ? eq(schema.delivery.status, status) : undefined)
     .orderBy(asc(schema.delivery.id))
+  const approvals = await approvalsOf([...new Set(rows.map((row) => row.needId))])
 
-  return c.json(rows.map(toDeliveryView) satisfies DeliveryView[])
+  return c.json(rows.map((row) => toDeliveryView(row, approvals)) satisfies DeliveryView[])
 })
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -774,7 +777,7 @@ interface ImpactBucketAcc {
   needs: number
   donated: bigint
   released: bigint
-  deliveriesFinalized: number
+  deliveriesApproved: number
   beneficiariesServed: number
 }
 
@@ -784,9 +787,18 @@ const serializeBucket = (acc: ImpactBucketAcc): ImpactBucket => ({
   needs: acc.needs,
   donated: acc.donated.toString(),
   released: acc.released.toString(),
-  deliveriesFinalized: acc.deliveriesFinalized,
+  deliveriesApproved: acc.deliveriesApproved,
   beneficiariesServed: acc.beneficiariesServed,
 })
+
+/** The donor approvals of every delivery of these needs. */
+const approvalsOf = async (needIds: readonly bigint[]) =>
+  needIds.length === 0
+    ? []
+    : db
+        .select()
+        .from(schema.deliveryApproval)
+        .where(inArray(schema.deliveryApproval.needId, [...needIds]))
 
 const needTimeline = (needId: bigint) =>
   db
@@ -883,6 +895,7 @@ const loadTrack = async (ref: string): Promise<Loaded<DonationTrack>> => {
     timeline,
     payees,
     payments,
+    approvals,
   ] = await Promise.all([
     db.select().from(schema.donation).where(sameDonor),
     db
@@ -905,6 +918,7 @@ const loadTrack = async (ref: string): Promise<Loaded<DonationTrack>> => {
       .from(schema.payeePayment)
       .where(eq(schema.payeePayment.needId, needId))
       .orderBy(asc(schema.payeePayment.timestamp)),
+    approvalsOf([needId]),
   ])
 
   return {
@@ -916,6 +930,7 @@ const loadTrack = async (ref: string): Promise<Loaded<DonationTrack>> => {
       sameDonorDonations,
       tranches,
       deliveries,
+      approvals,
       settlements,
       reports,
       refunds,

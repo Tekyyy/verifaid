@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
 import { CardOnrampPanel } from '@/components/CardOnrampPanel'
 import { DeliveryCard } from '@/components/DeliveryCard'
+import { DeliveryReviewPanel } from '@/components/DeliveryReviewPanel'
 import { DepositAddressPanel } from '@/components/DepositAddressPanel'
 import { DonatePanel } from '@/components/DonatePanel'
 import { DonationList } from '@/components/DonationList'
@@ -75,6 +76,9 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
   const fundingOpen =
     data.status === 'Funding' && !passed(data.fundingDeadline) && !passed(data.executionDeadline)
   const refundable = data.status === 'Cancelled' || data.status === 'Expired'
+  // Evidence the donors can still approve: only while the need is being delivered.
+  const underReview =
+    data.status === 'InDelivery' ? data.deliveries.find((delivery) => delivery.status === 'Open') : undefined
 
   return (
     // Room at the bottom on a phone for the donate bar, so it never covers the last panel.
@@ -243,6 +247,7 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
         </div>
 
         <aside className="min-w-0 space-y-6">
+          {underReview ? <DeliveryReviewPanel needId={data.id} delivery={underReview} /> : null}
           {deadlineReached ? <ExpireButton needId={data.id} /> : null}
           {refundable ? <RefundPanel vault={data.vault} /> : null}
           <WithdrawDonationPanel need={data} />

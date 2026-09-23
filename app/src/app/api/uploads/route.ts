@@ -1,0 +1,83 @@
+import { mkdir, stat, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { MAX_EVIDENCE_FILES } from '@poa/shared'
+import { type NextRequest, NextResponse } from 'next/server'
+import { MAX_FILE_BYTES, safeFileName, sha256Hex, sniffType, stripMetadata } from '@/lib/server/evidenceFiles'
+import { badRequest } from '@/lib/server/proxy'
+import { clientIp, createRateLimiter } from '@/lib/server/rateLimit'
+import { uploadDir } from '@/lib/server/uploadDir'
+
+/**
+ * Evidence uploads for deliveries: photos, receipts and bank statements. Each file is checked by its first bytes
+ * (JPEG, PNG, WebP or PDF, whatever the browser says), stripped of photo metadata, and stored under its SHA-256,
+ * which is what the NGO then commits to on chain. Anyone can read them back at `/api/files/<sha256>`: they are
+ * shown to every donor, which is the point — so the NGO is told to redact account numbers and names first.
+ *
+ * Nothing here is signed or trusted: until the NGO submits a manifest naming these hashes, a file is just bytes.
+ */
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+const perIp = createRateLimiter({ windowMs: 10 * 60_000, max: 60 })
+
+export interface UploadedFile {
+  name: string
+  type: string
+  size: number
+  sha256: string
+  url: string
+}
+
+export async function POST(request: NextRequest) {
+  let form: FormData
+  try {
+    form = await request.formData()
+  } catch {
+    return badRequest('Send the files as multipart/form-data under "files".')
+  }
+  const files = form.getAll('files').filter((value): value is File => value instanceof File)
+  if (files.length === 0) return badRequest('No files.')
+  if (files.length > MAX_EVIDENCE_FILES) return badRequest(`At most ${MAX_EVIDENCE_FILES} files at once.`)
+  if (perIp(clientIp(request))) {
+    return NextResponse.json(
+      { error: 'rate_limited', message: 'Too many uploads; try again later.' },
+      { status: 429 },
+    )
+  }
+
+  const dir = uploadDir()
+  await mkdir(dir, { recursive: true })
+
+  const stored: UploadedFile[] = []
+  for (const file of files) {
+    if (file.size > MAX_FILE_BYTES) {
+      return badRequest(`${safeFileName(file.name)} is larger than ${MAX_FILE_BYTES / 1024 / 1024} MB.`)
+    }
+    const raw = new Uint8Array(await file.arrayBuffer())
+    const type = sniffType(raw)
+    if (!type) return badRequest(`${safeFileName(file.name)} is not a JPEG, PNG, WebP or PDF file.`)
+
+    const bytes = stripMetadata(raw, type)
+    const sha256 = sha256Hex(bytes)
+    const path = join(dir, sha256)
+    // Content-addressed: the same bytes are the same file, so an existing one is left as it is.
+    const exists = await stat(path).then(
+      () => true,
+      () => false,
+    )
+    if (!exists) {
+      await writeFile(path, bytes)
+      await writeFile(`${path}.json`, JSON.stringify({ type, name: safeFileName(file.name) }))
+    }
+    stored.push({
+      name: safeFileName(file.name),
+      type,
+      size: bytes.length,
+      sha256,
+      url: `/api/files/${sha256}`,
+    })
+  }
+
+  return NextResponse.json({ files: stored }, { status: 201 })
+}

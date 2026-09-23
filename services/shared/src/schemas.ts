@@ -17,13 +17,13 @@ export interface SchemaDefinition {
    * Which contract must be the attestation recipient — never a person (spec §6). `Ledger` is the need's
    * AidVault: whatever `vaultOf(needId)` returns.
    */
-  recipient: 'NeedsRegistry' | 'DeliveryManager' | 'Ledger'
+  recipient: 'NeedsRegistry' | 'Ledger'
 }
 
 /**
- * The five schemas of the system, exactly as registered by RegisterSchemas.s.sol against the single
+ * The three schemas of the system, exactly as registered by RegisterSchemas.s.sol against the single
  * ProofOfAidResolver. Amounts are in the need's stablecoin base units. Money arrives on chain, so no schema
- * vouches for a payment.
+ * vouches for a payment, and donors approve deliveries on DeliveryManager directly, so none vouches for those.
  */
 export const SCHEMAS: Record<SchemaName, SchemaDefinition> = {
   NeedVerified: {
@@ -31,19 +31,6 @@ export const SCHEMAS: Record<SchemaName, SchemaDefinition> = {
     schema: 'uint256 needId,bytes32 dossierHash,bool approved,bytes32 reportHash',
     revocable: true,
     recipient: 'NeedsRegistry',
-  },
-  DeliveryEvidence: {
-    name: 'DeliveryEvidence',
-    schema:
-      'uint256 deliveryId,bytes32 evidenceHash,string evidenceCID,uint32 itemsDelivered,bytes32 regionCode',
-    revocable: false,
-    recipient: 'DeliveryManager',
-  },
-  DeliveryVerified: {
-    name: 'DeliveryVerified',
-    schema: 'uint256 deliveryId,bool approved,bytes32 reportHash',
-    revocable: false,
-    recipient: 'DeliveryManager',
   },
   Settlement: {
     name: 'Settlement',
@@ -191,14 +178,6 @@ export const computeSchemaUid = (schema: string, resolver: Address, revocable: b
 
 /** Decoded attestation payloads, in the order the schema declares them. */
 export type NeedVerifiedData = readonly [needId: bigint, dossierHash: Hex, approved: boolean, reportHash: Hex]
-export type DeliveryEvidenceData = readonly [
-  deliveryId: bigint,
-  evidenceHash: Hex,
-  evidenceCID: string,
-  itemsDelivered: number,
-  regionCode: Hex,
-]
-export type DeliveryVerifiedData = readonly [deliveryId: bigint, approved: boolean, reportHash: Hex]
 export type SettlementData = readonly [
   needId: bigint,
   trancheIndex: bigint,

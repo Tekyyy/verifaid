@@ -61,7 +61,7 @@ export default async function ImpactPage() {
                   label: t('released'),
                   value: `${amount(summary.data.totals.released)} ${tCommon('amountUnit')}`,
                 },
-                { label: t('finalized'), value: String(summary.data.totals.deliveriesFinalized) },
+                { label: t('finalized'), value: String(summary.data.totals.deliveriesApproved) },
                 { label: t('beneficiaries'), value: String(summary.data.totals.beneficiariesServed) },
               ].map((stat) => (
                 <div key={stat.label} className="card">

@@ -48,10 +48,11 @@ export interface Deployment {
     YieldVenue?: Address
   }
   params: {
-    confirmationThresholdBps: number
-    challengePeriodSeconds: number
+    /** v8: share of the raised amount whose donors must approve a delivery to unlock the next tranche. */
+    donorApprovalBps: number
     highValueThreshold: string | number
-    minExpectedRecipients: number
+    /** v8: the k-anonymity floor an impact report's "people served" must reach. */
+    minBeneficiariesServed: number
     dashboardBaseURI: string
     /** v3: the oracle bound of the stablecoin route into the vault currency, in basis points. */
     maxSlippageBps?: number
@@ -74,14 +75,9 @@ export interface Deployment {
   >
 }
 
-/** The five EAS schemas of the system, in the order a donor experiences them. */
-export const SCHEMA_NAMES = [
-  'NeedVerified',
-  'DeliveryEvidence',
-  'DeliveryVerified',
-  'Settlement',
-  'ImpactReport',
-] as const
+/** The three EAS schemas of the system, in the order a donor experiences them. Deliveries need none since v8:
+ *  the NGO files its evidence with DeliveryManager and donors approve it there. */
+export const SCHEMA_NAMES = ['NeedVerified', 'Settlement', 'ImpactReport'] as const
 export type SchemaName = (typeof SCHEMA_NAMES)[number]
 
 /** Need lifecycle, mirroring INeedsRegistry.NeedStatus. */
@@ -97,8 +93,9 @@ export const NEED_STATUS = [
 ] as const
 export type NeedStatus = (typeof NEED_STATUS)[number]
 
-/** Delivery lifecycle, mirroring IDeliveryManager.DeliveryStatus. */
-export const DELIVERY_STATUS = ['Open', 'Challengeable', 'Disputed', 'Finalized', 'Rejected'] as const
+/** Delivery lifecycle, mirroring IDeliveryManager.DeliveryStatus: under review by donors, approved (its tranche
+ *  became releasable), or replaced by newer evidence before that. */
+export const DELIVERY_STATUS = ['Open', 'Approved', 'Superseded'] as const
 export type DeliveryStatus = (typeof DELIVERY_STATUS)[number]
 
 /** Tranche lifecycle, mirroring ITrancheLedger.TrancheStatus. */

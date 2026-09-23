@@ -1,7 +1,8 @@
+import { createHash } from 'node:crypto'
 import {
-  AID_RECEIVED_MESSAGE,
   aidVaultAbi,
   beneficiaryGroupsAbi,
+  buildManifest,
   categoryHash,
   conversionRouterAbi,
   deliveryManagerAbi,
@@ -18,32 +19,26 @@ import {
   proofOfAidResolverAbi,
   regionCode,
   roleRegistryAbi,
-  seal,
-  semaphoreAbi,
   tokenSymbolOf,
 } from '@poa/shared'
-import { generateProof } from '@semaphore-protocol/proof'
 import {
   type Abi,
   type Address,
   formatEther,
-  type Hex,
   keccak256,
   parseEventLogs,
   stringToHex,
   type TransactionReceipt,
-  toHex,
   zeroAddress,
   zeroHash,
 } from 'viem'
-import { attest, cidV1Raw, eventArg, send, waitChallengePeriod } from './chain.js'
-import { createContext, type DemoContext } from './config.js'
-import { buildGroup, type DemoIdentity, loadDemoIdentities } from './identities.js'
+import { attest, cidV1Raw, eventArg, send, waitSeconds } from './chain.js'
+import { createContext, type DemoContext, type RoleName } from './config.js'
 import { attestation, fail, heading, info, note, step, tx } from './log.js'
 
 /**
  * Runs the VerifAid lifecycle against a live chain and prints an explorer link for every step, so a judge
- * can follow a need from "a verifier said this need is real" to "beneficiaries confirmed they received the aid,
+ * can follow a need from "a verifier said this need is real" to "the donors approved how the money was spent,
  * and here is the money that moved because of it".
  *
  * Every scenario runs entirely on chain. Money only ever enters as tokens: a card buys USDC through the Coinbase
@@ -61,7 +56,6 @@ import { attestation, fail, heading, info, note, step, tx } from './log.js'
  *   pnpm demo:run base-sepolia onchain idle
  */
 
-const EXPECTED_RECIPIENTS = 10
 const REGION = regionCode('ES-CM')
 const BPS = 10_000n
 
@@ -80,11 +74,6 @@ interface NeedSpec {
   outcome: string
 }
 
-interface Proofs {
-  identities: DemoIdentity[]
-  group: ReturnType<typeof buildGroup>
-}
-
 const main = async (): Promise<void> => {
   const [networkArg, ...rest] = process.argv.slice(2)
   const selected =
@@ -92,7 +81,7 @@ const main = async (): Promise<void> => {
   const ctx = createContext(networkArg)
   const { contracts, external } = ctx.deployment
 
-  heading('VerifAid v4 — lifecycle demo')
+  heading('VerifAid v8 — lifecycle demo')
   info('network', ctx.network)
   info('rpc', ctx.rpcUrl)
   info('NeedsRegistry', contracts.NeedsRegistry)
@@ -101,12 +90,10 @@ const main = async (): Promise<void> => {
   info('scenarios', selected.join(', '))
 
   await preflight(ctx)
-  const identities = loadDemoIdentities(ctx.identitySeed)
-  const proofs: Proofs = { identities, group: buildGroup(identities) }
-  const programId = await resolveProgram(ctx, proofs.group.root)
+  const programId = await resolveProgram(ctx)
 
   const links: string[] = []
-  if (selected.includes('onchain')) links.push(...(await onChainScenario(ctx, programId, proofs)))
+  if (selected.includes('onchain')) links.push(...(await onChainScenario(ctx, programId)))
   if (selected.includes('expiry')) links.push(...(await expiryScenario(ctx, programId)))
   if (selected.includes('conversion')) {
     if (contracts.DonationForwarderFactory && contracts.ConversionRouter && external.USDC) {
@@ -118,7 +105,7 @@ const main = async (): Promise<void> => {
 
   if (selected.includes('idle')) {
     if (external.YieldVenue && external.YieldVenue !== zeroAddress) {
-      links.push(...(await idleScenario(ctx, programId, proofs)))
+      links.push(...(await idleScenario(ctx, programId)))
     } else {
       note('skipping the idle-capital scenario: this deployment approves no venue')
     }
@@ -131,7 +118,7 @@ const main = async (): Promise<void> => {
 
 // ─── scenario 1: escrow ───────────────────────────────────────────────────────
 
-const onChainScenario = async (ctx: DemoContext, programId: bigint, proofs: Proofs): Promise<string[]> => {
+const onChainScenario = async (ctx: DemoContext, programId: bigint): Promise<string[]> => {
   heading('1 · Escrow: stablecoin held by the vault, released tranche by tranche')
   const spec: NeedSpec = {
     label: 'winter food kits',
@@ -155,14 +142,14 @@ const onChainScenario = async (ctx: DemoContext, programId: bigint, proofs: Proo
 
   await releaseOnChain(ctx, vault, 0)
 
-  let lastSignOff: Hex | undefined
+  // donor2 (40%) is enough on its own; donor1 is asked only if it is not.
   for (let index = 1; index < spec.trancheBps.length; index += 1) {
-    lastSignOff = await runDelivery(ctx, needId, index, proofs)
+    await runDelivery(ctx, needId, index, ['donor2', 'donor1'])
     await releaseOnChain(ctx, vault, index)
   }
 
   await expectStatus(ctx, needId, 'Completed')
-  await publishImpactReport(ctx, needId, vault, lastSignOff, 400)
+  await publishImpactReport(ctx, needId, vault, 400)
   return [
     `need ${needId} (on-chain):  ${ctx.dashboardUrl}/en/needs/${needId}`,
     `  wallet donor tracking:    ${ctx.dashboardUrl}/en/track/${receiptId}`,
@@ -179,7 +166,7 @@ const onChainScenario = async (ctx: DemoContext, programId: bigint, proofs: Proo
  * payable now never leaves, releasing pulls back whatever the vault is short of, and the earnings are handed
  * over only at the end. What a donor gave stays what a donor is owed throughout.
  */
-const idleScenario = async (ctx: DemoContext, programId: bigint, proofs: Proofs): Promise<string[]> => {
+const idleScenario = async (ctx: DemoContext, programId: bigint): Promise<string[]> => {
   heading('4 · Idle capital: committed money earns while it waits for a delivery')
   const venue = ctx.deployment.external.YieldVenue as Address
   const spec: NeedSpec = {
@@ -257,9 +244,8 @@ const idleScenario = async (ctx: DemoContext, programId: bigint, proofs: Proofs)
   tx(ctx.network, 'tx', harvested.hash)
 
   step('Deliveries: each release pulls back from the venue whatever the vault is short of')
-  let lastSignOff: Hex | undefined
   for (let index = 1; index < spec.trancheBps.length; index += 1) {
-    lastSignOff = await runDelivery(ctx, needId, index, proofs)
+    await runDelivery(ctx, needId, index, ['donor1'])
     await releaseOnChain(ctx, vault, index)
   }
   await expectStatus(ctx, needId, 'Completed')
@@ -295,7 +281,7 @@ const idleScenario = async (ctx: DemoContext, programId: bigint, proofs: Proofs)
   note('a donor would have been repaid what they gave, and never a slice of this')
   tx(ctx.network, 'tx', paid.hash)
 
-  await publishImpactReport(ctx, needId, vault, lastSignOff, 600)
+  await publishImpactReport(ctx, needId, vault, 600)
   return [`need ${needId} (idle capital): ${ctx.dashboardUrl}/en/needs/${needId}`]
 }
 
@@ -540,7 +526,6 @@ const preflight = async (ctx: DemoContext): Promise<void> => {
   const ngo = ctx.accounts.ngo.address
   const checks: [string, boolean][] = [
     ['NGO active', (await read('isActiveNgo', [ngo])) as boolean],
-    ['field agent bound', (await read('isFieldAgentOf', [ctx.accounts.fieldAgent.address, ngo])) as boolean],
     [
       'verifier 1 independent',
       (await read('isIndependent', [ctx.accounts.verifier1.address, ngo])) as boolean,
@@ -560,9 +545,9 @@ const preflight = async (ctx: DemoContext): Promise<void> => {
   }
 }
 
-/** Finds the seeded program whose on-chain Merkle root matches the identities this script can prove with. */
-const resolveProgram = async (ctx: DemoContext, expectedRoot: bigint): Promise<bigint> => {
-  step('Beneficiary program: the group this demo can produce real proofs for')
+/** The demo NGO's newest active programme: every need it registers belongs to one. */
+const resolveProgram = async (ctx: DemoContext): Promise<bigint> => {
+  step('Beneficiary programme the demo needs belong to')
   const groups = ctx.deployment.contracts.BeneficiaryGroups
   const read = <T>(functionName: string, args: readonly unknown[] = []) =>
     ctx.publicClient.readContract({
@@ -576,24 +561,11 @@ const resolveProgram = async (ctx: DemoContext, expectedRoot: bigint): Promise<b
   for (let programId = programCount; programId >= 1n; programId -= 1n) {
     const owner = await read<Address>('programNgo', [programId])
     if (owner.toLowerCase() !== ctx.accounts.ngo.address.toLowerCase()) continue
-    const groupId = await read<bigint>('getGroupId', [programId])
-    const root = (await ctx.publicClient.readContract({
-      address: ctx.deployment.external.Semaphore,
-      abi: semaphoreAbi,
-      functionName: 'getMerkleTreeRoot',
-      args: [groupId],
-    })) as bigint
-    if (root !== expectedRoot) continue
-
     info('program', programId.toString())
-    info('semaphore group', groupId.toString())
     info('members enrolled', (await read<bigint>('memberCount', [programId])).toString())
-    note('the on-chain Merkle root matches the demo identities, so their proofs will verify')
     return programId
   }
-  return fail(
-    'no program on-chain matches the demo identities. Re-run the seed script, or regenerate identities.',
-  )
+  return fail('the demo NGO has no programme on-chain. Re-run the seed script.')
 }
 
 const createNeed = async (ctx: DemoContext, programId: bigint, spec: NeedSpec): Promise<bigint> => {
@@ -770,102 +742,75 @@ const releaseOnChain = async (ctx: DemoContext, vault: Address, index: number): 
   tx(ctx.network, 'tx', hash)
 }
 
+/**
+ * The NGO accounts for the tranche it was paid — here, one receipt — and the demo donors approve it in turn until
+ * those who gave the threshold share of the raised amount have. The contract then makes the next tranche
+ * releasable in the approving transaction.
+ */
 const runDelivery = async (
   ctx: DemoContext,
   needId: bigint,
   trancheIndex: number,
-  proofs: Proofs,
-): Promise<Hex> => {
-  step(`Delivery for tranche ${trancheIndex}: evidence, anonymous confirmations, independent sign-off`)
+  donors: RoleName[],
+): Promise<void> => {
+  step(`Tranche ${trancheIndex - 1} accounted for: the NGO files a receipt, the donors approve it`)
   const deliveryManager = ctx.deployment.contracts.DeliveryManager
+  const readManager = <T>(functionName: string, args: readonly unknown[]) =>
+    ctx.publicClient.readContract({
+      address: deliveryManager,
+      abi: deliveryManagerAbi as Abi,
+      functionName,
+      args,
+    }) as Promise<T>
 
-  const opened = await send(ctx, 'fieldAgent', {
+  const file = await evidenceFile(ctx, needId, trancheIndex - 1)
+  const manifest = buildManifest(
+    `Tranche ${trancheIndex - 1} of need ${needId}: the supplier's invoice was paid and the goods delivered (demo).`,
+    [file],
+  )
+  const submitted = await send(ctx, 'ngo', {
     address: deliveryManager,
     abi: deliveryManagerAbi as Abi,
-    functionName: 'openDelivery',
-    args: [needId, BigInt(trancheIndex), EXPECTED_RECIPIENTS],
+    functionName: 'submitEvidence',
+    args: [needId, manifest],
   })
   const deliveryId = eventArg<bigint>(
-    opened.receipt,
+    submitted.receipt,
     deliveryManagerAbi as Abi,
-    'DeliveryOpened',
+    'DeliverySubmitted',
     'deliveryId',
   )
-  info('delivery', deliveryId.toString())
-  tx(ctx.network, 'opened', opened.hash)
+  info('evidence', `#${deliveryId}: ${file.name}, sha256 ${file.sha256.slice(0, 16)}…`)
+  if (file.url) note(`the receipt is served at ${ctx.dashboardUrl}${file.url}`)
+  tx(ctx.network, 'filed', submitted.hash)
 
-  // Evidence: encrypted before it leaves the device; only the ciphertext hash and its CID go on-chain.
-  const { evidenceHash, cid } = await sealEvidence(ctx, deliveryId, trancheIndex)
-  const evidence = await attest(ctx, 'fieldAgent', {
-    schema: ctx.deployment.schemas.DeliveryEvidence,
-    recipient: deliveryManager,
-    revocable: false,
-    data: encodeSchemaData('DeliveryEvidence', [deliveryId, evidenceHash, cid, 120, REGION]),
-  })
-  info('evidence CID', cid)
-  attestation(ctx.network, 'DeliveryEvidence', evidence.uid)
-
-  // Beneficiaries confirm anonymously; a relayer submits every proof in one transaction, so no beneficiary's
-  // wallet ever appears on-chain.
-  const required = Math.ceil((EXPECTED_RECIPIENTS * ctx.deployment.params.confirmationThresholdBps) / 10_000)
-  note(`generating ${required} zero-knowledge receipt proofs (${EXPECTED_RECIPIENTS} expected recipients)`)
-  const batch = []
-  for (let i = 0; i < required; i += 1) {
-    const entry = proofs.identities[i] ?? fail('not enough demo identities for the confirmation threshold')
-    const proof = await generateProof(entry.identity, proofs.group, AID_RECEIVED_MESSAGE, deliveryId)
-    batch.push({
-      merkleTreeDepth: BigInt(proof.merkleTreeDepth),
-      merkleTreeRoot: BigInt(proof.merkleTreeRoot),
-      nullifier: BigInt(proof.nullifier),
-      message: BigInt(proof.message),
-      scope: BigInt(proof.scope),
-      points: proof.points.map((point: string | bigint) => BigInt(point)) as unknown as readonly bigint[],
+  const required = await readManager<bigint>('requiredApproval', [needId])
+  for (const role of donors) {
+    const current = await readManager<{ status: number }>('getDelivery', [deliveryId])
+    if (current.status !== 0) break // no longer Open: approved
+    const weight = await readManager<bigint>('approvalWeight', [needId, ctx.accounts[role].address])
+    if (weight === 0n) continue
+    const approved = await send(ctx, role, {
+      address: deliveryManager,
+      abi: deliveryManagerAbi as Abi,
+      functionName: 'approve',
+      args: [deliveryId],
     })
-    process.stdout.write(`\r    proofs generated: ${i + 1}/${required}   `)
+    info(`${role} approves`, `their say weighs ${formatAmount(weight)} units`)
+    tx(ctx.network, 'approved', approved.hash)
   }
-  process.stdout.write('\n')
-  const confirmed = await send(ctx, 'relayer', {
-    address: deliveryManager,
-    abi: deliveryManagerAbi as Abi,
-    functionName: 'confirmReceiptBatch',
-    args: [deliveryId, batch],
-  })
-  info('confirmations', `${required} in one relayed transaction`)
-  tx(ctx.network, 'confirmed', confirmed.hash)
-  note('each confirmation reveals a nullifier and nothing else: not who, not where')
 
-  const signOff = await attest(ctx, 'verifier2', {
-    schema: ctx.deployment.schemas.DeliveryVerified,
-    recipient: deliveryManager,
-    revocable: false,
-    refUID: evidence.uid,
-    data: encodeSchemaData('DeliveryVerified', [
-      deliveryId,
-      true,
-      keccak256(stringToHex('spot-check-report')),
-    ]),
-  })
-  attestation(ctx.network, 'DeliveryVerified', signOff.uid)
-
-  const challengePeriod = ctx.deployment.params.challengePeriodSeconds
-  info('challenge window', `${challengePeriod}s: any independent verifier can dispute`)
-  await waitChallengePeriod(ctx, challengePeriod)
-
-  const finalized = await send(ctx, 'relayer', {
-    address: deliveryManager,
-    abi: deliveryManagerAbi as Abi,
-    functionName: 'finalize',
-    args: [deliveryId],
-  })
-  tx(ctx.network, 'finalized', finalized.hash)
-  return signOff.uid
+  const delivery = await readManager<{ status: number; approvedAmount: bigint }>('getDelivery', [deliveryId])
+  if (delivery.status !== 1) fail('the demo donors did not reach the approval threshold')
+  note(
+    `donors who gave ${formatAmount(delivery.approvedAmount)} of the ${formatAmount(required)} units required approved: tranche ${trancheIndex} is releasable`,
+  )
 }
 
 const publishImpactReport = async (
   ctx: DemoContext,
   needId: bigint,
   ledger: Address,
-  lastVerifierUID: Hex | undefined,
   beneficiariesServed: number,
 ): Promise<void> => {
   step('The need is complete: the NGO publishes a verifiable impact report')
@@ -873,7 +818,6 @@ const publishImpactReport = async (
     schema: ctx.deployment.schemas.ImpactReport,
     recipient: ledger,
     revocable: true,
-    refUID: lastVerifierUID,
     data: encodeSchemaData('ImpactReport', [
       needId,
       beneficiariesServed,
@@ -882,7 +826,7 @@ const publishImpactReport = async (
     ]),
   })
   attestation(ctx.network, 'ImpactReport', report.uid)
-  note('it can only reference the last verified delivery: an unverified report cannot be published')
+  note('only the NGO can publish it, and only once every tranche has been paid')
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -916,7 +860,7 @@ const waitUntil = async (ctx: DemoContext, timestamp: bigint, label: string): Pr
   if (now >= timestamp) return
   const seconds = Number(timestamp - now)
   info(label, `${seconds}s`)
-  await waitChallengePeriod(ctx, seconds)
+  await waitSeconds(ctx, seconds)
   while ((await chainTime(ctx)) < timestamp) await new Promise((resolve) => setTimeout(resolve, 3000))
 }
 
@@ -950,30 +894,61 @@ const mintIfPossible = async (
 }
 
 /**
- * Seals the delivery evidence and returns exactly what goes on-chain: the hash of the ciphertext and its CID.
- * The demo encrypts locally to stay self-contained; the field-agent page does the same thing through the
- * evidence service, which additionally strips image metadata and pins the ciphertext to IPFS.
+ * A one-page receipt for the tranche, uploaded to the dashboard when it is running so the need page shows it; the
+ * manifest commits to its SHA-256 either way.
  */
-const sealEvidence = async (
-  ctx: DemoContext,
-  deliveryId: bigint,
-  trancheIndex: number,
-): Promise<{ evidenceHash: Hex; cid: string }> => {
-  if (ctx.evidenceServiceUrl) {
-    note(`evidence service configured at ${ctx.evidenceServiceUrl}; the /field page uploads through it`)
+const evidenceFile = async (ctx: DemoContext, needId: bigint, spentTranche: number) => {
+  const name = `receipt-need-${needId}-tranche-${spentTranche}.pdf`
+  const bytes = demoPdf([
+    'VerifAid demo receipt',
+    `Need ${needId}, tranche ${spentTranche}`,
+    'Paid to the supplier in the payment plan; goods delivered.',
+    new Date().toISOString(),
+  ])
+  const local = {
+    kind: 'receipt' as const,
+    name,
+    type: 'application/pdf',
+    size: bytes.length,
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+    url: '',
   }
-  const manifest = {
-    deliveryId: deliveryId.toString(),
-    trancheIndex,
-    itemsDelivered: 120,
-    regionCode: 'ES-CM',
-    capturedAt: new Date().toISOString(),
-    note: 'demo evidence bundle: distribution manifest and photos with metadata stripped',
+  try {
+    const body = new FormData()
+    body.append('files', new Blob([bytes], { type: 'application/pdf' }), name)
+    const response = await fetch(`${ctx.dashboardUrl}/api/uploads`, { method: 'POST', body })
+    if (!response.ok) return local
+    const uploaded = ((await response.json()) as { files: { sha256: string; url: string }[] }).files[0]
+    return uploaded && uploaded.sha256 === local.sha256 ? { ...local, url: uploaded.url } : local
+  } catch {
+    note('the dashboard is not running: the receipt is committed by hash only')
+    return local
   }
-  const bundle = Buffer.from(JSON.stringify({ manifest, files: [{ name: 'manifest.json', bytes: 0 }] }))
-  const dek = Buffer.from(keccak256(stringToHex(`demo-dek-${deliveryId}`)).slice(2), 'hex')
-  const ciphertext = seal(dek, bundle)
-  return { evidenceHash: keccak256(toHex(ciphertext)), cid: cidV1Raw(ciphertext) }
+}
+
+/** A minimal, valid one-page PDF with a few lines of text. */
+const demoPdf = (lines: string[]): Buffer => {
+  const text = lines
+    .map((line, i) => `BT /F1 12 Tf 50 ${740 - i * 20} Td (${line.replace(/[()\\]/g, '')}) Tj ET`)
+    .join('\n')
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+    `<< /Length ${Buffer.byteLength(text, 'latin1')} >>\nstream\n${text}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ]
+  let out = '%PDF-1.4\n'
+  const offsets: number[] = []
+  objects.forEach((body, i) => {
+    offsets.push(Buffer.byteLength(out, 'latin1'))
+    out += `${i + 1} 0 obj\n${body}\nendobj\n`
+  })
+  const xref = Buffer.byteLength(out, 'latin1')
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  out += offsets.map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  return Buffer.from(out, 'latin1')
 }
 
 main().catch((error) => {

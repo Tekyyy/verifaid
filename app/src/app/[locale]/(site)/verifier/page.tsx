@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
 import { IndexerNotice } from '@/components/Notice'
 import { VerifierQueue } from '@/components/VerifierQueue'
-import { getDeliveries, getNeeds } from '@/lib/indexer'
+import { getNeeds } from '@/lib/indexer'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +17,7 @@ export async function generateMetadata({
 
 export default async function VerifierPage() {
   const t = await getTranslations('verifier')
-  const [needs, deliveries] = await Promise.all([getNeeds({ status: 'Pending' }), getDeliveries()])
+  const needs = await getNeeds({ status: 'Pending' })
 
   return (
     <div className="space-y-6">
@@ -27,9 +27,8 @@ export default async function VerifierPage() {
       </header>
 
       {!needs.ok ? <IndexerNotice error={needs.error} /> : null}
-      {!deliveries.ok ? <IndexerNotice error={deliveries.error} /> : null}
 
-      <VerifierQueue needs={needs.ok ? needs.data : []} deliveries={deliveries.ok ? deliveries.data : []} />
+      <VerifierQueue needs={needs.ok ? needs.data : []} />
     </div>
   )
 }

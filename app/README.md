@@ -77,7 +77,6 @@ See `.env.example`. Everything has a working default except the relayer key.
 | `NEXT_PUBLIC_RPC_URL` | the chain's public RPC | Override for a private RPC |
 | `NEXT_PUBLIC_INDEXER_URL` | `http://localhost:42069` | Ponder API base, used server side and by the proxy |
 | `NEXT_PUBLIC_USE_FIXTURES` | unset | `1` renders `src/lib/fixtures.ts` instead of calling the indexer |
-| `NEXT_PUBLIC_EVIDENCE_SERVICE_URL` | `http://localhost:4001` | Evidence upload and decryption links |
 | `NEXT_PUBLIC_PII_VAULT_URL` | `http://localhost:4002` | Dossier storage and decryption links |
 | `BANK_CONNECTOR_URL` | `http://localhost:4003` | Server only (the `NEXT_PUBLIC_` name is also read). Sandbox checkout |
 | `NOTIFIER_URL` | `http://localhost:4004` | Server only (the `NEXT_PUBLIC_` name is also read). Alert subscriptions |

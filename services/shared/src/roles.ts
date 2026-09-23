@@ -6,13 +6,9 @@ export const ROLES = {
   DEFAULT_ADMIN: `0x${'00'.repeat(32)}` as Hex,
   NGO: keccak256(toHex('NGO_ROLE')),
   VERIFIER: keccak256(toHex('VERIFIER_ROLE')),
-  FIELD_AGENT: keccak256(toHex('FIELD_AGENT_ROLE')),
 } as const
 
 export type RoleName = keyof typeof ROLES
-
-/** The message every beneficiary signs in a receipt confirmation proof. */
-export const AID_RECEIVED_MESSAGE = BigInt(keccak256(toHex('AID_RECEIVED')))
 
 export interface RoleCheckContext {
   client: PublicClient
@@ -35,14 +31,6 @@ export const isActiveNgo = async (ctx: RoleCheckContext, account: Address): Prom
     args: [account],
   }) as Promise<boolean>
 
-export const isFieldAgentOf = async (ctx: RoleCheckContext, agent: Address, ngo: Address): Promise<boolean> =>
-  ctx.client.readContract({
-    address: ctx.roleRegistry,
-    abi: roleRegistryAbi,
-    functionName: 'isFieldAgentOf',
-    args: [agent, ngo],
-  }) as Promise<boolean>
-
 export const isIndependentVerifier = async (
   ctx: RoleCheckContext,
   verifier: Address,
@@ -54,11 +42,3 @@ export const isIndependentVerifier = async (
     functionName: 'isIndependent',
     args: [verifier, ngo],
   }) as Promise<boolean>
-
-export const ngoOfFieldAgent = async (ctx: RoleCheckContext, agent: Address): Promise<Address> =>
-  ctx.client.readContract({
-    address: ctx.roleRegistry,
-    abi: roleRegistryAbi,
-    functionName: 'fieldAgentNgo',
-    args: [agent],
-  }) as Promise<Address>

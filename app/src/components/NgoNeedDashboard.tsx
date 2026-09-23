@@ -22,13 +22,12 @@ import { PublishPhotosPanel } from '@/components/PublishPhotosPanel'
 import { ReleaseTranchePanel } from '@/components/ReleaseTranchePanel'
 import { SettlementPanel } from '@/components/SettlementPanel'
 import { NeedStatusBadge } from '@/components/StatusBadge'
+import { SubmitEvidencePanel } from '@/components/SubmitEvidencePanel'
 import { TrancheBar } from '@/components/TrancheBar'
 import { Link, useRouter } from '@/i18n/navigation'
 import { amount, percent, timestamp } from '@/lib/format'
 import { useMounted } from '@/lib/hooks'
 import { getNeed, getNeeds } from '@/lib/indexer'
-
-const ACTIVE_DELIVERY = new Set(['Open', 'Challengeable', 'Disputed'])
 
 /**
  * Need management: pick one of the NGO's needs at the top and work on it — where it stands, what happens next,
@@ -208,14 +207,11 @@ function NextStep({ need }: { need: NeedDetail }) {
   const t = useTranslations('manage')
   const tCommon = useTranslations('common')
   const tNeedStatus = useTranslations('needStatus')
-  const tDelivery = useTranslations('deliveryStatus')
   const unit = tCommon('amountUnit')
 
   const ready = need.tranches.find((tranche) => tranche.status === 'Releasable')
   const nextLocked = need.tranches.find((tranche) => tranche.status === 'Locked')
-  const activeDelivery = [...need.deliveries]
-    .reverse()
-    .find((delivery) => ACTIVE_DELIVERY.has(delivery.status))
+  const underReview = [...need.deliveries].reverse().find((delivery) => delivery.status === 'Open')
   const minimum = (BigInt(need.targetAmount) * BigInt(need.minFundingBps) + 9_999n) / 10_000n
 
   const text = (() => {
@@ -229,13 +225,17 @@ function NextStep({ need }: { need: NeedDetail }) {
       case 'Funded':
       case 'InDelivery':
         if (ready) return t('next.release', { index: ready.index, amount: amount(ready.amount), unit })
-        if (activeDelivery) {
+        if (underReview) {
           return t('next.deliveryUnderway', {
-            index: activeDelivery.trancheIndex,
-            status: tDelivery(activeDelivery.status),
+            spent: underReview.trancheIndex - 1,
+            approved: amount(underReview.approvedAmount),
+            required: amount(underReview.requiredAmount),
+            unit,
           })
         }
-        return nextLocked ? t('next.openDelivery', { index: nextLocked.index }) : t('next.Completed')
+        return nextLocked
+          ? t('next.openDelivery', { spent: nextLocked.index - 1, index: nextLocked.index })
+          : t('next.Completed')
       case 'Completed':
         return need.impactReport ? t('next.Done') : t('next.Completed')
       default:
@@ -259,6 +259,7 @@ function NeedActions({ need }: { need: NeedDetail }) {
   const closed = s === 'Cancelled' || s === 'Expired'
 
   const actions: { key: string; show: boolean; panel: ReactNode }[] = [
+    { key: 'evidence', show: s === 'InDelivery', panel: <SubmitEvidencePanel need={need} /> },
     { key: 'release', show: delivering, panel: <ReleaseTranchePanel needId={need.id} /> },
     { key: 'close', show: s === 'Funding', panel: <CloseFunding needId={need.id} /> },
     {

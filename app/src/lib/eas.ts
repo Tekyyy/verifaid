@@ -18,7 +18,7 @@ export interface AttestationInput {
    * NonCustodialLedger) — never a person. `schemaRecipient` resolves it from the schema definition.
    */
   recipient: Address
-  /** `DeliveryVerified.refUID` must be the delivery's evidence UID; `ImpactReport.refUID` the last one. */
+  /** Only for schemas that chain to another attestation. None of the three core schemas does today. */
   refUID?: Hex | null
   values: readonly unknown[]
 }
@@ -34,15 +34,13 @@ export const hasSchema = (name: SchemaName): boolean => {
 
 /**
  * The recipient the single ProofOfAidResolver requires for a schema. `ledger` is the need's `vaultOf(needId)`
- * and is only needed for the ledger-bound schemas (FundingRecorded, Settlement, ImpactReport).
+ * and is only needed for the ledger-bound schemas (Settlement, ImpactReport).
  */
 export const schemaRecipient = (name: SchemaName, ledger?: Address | null): Address | null => {
   const contracts = requireDeployment().contracts
   switch (SCHEMAS[name].recipient) {
     case 'NeedsRegistry':
       return contracts.NeedsRegistry
-    case 'DeliveryManager':
-      return contracts.DeliveryManager
     default:
       return ledger ?? null
   }

@@ -25,8 +25,8 @@ lives in the code.
 |---|---|
 | R1 — register previously verified needs, with their terms | `NeedsRegistry` (deadlines, minimum funding, cost cap, expected outcome) + `NeedVerified` attestations |
 | R2 — track the path of donations | `AidVault`, soulbound `DonationReceipt`, `Settlement` attestations, on-chain conversions (`ConversionRouter`, `DonationForwarderFactory`), card payments through the Coinbase on-ramp, vaults that pay the need's registered suppliers directly, public tracking links |
-| R3 — evidence of aid delivery | `DeliveryManager`, `DeliveryEvidence` + `DeliveryVerified` attestations, Semaphore receipt proofs |
-| R4 — protect beneficiaries' data | off-chain PII vault, Semaphore identities, encrypted evidence |
+| R3 — evidence of aid delivery | `DeliveryManager`: the NGO files photos, receipts and bank statements by hash; donors who gave 30% of the money approve before the next tranche |
+| R4 — protect beneficiaries' data | off-chain PII vault, Semaphore identity commitments, evidence photos stripped of metadata |
 | R5 — verifiable impact | `ImpactReport` attestations, Ponder indexer, public dashboard, PDF audit reports |
 
 ## How it works
@@ -42,9 +42,9 @@ NGO registers a need and its terms ─► independent verifier attests it ─►
       │          (below it the need expires and every donor is refunded)
       │                                        │
       ▼                tranche 0 paid to the need's suppliers as pre-financing ─► Settlement report
-field agent delivers aid, files encrypted evidence ─► beneficiaries confirm anonymously (Semaphore)
+NGO accounts for it: photos, receipts, bank statements (committed on chain by hash)
       │                                                                           │
-      └──► independent verifier signs off ─► challenge window ─► next tranche ─► Settlement ─► impact report
+      └──► donors who gave 30% of the money approve ─► next tranche ─► Settlement ─► … ─► impact report
 ```
 
 **Full blockchain mode.** The vaults hold USDC, so a donation in USDC — from a wallet, a card or an exchange —
@@ -104,10 +104,11 @@ releases stay on-chain and are recorded in `deployments/base-sepolia.v1.json` th
 ## Repository layout
 
 ```
-contracts/    Foundry: needs and their terms, vaults, deliveries, Semaphore groups, one EAS resolver
-services/     evidence (encrypt + IPFS), pii-vault (envelope-encrypted records), notifier (alerts and signed webhooks)
+contracts/    Foundry: needs and their terms, vaults, donor-approved deliveries, Semaphore groups, one EAS resolver
+services/     pii-vault (envelope-encrypted records), notifier (alerts and signed webhooks)
 indexer/      Ponder: events → tables → the API, donation tracking and RSS feeds
-app/          Next.js dashboard: public needs and tracking pages, embeddable widget, donor, NGO, verifier, field
+app/          Next.js dashboard: public needs and tracking pages, embeddable widget, donor, NGO and verifier tools,
+              and the evidence uploads (content-addressed)
               agent and beneficiary tools, PDF reports
 demo/         runs the four lifecycle scenarios against a live chain (escrow, expiry, conversions, idle capital)
 deployments/  addresses + schema UIDs per network, written by the deploy scripts
@@ -172,9 +173,10 @@ pnpm deploy:sepolia
 ## Privacy
 
 No name, ID number, phone number, exact location, photo, or unsalted hash of any of these ever reaches the
-chain. Beneficiaries appear only as Semaphore identity commitments; a delivery confirmation reveals a nullifier
-and nothing else, and confirmations are relayed so the beneficiary's own wallet never appears in a transaction.
-Deliveries below five expected recipients are refused so a count cannot identify a person. Donors are tracked by a
+chain. Beneficiaries appear only as Semaphore identity commitments. Delivery evidence is public, for donors to
+approve: photos are stripped of their location and camera metadata before they are stored, and the NGO is told
+to black out names, faces and account numbers first. Impact reports below five people served are refused so a
+count cannot identify a person. Donors are tracked by a
 receipt id or a deposit address, never by name; alert emails are encrypted and destroyed on unsubscribe.
 Right to erasure is handled by destroying the record's data key (crypto-shredding) and removing the identity
 commitment from the group. See `docs/THREAT_MODEL.md` for what this does **not** protect against.

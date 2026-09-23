@@ -18,10 +18,9 @@ export const ROLE_INDEX = {
   admin: 0,
   ngo: 1,
   ngoPayout: 2,
-  fieldAgent: 3,
+  // 3 was the field agent and 6 the bank partner, both retired; the indices stay reserved.
   verifier1: 4,
   verifier2: 5,
-  bankPartner: 6,
   donor1: 7,
   donor2: 8,
   ngoB: 10,

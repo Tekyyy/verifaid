@@ -3,9 +3,9 @@ import { index, onchainTable, primaryKey, relations } from 'ponder'
 /**
  * Tables from spec §10, plus what the derived API routes need.
  *
- * Privacy rule (spec §8): only what is already public on-chain is stored here. Beneficiaries appear as
- * Semaphore identity commitments (unlinkable, and needed by the beneficiary page to rebuild the Merkle tree)
- * and as confirmation nullifiers and counts. Nothing else about a person is indexed.
+ * Privacy rule (spec §8): only what is already public on-chain is stored here. Beneficiaries appear only as
+ * Semaphore identity commitments enrolled in a programme (unlinkable). Donors appear as the wallets that gave
+ * and, since v8, approved a delivery — both already public on chain. Nothing else about a person is indexed.
  *
  * Amounts are `bigint` (token base units), addresses and hashes are `hex`, enum-ish values are stored as the
  * same labels @poa/shared exposes so the API never has to translate numbers the UI would misread.
@@ -22,12 +22,12 @@ export const ngo = onchainTable('ngo', (t) => ({
   registeredAt: t.integer().notNull(),
 }))
 
-/** Verifiers, bank partners and field agents. `ngo` is set only for field agents (they are bound to one NGO). */
+/** Verifiers. `ngo` is unused since v8 (it bound field agents to their NGO) and stays null. */
 export const roleAccount = onchainTable(
   'role_account',
   (t) => ({
     address: t.hex().primaryKey(),
-    role: t.text().notNull(), // VERIFIER | FIELD_AGENT
+    role: t.text().notNull(), // VERIFIER
     ngo: t.hex(),
     active: t.boolean().notNull(),
     registeredAt: t.integer().notNull(),
@@ -388,57 +388,38 @@ export const delivery = onchainTable(
   (t) => ({
     id: t.bigint().primaryKey(),
     needId: t.bigint().notNull(),
+    /** The tranche this evidence unlocks; it accounts for the one before it. */
     trancheIndex: t.integer().notNull(),
-    fieldAgent: t.hex().notNull(),
-    expectedRecipients: t.integer().notNull(),
-    confirmations: t.integer().notNull(),
+    submitter: t.hex().notNull(),
+    /** Open (donors reviewing), Approved (tranche unlocked) or Superseded (the NGO filed newer evidence). */
     status: t.text().notNull(),
-    evidenceUID: t.hex(),
-    evidenceCID: t.text(),
-    evidenceHash: t.hex(),
-    itemsDelivered: t.integer(),
-    verifierUID: t.hex(),
-    verifier: t.hex(),
-    challengeDeadline: t.integer(),
-    /** The challenge currently holding this delivery in `Disputed`, cleared when the admin resolves it. */
-    activeChallengeId: t.text(),
-    openedAt: t.integer().notNull(),
-    finalizedAt: t.integer(),
+    evidenceHash: t.hex().notNull(),
+    /** The manifest exactly as submitted; its keccak256 is `evidenceHash`. */
+    manifest: t.text().notNull(),
+    approvedAmount: t.bigint().notNull(),
+    /** What the donors who approve must have given between them, read from the contract. */
+    requiredAmount: t.bigint().notNull(),
+    supersededBy: t.bigint(),
+    submittedAt: t.integer().notNull(),
+    approvedAt: t.integer(),
+    txHash: t.hex().notNull(),
   }),
   (table) => ({ needIdx: index().on(table.needId), statusIdx: index().on(table.status) }),
 )
 
-/**
- * An anonymous beneficiary confirmation. Only the Semaphore nullifier is recorded — it is public on-chain,
- * scoped to one delivery, and cannot be linked back to an identity or across deliveries.
- */
-export const confirmation = onchainTable(
-  'confirmation',
+/** A donor approving a delivery, with the weight of what they gave. */
+export const deliveryApproval = onchainTable(
+  'delivery_approval',
   (t) => ({
-    id: t.text().primaryKey(), // deliveryId-nullifier
+    id: t.text().primaryKey(), // deliveryId-donor
     deliveryId: t.bigint().notNull(),
     needId: t.bigint().notNull(),
-    nullifier: t.bigint().notNull(),
-    sequence: t.integer().notNull(),
+    donor: t.hex().notNull(),
+    weight: t.bigint().notNull(),
     txHash: t.hex().notNull(),
     timestamp: t.integer().notNull(),
   }),
-  (table) => ({ deliveryIdx: index().on(table.deliveryId) }),
-)
-
-export const challenge = onchainTable(
-  'challenge',
-  (t) => ({
-    id: t.text().primaryKey(), // txHash-logIndex
-    deliveryId: t.bigint().notNull(),
-    needId: t.bigint().notNull(),
-    challenger: t.hex().notNull(),
-    reasonHash: t.hex().notNull(),
-    upheld: t.boolean(),
-    resolvedAt: t.integer(),
-    timestamp: t.integer().notNull(),
-  }),
-  (table) => ({ deliveryIdx: index().on(table.deliveryId) }),
+  (table) => ({ deliveryIdx: index().on(table.deliveryId), donorIdx: index().on(table.donor) }),
 )
 
 // ─── attestations ────────────────────────────────────────────────────────────
@@ -453,7 +434,6 @@ export const attestation = onchainTable(
     recipient: t.hex().notNull(),
     refUID: t.hex(),
     needId: t.bigint(),
-    deliveryId: t.bigint(),
     /** The schema payload decoded with @poa/shared's schema definitions; bigints already stringified. */
     decoded: t.json().notNull(),
     revoked: t.boolean().notNull(),
@@ -464,7 +444,6 @@ export const attestation = onchainTable(
   }),
   (table) => ({
     needIdx: index().on(table.needId),
-    deliveryIdx: index().on(table.deliveryId),
     schemaIdx: index().on(table.schemaName),
   }),
 )
@@ -568,12 +547,11 @@ export const receiptRelations = relations(receipt, ({ one }) => ({
 
 export const deliveryRelations = relations(delivery, ({ many, one }) => ({
   need: one(need, { fields: [delivery.needId], references: [need.id] }),
-  confirmations: many(confirmation),
-  challenges: many(challenge),
+  approvals: many(deliveryApproval),
 }))
 
-export const confirmationRelations = relations(confirmation, ({ one }) => ({
-  delivery: one(delivery, { fields: [confirmation.deliveryId], references: [delivery.id] }),
+export const deliveryApprovalRelations = relations(deliveryApproval, ({ one }) => ({
+  delivery: one(delivery, { fields: [deliveryApproval.deliveryId], references: [delivery.id] }),
 }))
 
 /** Photos of finished work, published by the NGO that ran the need (resolver-less `WorkPhotos` schema). */
@@ -664,10 +642,6 @@ export const workPhotosRelations = relations(workPhotos, ({ one }) => ({
   need: one(need, { fields: [workPhotos.needId], references: [need.id] }),
 }))
 
-export const challengeRelations = relations(challenge, ({ one }) => ({
-  delivery: one(delivery, { fields: [challenge.deliveryId], references: [delivery.id] }),
-}))
-
 export const programRelations = relations(program, ({ many }) => ({
   members: many(programMember),
   needs: many(need),
@@ -679,7 +653,6 @@ export const programMemberRelations = relations(programMember, ({ one }) => ({
 
 export const attestationRelations = relations(attestation, ({ one }) => ({
   need: one(need, { fields: [attestation.needId], references: [need.id] }),
-  delivery: one(delivery, { fields: [attestation.deliveryId], references: [delivery.id] }),
 }))
 
 export const impactReportRelations = relations(impactReport, ({ one }) => ({

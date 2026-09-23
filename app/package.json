@@ -2,7 +2,7 @@
   "name": "@poa/app",
   "version": "0.1.0",
   "private": true,
-  "description": "Proof of Aid dashboard: public impact, donor traces, NGO / verifier / field agent tools and the beneficiary confirmation page",
+  "description": "VerifAid dashboard: public impact, donor traces and approvals, and the NGO and verifier tools",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

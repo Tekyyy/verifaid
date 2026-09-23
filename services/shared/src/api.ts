@@ -1,4 +1,5 @@
 import type { Address, Hex } from 'viem'
+import type { EvidenceManifest } from './manifest.js'
 import type { DeliveryStatus, NeedStatus, SchemaName, TrancheStatus } from './types.js'
 
 /**
@@ -69,20 +70,39 @@ export interface TrancheView {
   releaseTxHash: Hex | null
 }
 
+/**
+ * The NGO's account of a tranche it was paid, filed to unlock the next one, and the donors who approved it.
+ * Approval weighs what each donor gave; `requiredAmount` is the threshold for this need.
+ */
 export interface DeliveryView {
   id: string
   needId: string
+  /** The tranche this evidence unlocks; it accounts for the one before it. */
   trancheIndex: number
-  fieldAgent: Address
-  expectedRecipients: number
-  confirmations: number
-  confirmationRatio: number
+  submitter: Address
   status: DeliveryStatus
-  evidenceUID: Hex | null
-  evidenceCID: string | null
-  verifierUID: Hex | null
-  verifier: Address | null
-  challengeDeadline: number | null
+  /** keccak256 of `manifestText`, as stored on chain. */
+  evidenceHash: Hex
+  /** The manifest parsed, or null when the text is not a valid manifest. */
+  manifest: EvidenceManifest | null
+  /** The exact text the NGO submitted. */
+  manifestText: string
+  approvedAmount: string
+  requiredAmount: string
+  approvals: DeliveryApprovalView[]
+  submittedAt: number
+  approvedAt: number | null
+  /** Set once newer evidence replaced this one. */
+  supersededBy: string | null
+  txHash: Hex
+}
+
+export interface DeliveryApprovalView {
+  donor: Address
+  /** What the donor gave, which is what the approval weighs. */
+  weight: string
+  at: number
+  txHash: Hex
 }
 
 /**
@@ -374,15 +394,10 @@ export type TimelineEventType =
   | 'YieldHarvested'
   | 'YieldPaid'
   | 'SleeveLoss'
-  | 'DeliveryOpened'
-  | 'DeliveryEvidenceLinked'
-  | 'ReceiptConfirmed'
-  | 'DeliveryVerifiedLinked'
-  | 'DeliveryChallengeable'
-  | 'DeliveryChallenged'
-  | 'DisputeResolved'
-  | 'DeliveryFinalized'
-  | 'DeliveryRejected'
+  | 'DeliverySubmitted'
+  | 'DeliverySuperseded'
+  | 'DeliveryApprovalAdded'
+  | 'DeliveryApproved'
   | 'ImpactReportPublished'
   | 'PayeePaid'
   | 'PaymentHeld'
@@ -481,8 +496,9 @@ export interface ImpactSummary {
     donated: string
     released: string
     refunded: string
-    deliveriesFinalized: number
-    confirmations: number
+    deliveriesApproved: number
+    /** Donor approvals across every delivery. */
+    approvals: number
     beneficiariesServed: number
   }
   byCategory: ImpactBucket[]
@@ -495,7 +511,7 @@ export interface ImpactBucket {
   needs: number
   donated: string
   released: string
-  deliveriesFinalized: number
+  deliveriesApproved: number
   beneficiariesServed: number
 }
 
@@ -513,9 +529,8 @@ export interface ProgramMembersResponse {
 /**
  * The five stages a donor follows, as the proposal names them, each backed by on-chain evidence:
  * Verified = NeedVerified attestations reached the threshold; Funded = funding closed;
- * Settled = a tranche payout was reconciled by a Settlement attestation; Delivered = a delivery passed the
- * three-signal gate and its challenge window; ImpactConfirmed = the NGO's ImpactReport, chained to the last
- * verified delivery.
+ * Settled = a tranche payout was reconciled by a Settlement attestation; Delivered = the need's donors approved
+ * the NGO's evidence for a tranche; ImpactConfirmed = the NGO published its ImpactReport.
  */
 export const DONOR_STAGES = ['Verified', 'Funded', 'Settled', 'Delivered', 'ImpactConfirmed'] as const
 export type DonorStage = (typeof DONOR_STAGES)[number]

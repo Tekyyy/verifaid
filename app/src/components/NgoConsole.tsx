@@ -238,10 +238,9 @@ export function PublishImpactReport({ needId: fixedNeedId }: { needId?: string }
   const [served, setServed] = useState('')
   const [kpiHash, setKpiHash] = useState('')
   const [reportCid, setReportCid] = useState('')
-  const [refUid, setRefUid] = useState('')
   const [error, setError] = useState<string | null>(null)
   const ledger = useLedger(needId)
-  const minimum = deployment?.params.minExpectedRecipients ?? 5
+  const minimum = deployment?.params.minBeneficiariesServed ?? 5
 
   const submit = async () => {
     if (!ledger || !/^\d+$/.test(needId) || !/^\d+$/.test(served) || !reportCid.trim()) {
@@ -250,7 +249,6 @@ export function PublishImpactReport({ needId: fixedNeedId }: { needId?: string }
     // The resolver rejects a zero KPI hash and small counts (a k-anonymity floor), so say so up front.
     if (!isBytes32(kpiHash) || isZeroHash(kpiHash)) return setError(t('errorKpiHash'))
     if (Number(served) < minimum) return setError(t('errorServed', { minimum }))
-    if (refUid && !isBytes32(refUid)) return setError(tErrors('required'))
     setError(null)
 
     await tx.run({
@@ -261,7 +259,6 @@ export function PublishImpactReport({ needId: fixedNeedId }: { needId?: string }
         attestationRequest({
           name: 'ImpactReport',
           recipient: schemaRecipient('ImpactReport', ledger) as Address,
-          refUID: (refUid || undefined) as Hex | undefined,
           values: [BigInt(needId), Number(served), kpiHash as Hex, reportCid.trim()],
         }),
       ],
@@ -284,7 +281,6 @@ export function PublishImpactReport({ needId: fixedNeedId }: { needId?: string }
         <TextField label={t('kpiHash')} value={kpiHash} onChange={setKpiHash} placeholder="0x…" />
         <TextField label={t('reportCid')} value={reportCid} onChange={setReportCid} placeholder="bafy…" />
       </div>
-      <TextField label={t('lastVerifiedUid')} value={refUid} onChange={setRefUid} placeholder="0x…" />
       <FormError message={error} />
       <button
         type="button"

@@ -150,7 +150,7 @@ describe.skipIf(!hasPostgres)('notifier lifecycle (Postgres)', () => {
       return response.json<{ id: string; secret: string; needId: string | null; eventTypes: string[] }>()
     }
     endpointForNeed = await create({ url: `${receiver.url}/integrator`, needId: '7' })
-    endpointForType = await create({ url: `${receiver.url}/finalized`, eventTypes: ['DeliveryFinalized'] })
+    endpointForType = await create({ url: `${receiver.url}/finalized`, eventTypes: ['DeliveryApproved'] })
     expect(endpointForNeed.secret).toMatch(/^whsec_/)
 
     const stored = await prisma().webhookEndpoint.findUniqueOrThrow({ where: { id: endpointForNeed.id } })
@@ -359,7 +359,7 @@ describe.skipIf(!hasPostgres)('notifier lifecycle (Postgres)', () => {
 
     const need = needFixture('7', { status: 'InDelivery' })
     indexer.tracks.set('12', trackFixture('12', need, ['Verified', 'Funded', 'Settled', 'Delivered']))
-    indexer.events.push(eventFixture('7', 11, 0, 'DeliveryFinalized'))
+    indexer.events.push(eventFixture('7', 11, 0, 'DeliveryApproved'))
     await poll()
     const keys = (await deliveries()).map((delivery) => delivery.dedupeKey)
     expect(keys).not.toContain(`ALERT_EMAIL:${emailSub.id}:Delivered`)
@@ -418,7 +418,7 @@ describe.skipIf(!hasPostgres)('notifier lifecycle (Postgres)', () => {
       webhooks: { id: string; deliveries: { pending: number; sent: number; failed: number } }[]
     }>()
     expect(webhooks).toHaveLength(3)
-    // Two events from the first poll plus the DeliveryFinalized one.
+    // Two events from the first poll plus the DeliveryApproved one.
     expect(webhooks.find((hook) => hook.id === endpointForNeed.id)?.deliveries).toEqual({
       pending: 0,
       sent: 3,
