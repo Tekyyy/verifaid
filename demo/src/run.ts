@@ -59,8 +59,10 @@ import { attestation, fail, heading, info, note, step, tx } from './log.js'
 const REGION = regionCode('ES-CM')
 const BPS = 10_000n
 
-type Scenario = 'onchain' | 'expiry' | 'conversion' | 'idle'
+type Scenario = 'onchain' | 'expiry' | 'conversion' | 'idle' | 'review'
+/** What runs when no scenario is named. `review` is opt-in: it deliberately leaves evidence waiting. */
 const SCENARIOS: Scenario[] = ['onchain', 'expiry', 'conversion', 'idle']
+const ALL_SCENARIOS: Scenario[] = [...SCENARIOS, 'review']
 
 interface NeedSpec {
   label: string
@@ -77,7 +79,7 @@ interface NeedSpec {
 const main = async (): Promise<void> => {
   const [networkArg, ...rest] = process.argv.slice(2)
   const selected =
-    rest.length > 0 ? rest.filter((s): s is Scenario => SCENARIOS.includes(s as Scenario)) : SCENARIOS
+    rest.length > 0 ? rest.filter((s): s is Scenario => ALL_SCENARIOS.includes(s as Scenario)) : SCENARIOS
   const ctx = createContext(networkArg)
   const { contracts, external } = ctx.deployment
 
@@ -110,6 +112,8 @@ const main = async (): Promise<void> => {
       note('skipping the idle-capital scenario: this deployment approves no venue')
     }
   }
+
+  if (selected.includes('review')) links.push(...(await reviewScenario(ctx, programId)))
 
   heading('Done')
   for (const link of links) note(link)
@@ -156,6 +160,35 @@ const onChainScenario = async (ctx: DemoContext, programId: bigint): Promise<str
     `  card donor tracking:      ${ctx.dashboardUrl}/en/track/${card}`,
     `  report:                   ${ctx.dashboardUrl}/api/reports/${needId}`,
   ]
+}
+
+// ─── scenario 5: evidence waiting for the donors ──────────────────────────────
+
+/**
+ * Stops halfway on purpose: the NGO has been paid tranche 0 and filed its receipt, and the donors have not voted.
+ * The need page then shows the evidence with an Approve button for whoever gave, which is the part of the flow a
+ * live audience should see happen.
+ */
+const reviewScenario = async (ctx: DemoContext, programId: bigint): Promise<string[]> => {
+  heading('5 · Evidence waiting for the donors: approve it from the need page')
+  const spec: NeedSpec = {
+    label: 'school kits',
+    category: 'EDUCATION',
+    target: 2_000_000_000n,
+    trancheBps: [3000, 7000],
+    minFundingBps: 10_000,
+    thirdPartyCostBps: 0,
+    fundingWindowSeconds: 30 * 86_400,
+    executionWindowSeconds: 120 * 86_400,
+    outcome: '200 pupils in ES-CM receive a year of school supplies',
+  }
+  const needId = await createNeed(ctx, programId, spec)
+  const vault = await verifyNeed(ctx, needId)
+  await donateDirect(ctx, vault, spec.target)
+  await expectStatus(ctx, needId, 'Funded')
+  await releaseOnChain(ctx, vault, 0)
+  await runDelivery(ctx, needId, 1, [])
+  return [`need ${needId} (evidence waiting for the donors): ${ctx.dashboardUrl}/en/needs/${needId}`]
 }
 
 // ─── scenario 4: idle capital ─────────────────────────────────────────────────
@@ -783,6 +816,10 @@ const runDelivery = async (
   info('evidence', `#${deliveryId}: ${file.name}, sha256 ${file.sha256.slice(0, 16)}…`)
   if (file.url) note(`the receipt is served at ${ctx.dashboardUrl}${file.url}`)
   tx(ctx.network, 'filed', submitted.hash)
+  if (donors.length === 0) {
+    note('left for the donors: open the need page with a donor wallet to approve it')
+    return
+  }
 
   const required = await readManager<bigint>('requiredApproval', [needId])
   for (const role of donors) {
