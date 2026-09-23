@@ -278,7 +278,8 @@
     "donateApproveFirst": "Aprueba antes a la bóveda: hasta entonces esta transacción fallaría.",
     "withdrawnNote": "({amount} recuperados)",
     "yourStake": "Has dado {amount} {unit} a esta necesidad.",
-    "yourStakeWithdraw": "Recupéralo →"
+    "yourStakeWithdraw": "Recupéralo →",
+    "offChainRetired": "Esta necesidad se creó para que un proveedor de pagos custodiara su dinero. Esa forma de donar se ha retirado: toda donación va ahora en cadena, y esta necesidad ya no puede recibir dinero nuevo."
   },
   "donor": {
     "title": "Mis donaciones",
@@ -364,7 +365,6 @@
     "errorRegion": "El código de región debe caber en 31 bytes.",
     "errorVerifications": "Las verificaciones deben ser un número entero entre 1 y 255.",
     "errorDossier": "Guarda la evaluación de necesidades (o pega su hash): el hash del expediente es obligatorio.",
-    "errorCustodian": "Elige el proveedor de pagos que custodiará el dinero.",
     "errorDate": "Introduce los plazos como fechas del calendario.",
     "errorFundingDeadline": "El plazo de recaudación debe estar en el futuro.",
     "errorExecutionDeadline": "El plazo de entrega debe estar en el futuro y ser posterior al de recaudación.",
@@ -373,13 +373,10 @@
     "errorDisclosure": "Un límite de costes mayor que 0% requiere publicar una declaración de costes.",
     "errorOutcome": "Describe el resultado esperado: los donantes ven su hash.",
     "termsTitle": "Condiciones que verán los donantes",
-    "custodyModel": "Modelo de custodia",
-    "custodian": "Custodio (proveedor de pagos registrado)",
     "custodianLoading": "Cargando proveedores de pagos registrados…",
     "custodianNone": "No hay ningún proveedor de pagos activo. Pega la dirección de uno cuando la administración lo haya registrado.",
     "custodianUnavailable": "No se ha podido cargar la lista de proveedores. Pega la dirección de un proveedor de pagos registrado.",
     "custodianPick": "Elige un proveedor",
-    "custodianHint": "Solo este proveedor podrá registrar pagos y liquidaciones de la necesidad.",
     "fundingDeadline": "Plazo de recaudación (opcional)",
     "deadlineHint": "Final de ese día, en UTC. Déjalo vacío si no hay plazo.",
     "executionDeadline": "Plazo de entrega (opcional)",
@@ -396,7 +393,6 @@
     "summaryTitle": "En pocas palabras",
     "summaryTarget": "Recaudar {amount} {unit} para {category} en {region}, pagados en {count, plural, one {# tramo} other {# tramos}} ({plan}).",
     "summaryCustodyOnChain": "Las donaciones se guardan en una bóveda en cadena y se liberan tramo a tramo.",
-    "summaryCustodyOffChain": "El proveedor de pagos {custodian} custodia el dinero y debe atestar cada pago recibido y cada liquidación.",
     "summaryFundingDeadline": "La recaudación se cierra al final del {date} (UTC).",
     "summaryNoFundingDeadline": "La recaudación no tiene plazo.",
     "summaryExecutionDeadline": "La entrega debe terminar antes del final del {date} (UTC); después, el dinero no liberado se devuelve.",
@@ -648,26 +644,6 @@
     "fxRef": "Hash de la referencia de cambio",
     "attester": "Atestado por"
   },
-  "give": {
-    "title": "Dona con tarjeta o transferencia",
-    "sandbox": "Pago de prueba: no se mueve dinero real y nunca se piden datos de tarjeta. El proveedor liquida en la moneda de la necesidad; en el entorno de pruebas liquida uno a uno, así que las cifras de abajo son lo que recibe la necesidad.",
-    "onlyWay": "El dinero de esta necesidad lo custodia un proveedor de pagos (Modelo A), así que no admite donaciones desde carteras. Puedes donar con tarjeta o transferencia.",
-    "closed": "Esta necesidad no acepta donaciones en este momento.",
-    "amount": "Importe en EUR",
-    "method": "Medio de pago",
-    "card": "Tarjeta",
-    "bank": "Transferencia (SEPA)",
-    "cardRule": "Comisión con tarjeta: 1,4% + 0,25 €",
-    "bankRule": "Transferencia: sin comisión",
-    "feeEstimate": "Comisión estimada",
-    "reachesNeed": "Llega a la necesidad",
-    "capZero": "Esta necesidad no permite costes de terceros, así que solo se pueden registrar pagos sin comisión.",
-    "capNote": "Las comisiones están limitadas por el máximo declarado de esta necesidad: {percent}% en costes de terceros.",
-    "overCap": "Esta comisión supera el límite declarado de la necesidad y es posible que el proveedor no pueda registrarla: elige transferencia o un importe mayor.",
-    "submit": "Simular pago",
-    "submitting": "Procesando…",
-    "error": "No se ha podido iniciar el pago: {detail}"
-  },
   "track": {
     "title": "Seguir una donación",
     "subtitle": "Sigue una donación desde la verificación hasta el impacto confirmado. Sin cuenta y sin iniciar sesión.",
@@ -770,7 +746,7 @@
     "webhookSecretHint": "Cada envío va firmado. Comprueba la cabecera {signature} contra el cuerpo bruto de la petición con este secreto antes de fiarte de él. Los envíos también llevan {headers}."
   },
   "conversion": {
-    "noCosts": "Esta necesidad no admite costes de intermediarios, así que no puede recibir dinero que haya que convertir. Dona USDC directamente o por transferencia.",
+    "noCosts": "Esta necesidad no admite costes de intermediarios, así que no puede recibir dinero que haya que convertir. Dona USDC directamente.",
     "costCapNote": "Los costes de conversión cuentan contra el límite declarado del {percent}% en costes de intermediarios de esta necesidad; una donación que lo supere se detiene antes de que firmes.",
     "checking": "Comprobando…",
     "revertFeeCap": "Esta conversión llevaría los costes de intermediarios de la necesidad por encima de su límite declarado, así que el contrato la rechazaría. Prueba con un importe menor o dona USDC directamente.",
@@ -784,7 +760,7 @@
   },
   "onramp": {
     "title": "Paga con tarjeta",
-    "body": "Compra USDC con tu tarjeta en tu propia cartera y dónalos con un toque.",
+    "body": "Compra USDC con tu tarjeta en tu propia cartera y dónalo a esta necesidad con un toque. Va directo a la bóveda.",
     "sandbox": "Entorno de pruebas: no se cobra ninguna tarjeta. Se acuñan USDC de prueba sin valor en tu cartera, valorados con la fuente EUR/USD y descontando una comisión de tarjeta simulada del 1,5%.",
     "coinbaseNote": "Pagas en Coinbase (inicia sesión o crea una cuenta) y se aplican sus comisiones. Los USDC llegan a tu propia cartera, como exigen las condiciones de Coinbase.",
     "closed": "Esta necesidad no acepta donaciones en este momento.",

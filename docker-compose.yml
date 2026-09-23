@@ -77,27 +77,6 @@ services:
       PORT: '4002'
       SIWE_DOMAIN: ${PII_VAULT_SIWE_DOMAIN:-localhost:4002}
 
-  bank-connector:
-    <<: *service-base
-    build:
-      context: .
-      dockerfile: services/bank-connector/Dockerfile
-    ports:
-      - '${BANK_CONNECTOR_PORT:-4003}:4003'
-    environment:
-      <<: *service-env
-      PORT: '4003'
-      SIWE_DOMAIN: ${BANK_CONNECTOR_SIWE_DOMAIN:-localhost:4003}
-      BANK_PARTNER_PRIVATE_KEY: ${BANK_PARTNER_PRIVATE_KEY:-}
-      BANK_REF_SALT: ${BANK_REF_SALT:-}
-      BANK_WEBHOOK_SECRET: ${BANK_WEBHOOK_SECRET:-}
-      CHECKOUT_MOCK_ENABLED: ${CHECKOUT_MOCK_ENABLED:-}
-      CHECKOUT_CARD_FEE_BPS: ${CHECKOUT_CARD_FEE_BPS:-140}
-      CHECKOUT_CARD_FEE_FIXED_CENTS: ${CHECKOUT_CARD_FEE_FIXED_CENTS:-25}
-      CHECKOUT_RATE_LIMIT_PER_MINUTE: ${CHECKOUT_RATE_LIMIT_PER_MINUTE:-30}
-      IMPORT_MAX_BYTES: ${IMPORT_MAX_BYTES:-1048576}
-      IMPORT_MAX_ROWS: ${IMPORT_MAX_ROWS:-5000}
-
   notifier:
     <<: *service-base
     build:

@@ -297,6 +297,22 @@ gets stuck between the two.*
   Disclosure is the compensating control: the need page states the venue, the amounts and the promise to the
   donor before anyone gives, and the NGO's opt-in is only possible before the need can be funded.
 
+### 3.19 Card payments through the on-ramp (after §20)
+
+*A card payment is lost between Coinbase and the need, or the platform ends up holding someone's money.*
+
+- **Mitigation.** The platform never holds fiat and never holds USDC on anyone's behalf: Coinbase delivers to the
+  donor's own wallet, and only the donor's signature moves it into the vault. The checkout session is created
+  server-side, bound to the donor's address, single use and valid for five minutes; the CDP key never reaches the
+  browser. The panel only offers for donation the USDC that arrived on top of the balance recorded before the
+  purchase, so money the donor already held is never presented as if it had just been bought.
+- **Residual risk.** Coinbase decides who may buy, where and how much; a donor it refuses has no card path here at
+  all. A donor who buys and never taps "donate" simply keeps the USDC — nothing is lost, but nothing is given. The
+  deployed contracts still contain the retired provider paths (`donateOnBehalf`, `NonCustodialLedger`); they are
+  reachable only by an address holding the bank-partner role. The seed no longer assigns it, but on v6 the
+  demo payment-provider key still holds it from the original seed; revoking it (`RoleRegistry.removeBankPartner`)
+  closes those paths on chain until a redeploy drops them.
+
 ### 3.10 GDPR versus immutability
 
 - **Mitigation.** Personal data is only ever in the PII vault, encrypted with a per-record data key. Erasure is

@@ -50,15 +50,9 @@ export const piiVaultUrl: string = (process.env.NEXT_PUBLIC_PII_VAULT_URL ?? 'ht
 )
 
 /**
- * Upstreams reached only through this app's route handlers (`/api/checkout`, `/api/alerts`), never from the
- * browser: the handlers validate input first, and neither service has to serve CORS headers.
+ * An upstream reached only through this app's route handler (`/api/alerts`), never from the browser: the
+ * handler validates input first, and the service does not have to serve CORS headers.
  */
-export const bankConnectorUrl: string = (
-  process.env.BANK_CONNECTOR_URL ??
-  process.env.NEXT_PUBLIC_BANK_CONNECTOR_URL ??
-  'http://localhost:4003'
-).replace(/\/$/, '')
-
 export const notifierUrl: string = (
   process.env.NOTIFIER_URL ??
   process.env.NEXT_PUBLIC_NOTIFIER_URL ??

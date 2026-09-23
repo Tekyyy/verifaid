@@ -278,7 +278,8 @@
     "donateApproveFirst": "Approve the vault first — until you do, this transaction would fail.",
     "withdrawnNote": "({amount} taken back)",
     "yourStake": "You have given {amount} {unit} to this need.",
-    "yourStakeWithdraw": "Take it back →"
+    "yourStakeWithdraw": "Take it back →",
+    "offChainRetired": "This need was set up for a payment provider to hold its money. That way of giving has been retired: every donation now goes on chain, and this need can no longer take new money."
   },
   "donor": {
     "title": "My donations",
@@ -364,7 +365,6 @@
     "errorRegion": "The region code must fit in 31 bytes.",
     "errorVerifications": "Verifications must be a whole number between 1 and 255.",
     "errorDossier": "Store the needs assessment (or paste its hash): a dossier hash is required.",
-    "errorCustodian": "Choose the payment provider that will hold the money.",
     "errorDate": "Enter deadlines as calendar dates.",
     "errorFundingDeadline": "The funding deadline must be in the future.",
     "errorExecutionDeadline": "The delivery deadline must be in the future and after the funding deadline.",
@@ -373,13 +373,10 @@
     "errorDisclosure": "A cost cap above 0% needs a published cost disclosure.",
     "errorOutcome": "Describe the expected outcome: donors are shown its hash.",
     "termsTitle": "Terms donors will see",
-    "custodyModel": "Custody model",
-    "custodian": "Custodian (registered payment provider)",
     "custodianLoading": "Loading registered payment providers…",
     "custodianNone": "No active payment provider is registered. Paste the address of one once the admin has registered it.",
     "custodianUnavailable": "The provider list could not be loaded. Paste the address of a registered payment provider.",
     "custodianPick": "Choose a provider",
-    "custodianHint": "Only this provider will be able to record payments and payouts for the need.",
     "fundingDeadline": "Funding deadline (optional)",
     "deadlineHint": "End of that day, UTC. Leave empty for no deadline.",
     "executionDeadline": "Delivery deadline (optional)",
@@ -396,7 +393,6 @@
     "summaryTitle": "In plain words",
     "summaryTarget": "Raise {amount} {unit} for {category} in {region}, paid out in {count, plural, one {# tranche} other {# tranches}} ({plan}).",
     "summaryCustodyOnChain": "Donations are held in an on-chain vault and released tranche by tranche.",
-    "summaryCustodyOffChain": "Payment provider {custodian} holds the money and must attest every payment in and every payout.",
     "summaryFundingDeadline": "Funding closes at the end of {date} (UTC).",
     "summaryNoFundingDeadline": "Funding has no deadline.",
     "summaryExecutionDeadline": "Delivery must be finished by the end of {date} (UTC); after that, unreleased money is returned.",
@@ -648,26 +644,6 @@
     "fxRef": "FX reference hash",
     "attester": "Attested by"
   },
-  "give": {
-    "title": "Give by card or bank transfer",
-    "sandbox": "Sandbox payment: no real money moves and no card details are ever asked for. The provider settles in the need’s currency; in the sandbox it settles one for one, so the figures below are what the need receives.",
-    "onlyWay": "A payment provider holds this need’s money (Model A), so it cannot receive wallet donations. Card or bank transfer is the way to give.",
-    "closed": "This need is not accepting donations right now.",
-    "amount": "Amount in EUR",
-    "method": "Payment method",
-    "card": "Card",
-    "bank": "Bank transfer (SEPA)",
-    "cardRule": "Card fee: 1.4% + €0.25",
-    "bankRule": "Bank transfer: no fee",
-    "feeEstimate": "Estimated fee",
-    "reachesNeed": "Reaches the need",
-    "capZero": "This need allows no third-party costs, so only fee-free payments can be recorded against it.",
-    "capNote": "Fees are capped by this need’s disclosed limit of {percent}% on third-party costs.",
-    "overCap": "This fee is above the need’s disclosed cap. The provider may not be able to record it: choose a bank transfer or a larger amount.",
-    "submit": "Simulate payment",
-    "submitting": "Processing…",
-    "error": "The payment could not be started: {detail}"
-  },
   "track": {
     "title": "Track a donation",
     "subtitle": "Follow one donation from verification to confirmed impact. No account and no login.",
@@ -770,7 +746,7 @@
     "webhookSecretHint": "Every delivery is signed. Check the {signature} header against the raw request body with this secret before trusting it. Deliveries also carry {headers}."
   },
   "conversion": {
-    "noCosts": "This need allows no intermediary costs, so it cannot take money that has to be converted. Give USDC directly, or by bank transfer.",
+    "noCosts": "This need allows no intermediary costs, so it cannot take money that has to be converted. Give USDC directly.",
     "costCapNote": "Conversion costs count against this need’s disclosed {percent}% cap on intermediary costs; a donation that would exceed it is stopped before you sign.",
     "checking": "Checking…",
     "revertFeeCap": "This conversion would take the need’s intermediary costs above its disclosed cap, so the contract would reject it. Try a smaller amount, or give USDC directly.",
@@ -784,7 +760,7 @@
   },
   "onramp": {
     "title": "Pay by card",
-    "body": "Buy USDC with your card into your own wallet, then donate it with one tap.",
+    "body": "Buy USDC with your card into your own wallet, then give it to this need with one tap. It goes straight into the vault.",
     "sandbox": "Sandbox: no card is charged. Worthless test USDC is minted to your wallet, priced with the EUR/USD feed, minus a simulated 1.5% card fee.",
     "coinbaseNote": "You pay on Coinbase (sign in or create an account) and Coinbase’s fees apply. The USDC is delivered to your own wallet, as Coinbase’s terms require.",
     "closed": "This need is not accepting donations right now.",

@@ -685,3 +685,44 @@ whose loss is never recognised and whose earnings can never be handed on. The te
 unwinds ahead of each tranche rather than relying on the on-demand pull, more than one venue with per-venue
 caps, and an allowlist that expires rather than persists — a vault approved in 2026 is not the same vault in
 2028.
+
+## 20. Every donation goes on chain (cash paths retired)
+
+The platform used to take money three ways: tokens from a wallet or an exchange, a card through the Coinbase
+on-ramp, and card or bank payments taken by a payment provider — which either deposited the net into the vault
+(`donateOnBehalf`) or, for off-chain custody (Model A), held the money itself and attested every movement. The
+third is gone. A card now reaches a need one way only:
+
+```
+donor's card ─► Coinbase Onramp ─► USDC in the donor's own wallet ─► one tap ─► AidVault
+```
+
+**Why not straight into the vault.** Coinbase's terms require the buyer to own the destination address, so the
+on-ramp never pays a vault or a deposit address. The donor's wallet can be a Coinbase Smart Wallet created with a
+passkey — nothing to install, no seed phrase — and the approve and donate are one batched signature. The USDC sits
+in a wallet the donor controls for as long as it takes them to tap, and nowhere else.
+
+**What was removed.** The card/bank panel, `/api/checkout`, the bank-connector service (SEPA webhook, checkout
+sandbox, CSV imports, provider settlements) and its two database tables, the off-chain custody choice and the
+custodian picker in the need form, the payment-provider flows in the demo, and the bank partner and off-chain need
+from the seed. The on-ramp's cost-cap gate went too: it dated from v3, when card USDC was swapped into EURC and
+the swap was a cost the need had to allow. The vaults hold USDC, so card money goes in as it is and costs the need
+nothing; Coinbase's own fee is between the donor and Coinbase, paid before the USDC exists.
+
+**What was deliberately kept.** The contracts are unchanged, so `donateOnBehalf`, refunds by payment reference,
+`NonCustodialLedger` and `FundingRecorded` are still deployed. Nothing in the product calls them, and removing
+them means a redeploy (v7) that wipes the live needs — a separate decision. The indexer still reads every event
+those contracts can emit, and the need page, terms, PDF report and NGO console still render an off-chain need
+correctly, because one exists on v6 (need #3) and a mirror of the chain that hid it would be lying. That need now
+says plainly that its way of giving has been retired.
+
+**Consequences worth knowing.**
+- On mainnet the on-ramp is live with CDP API keys; on testnets Coinbase cannot deliver, so a sandbox mints test
+  USDC. There is no card path at all on a deployment without either.
+- Every donation is now a digital-asset gift for tax purposes, card included: the card buys USDC before anything
+  is given. For a US 501(c)(3) that means Form 8283 above $500, as the receipt already says. For a Singapore IPC
+  it means **nothing given here is deductible** — IRAS allows cash and a short list of assets, not tokens — so the
+  deduction notice no longer appears for one (`OFFERED_CHANNELS` in `taxEligibility.ts`), and the receipt tells
+  a Singapore donor to give to the organisation directly if they want the deduction.
+- A donor who paid by card has a receipt and a wallet like any other donor, so refunds and withdrawals go back to
+  that wallet. There is no refund by payment reference to administer.

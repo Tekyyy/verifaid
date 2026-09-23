@@ -1,12 +1,11 @@
 'use client'
 
-import { CATEGORIES, CUSTODY_MODE, type CustodyMode, categoryHash, needsRegistryAbi } from '@poa/shared'
+import { CATEGORIES, CUSTODY_MODE, categoryHash, needsRegistryAbi } from '@poa/shared'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
-import { type Address, type Hex, isAddress, keccak256, parseEventLogs, stringToHex, zeroAddress } from 'viem'
+import { type Address, type Hex, keccak256, parseEventLogs, stringToHex, zeroAddress } from 'viem'
 import { useReadContract } from 'wagmi'
-import { CustodianPicker } from '@/components/CustodianPicker'
 import { Advanced, DateField, FormError, Panel, SelectField, TextArea, TextField } from '@/components/form'
 import {
   checkPlan,
@@ -78,7 +77,6 @@ export function CreateNeedPanel() {
   const t = useTranslations('ngo')
   const tCommon = useTranslations('common')
   const tErrors = useTranslations('errors')
-  const tCustody = useTranslations('custody')
   const tx = useTx()
   const optIn = useTx()
 
@@ -116,8 +114,6 @@ export function CreateNeedPanel() {
   const [fundingDate, setFundingDate] = useState('')
   const [executionDate, setExecutionDate] = useState('')
   const [dossierHash, setDossierHash] = useState('')
-  const [custodyMode, setCustodyMode] = useState<CustodyMode>('OnChain')
-  const [custodian, setCustodian] = useState('')
   const [customPlan, setCustomPlan] = useState<PlanRow[] | null>(null)
 
   const [serviceError, setServiceError] = useState<string | null>(null)
@@ -136,7 +132,6 @@ export function CreateNeedPanel() {
   if (drift !== 0 && trancheBps.length > 0)
     trancheBps[trancheBps.length - 1] = (trancheBps.at(-1) as number) + drift
 
-  const onChain = custodyMode === 'OnChain'
   const parsedTarget = parseAmount(target)
   const minFundingBps = percentToBps(minFunding, 1, 10_000)
   const costBps = percentToBps(costCap, 0, MAX_COST_BPS)
@@ -201,13 +196,10 @@ export function CreateNeedPanel() {
       return tErrors('invalidTranches')
     }
     if (Math.round(sum * 100) !== 10_000) return tErrors('invalidTranches')
-    if (custodyMode === 'OffChain' && (!isAddress(custodian) || custodian === zeroAddress)) {
-      return t('errorCustodian')
-    }
     if (fundingDeadline === null || executionDeadline === null) return t('errorDate')
     if (fundingDeadline !== 0 && fundingDeadline <= now) return t('errorFundingDeadline')
     // Money escrowed on-chain always has a delivery horizon, so donors always have a way back (expire).
-    if (onChain && executionDeadline === 0) return t('errorExecutionRequired')
+    if (executionDeadline === 0) return t('errorExecutionRequired')
     if (executionDeadline !== 0 && (executionDeadline <= now || executionDeadline <= fundingDeadline)) {
       return t('errorExecutionDeadline')
     }
@@ -217,8 +209,8 @@ export function CreateNeedPanel() {
     if (!/^\d+$/.test(verificationsRequired) || Number(verificationsRequired) < 1) {
       return t('errorVerifications')
     }
-    if (onChain && keepBps !== null && keepBps > MAX_NGO_SHARE_BPS) return t('planNgoCap')
-    if (onChain && planCheck.problem) return t(planCheck.problem)
+    if (keepBps !== null && keepBps > MAX_NGO_SHARE_BPS) return t('planNgoCap')
+    if (planCheck.problem) return t(planCheck.problem)
     return null
   }
 
@@ -241,16 +233,16 @@ export function CreateNeedPanel() {
           metadataURI: metadataUri,
           verificationsRequired: Number(verificationsRequired),
           trancheBps,
-          custodyMode: CUSTODY_MODE.indexOf(custodyMode),
-          custodian: custodyMode === 'OffChain' ? (custodian as Address) : zeroAddress,
+          // The registry still accepts off-chain custody; this app never asks for it. Money lives in the vault.
+          custodyMode: CUSTODY_MODE.indexOf('OnChain'),
+          custodian: zeroAddress,
           fundingDeadline: BigInt(fundingDeadline ?? 0),
           executionDeadline: BigInt(executionDeadline ?? 0),
           minFundingBps: minFundingBps as number,
           thirdPartyCostBps: costBps as number,
           expectedOutcomeHash: outcomeHash,
           costDisclosureHash: disclosureHash,
-          // Off-chain needs are paid by their custodian, so only on-chain needs carry a plan.
-          payees: onChain ? (planCheck.payees ?? []) : [],
+          payees: planCheck.payees ?? [],
         },
       ],
     })
@@ -353,7 +345,7 @@ export function CreateNeedPanel() {
       </div>
 
       {/* ── who gets paid ──────────────────────────────────────────────────── */}
-      {onChain && !customPlan ? (
+      {!customPlan ? (
         <fieldset className="space-y-3 rounded-md border border-slate-200 p-3">
           <legend className="px-1 text-sm font-semibold text-slate-900">{t('planTitle')}</legend>
           <p className="text-xs text-slate-700">{t('planSimpleBody')}</p>
@@ -380,7 +372,7 @@ export function CreateNeedPanel() {
         </fieldset>
       ) : null}
 
-      {onChain && customPlan ? (
+      {customPlan ? (
         <>
           <PaymentPlanEditor
             rows={customPlan.map((row) => ({
@@ -412,7 +404,7 @@ export function CreateNeedPanel() {
 
       {/* ── everything an NGO should not have to decide ────────────────────── */}
       <Advanced title={t('advancedTitle')} hint={t('advancedHint')}>
-        {venueApproved && onChain ? (
+        {venueApproved ? (
           <label className="flex items-start gap-2 rounded-md border border-slate-200 p-3 text-sm">
             <input
               type="checkbox"
@@ -488,34 +480,6 @@ export function CreateNeedPanel() {
           </button>
           <FormError message={serviceError} />
         </div>
-
-        <div>
-          <p className="label">{t('custodyModel')}</p>
-          <div className="mt-1 grid gap-2 sm:grid-cols-2">
-            {CUSTODY_MODE.map((mode) => (
-              <label
-                key={mode}
-                className={`flex cursor-pointer gap-2 rounded-md border p-3 text-sm ${
-                  custodyMode === mode ? 'border-teal-700 bg-teal-50' : 'border-slate-300 bg-white'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="custody-mode"
-                  value={mode}
-                  checked={custodyMode === mode}
-                  onChange={() => setCustodyMode(mode)}
-                />
-                <span>
-                  <span className="block font-semibold">{tCustody(mode)}</span>
-                  <span className="block text-xs text-slate-700">{tCustody(`${mode}Body`)}</span>
-                </span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {!onChain ? <CustodianPicker value={custodian} onChange={setCustodian} /> : null}
       </Advanced>
 
       {/* ── what donors will be shown, in plain words ──────────────────────── */}
@@ -536,12 +500,10 @@ export function CreateNeedPanel() {
             })}
           </li>
           <li>
-            {custodyMode === 'OnChain'
-              ? t('summaryPlan', {
-                  payee: supplier && !customPlan ? shorten(supplier) : t('summaryPlanCustom'),
-                  ngo: bpsPercent(keepBps ?? 0),
-                })
-              : t('summaryCustodyOffChain', { custodian: custodian ? shorten(custodian) : '—' })}
+            {t('summaryPlan', {
+              payee: supplier && !customPlan ? shorten(supplier) : t('summaryPlanCustom'),
+              ngo: bpsPercent(keepBps ?? 0),
+            })}
           </li>
           <li>
             {fundingDay ? t('summaryFundingDeadline', { date: fundingDay }) : t('summaryNoFundingDeadline')}

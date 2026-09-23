@@ -1,9 +1,6 @@
-import type { CustodyMode } from '@poa/shared'
-import type { PaymentMethod } from './fees'
-
 /**
- * Browser-side calls to this app's own route handlers, which validate the input and forward it to the bank
- * connector or the notifier, or act through the relayer and Coinbase. The browser never talks to any of them directly.
+ * Browser-side calls to this app's own route handlers, which validate the input and forward it to the notifier,
+ * or act through the relayer and Coinbase. The browser never talks to any of them directly.
  */
 
 export type AppResult<T> = { ok: true; data: T } | { ok: false; status: number; error: string }
@@ -25,30 +22,6 @@ const call = async <T>(path: string, init: RequestInit): Promise<AppResult<T>> =
     return { ok: false, status: 0, error: error instanceof Error ? error.message : String(error) }
   }
 }
-
-export interface CheckoutSession {
-  checkoutId: string
-  /** Payment reference hash: the donor's tracking reference. */
-  trackingRef: string
-  needId: string
-  method: PaymentMethod
-  currency: 'EUR'
-  gross: string
-  fee: string
-  net: string
-  status: string
-  custodyMode: CustodyMode
-}
-
-export const startCheckout = (
-  input: { needId: string; amount: string; method: PaymentMethod },
-  idempotencyKey: string,
-): Promise<AppResult<CheckoutSession>> =>
-  call<CheckoutSession>('/api/checkout', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'idempotency-key': idempotencyKey },
-    body: JSON.stringify(input),
-  })
 
 export type AlertChannel = 'email' | 'webhook'
 

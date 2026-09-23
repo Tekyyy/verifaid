@@ -13,11 +13,13 @@ import {Script} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
 
 /// @title SeedDemo
-/// @notice Registers the demo NGO, verifiers, payment provider and field agent, enrols the demo beneficiary
-///         commitments and creates three needs that between them show every term a need can carry:
-///         - FOOD: on-chain custody, deadlines, partial execution above 60%, a disclosed 1.5% cost cap;
+/// @notice Registers the demo NGO, verifiers, suppliers and field agent, enrols the demo beneficiary commitments
+///         and creates three needs that between them show every term a need can carry:
+///         - FOOD: deadlines, partial execution above 60%, a disclosed 1.5% cost cap;
 ///         - SHELTER: above the high-value threshold (two verifiers), all or nothing, no intermediary costs;
-///         - CASH: off-chain custody through the payment provider (Model A), with a 2.5% cost cap.
+///         - MEDICAL: two tranches, going ahead at half its target, a 2.5% cost cap.
+///         Every need escrows on chain. No payment provider is registered: money arrives as tokens, and a card
+///         reaches a need only through the Coinbase on-ramp into the donor's own wallet.
 /// @dev Role wallets are derived from DEMO_MNEMONIC (the anvil default when unset) and topped up from the
 ///      deployer on networks where they have no gas. Beneficiary commitments come from
 ///      script/fixtures/demo-identities.json, generated from a public seed.
@@ -40,12 +42,12 @@ contract SeedDemo is Script, DeploymentIO {
         address fieldAgent;
         address verifier1;
         address verifier2;
-        address bankPartner;
         address donor1;
         address donor2;
         address relayer;
         address foodSupplier;
         address shelterSupplier;
+        address medicalSupplier;
     }
 
     function run() external {
@@ -66,7 +68,6 @@ contract SeedDemo is Script, DeploymentIO {
         }
         if (!roles.hasRole(roles.VERIFIER_ROLE(), a.verifier1)) roles.registerVerifier(a.verifier1);
         if (!roles.hasRole(roles.VERIFIER_ROLE(), a.verifier2)) roles.registerVerifier(a.verifier2);
-        if (!roles.hasRole(roles.BANK_PARTNER_ROLE(), a.bankPartner)) roles.registerBankPartner(a.bankPartner);
         if (!roles.isActiveSupplier(a.foodSupplier)) {
             roles.registerSupplier(
                 a.foodSupplier, keccak256("demo-supplier-food-wholesaler-ES-B12345678"), "ipfs://demo-supplier-food"
@@ -75,6 +76,11 @@ contract SeedDemo is Script, DeploymentIO {
         if (!roles.isActiveSupplier(a.shelterSupplier)) {
             roles.registerSupplier(
                 a.shelterSupplier, keccak256("demo-supplier-shelter-kits-ES-B87654321"), "ipfs://demo-supplier-shelter"
+            );
+        }
+        if (!roles.isActiveSupplier(a.medicalSupplier)) {
+            roles.registerSupplier(
+                a.medicalSupplier, keccak256("demo-supplier-medical-kits-ES-B11223344"), "ipfs://demo-supplier-medical"
             );
         }
         vm.stopBroadcast();
@@ -88,7 +94,7 @@ contract SeedDemo is Script, DeploymentIO {
         );
         groups.addMembers(programId, _demoCommitments());
 
-        // ── 3. three needs covering both custody models and every funding rule ──
+        // ── 3. three needs covering every funding rule, all escrowed on chain ──
         INeedsRegistry.CreateNeedParams memory food =
             _need(programId, "FOOD", 5000e6, 1, _bps(3000, 4000, 3000), INeedsRegistry.CustodyMode.OnChain, 6000, 150);
         food.payees = _plan(a.foodSupplier, "Mercados del Centro SL: food kits", 3, 1000);
@@ -105,10 +111,10 @@ contract SeedDemo is Script, DeploymentIO {
         );
         shelter.payees = _plan(a.shelterSupplier, "Refugio Kits SA: shelter kits", 2, 0);
         uint256 shelterNeed = registry.createNeed(shelter);
-        INeedsRegistry.CreateNeedParams memory cash =
-            _need(programId, "CASH", 3000e6, 1, _bps(4000, 6000, 0), INeedsRegistry.CustodyMode.OffChain, 5000, 250);
-        cash.custodian = a.bankPartner; // the payment provider that will hold the money
-        uint256 cashNeed = registry.createNeed(cash);
+        INeedsRegistry.CreateNeedParams memory medical =
+            _need(programId, "MEDICAL", 3000e6, 1, _bps(4000, 6000, 0), INeedsRegistry.CustodyMode.OnChain, 5000, 250);
+        medical.payees = _plan(a.medicalSupplier, "Farmacia Central SL: medical kits", 2, 500);
+        uint256 medicalNeed = registry.createNeed(medical);
         vm.stopBroadcast();
 
         _mintDemoTokens(token, a);
@@ -121,13 +127,12 @@ contract SeedDemo is Script, DeploymentIO {
         console2.log("  payout Safe    ", a.ngoPayout);
         console2.log("  field agent    ", a.fieldAgent);
         console2.log("  verifiers      ", a.verifier1, a.verifier2);
-        console2.log("  bank partner   ", a.bankPartner);
-        console2.log("  suppliers      ", a.foodSupplier, a.shelterSupplier);
+        console2.log("  suppliers      ", a.foodSupplier, a.shelterSupplier, a.medicalSupplier);
         console2.log("  donors         ", a.donor1, a.donor2);
         console2.log("  program        ", programId);
         console2.log("  need FOOD      ", foodNeed, "target 5000 (1 verification)");
         console2.log("  need SHELTER   ", shelterNeed, "above threshold (2 verifications), all or nothing");
-        console2.log("  need CASH      ", cashNeed, "target 3000, off-chain custody (Model A)");
+        console2.log("  need MEDICAL   ", medicalNeed, "target 3000, goes ahead at half");
     }
 
     // ─── helpers ───────────────────────────────────────────────────────────────
@@ -147,20 +152,20 @@ contract SeedDemo is Script, DeploymentIO {
         a.fieldAgent = vm.addr(a.fieldAgentKey);
         a.verifier1 = vm.addr(vm.deriveKey(mnemonic, 4));
         a.verifier2 = vm.addr(vm.deriveKey(mnemonic, 5));
-        a.bankPartner = vm.addr(vm.deriveKey(mnemonic, 6));
+        // Index 6 was the payment provider; it is left unused so every other role keeps its address.
         a.donor1 = vm.addr(vm.deriveKey(mnemonic, 7));
         a.donor2 = vm.addr(vm.deriveKey(mnemonic, 8));
         a.relayer = vm.addr(vm.deriveKey(mnemonic, 9));
         // Suppliers never send a transaction in the demo (the vaults pay them), so they need no gas.
         a.foodSupplier = vm.addr(vm.deriveKey(mnemonic, 10));
         a.shelterSupplier = vm.addr(vm.deriveKey(mnemonic, 11));
+        a.medicalSupplier = vm.addr(vm.deriveKey(mnemonic, 12));
     }
 
     /// @dev Tops up the role wallets that will have to send their own transactions during the demo — including
     ///      the relayer, which submits every beneficiary confirmation so their wallets never appear on-chain.
     function _fundGas(Actors memory a) internal {
-        address[8] memory needsGas =
-            [a.ngo, a.fieldAgent, a.verifier1, a.verifier2, a.bankPartner, a.donor1, a.donor2, a.relayer];
+        address[7] memory needsGas = [a.ngo, a.fieldAgent, a.verifier1, a.verifier2, a.donor1, a.donor2, a.relayer];
         uint256 budget = a.admin.balance;
         vm.startBroadcast(a.adminKey);
         for (uint256 i; i < needsGas.length; ++i) {
@@ -183,7 +188,6 @@ contract SeedDemo is Script, DeploymentIO {
         vm.startBroadcast(a.adminKey);
         try MockEURC(token).mint(a.donor1, 50_000e6) {
             MockEURC(token).mint(a.donor2, 50_000e6);
-            MockEURC(token).mint(a.bankPartner, 50_000e6);
             console2.log("  minted the vault currency to the donors and the bank partner");
         } catch {
             console2.log("  token is not mintable, fund the donors from a faucet:", token);

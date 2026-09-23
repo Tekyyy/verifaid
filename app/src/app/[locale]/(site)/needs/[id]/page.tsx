@@ -9,7 +9,6 @@ import { DonatePanel } from '@/components/DonatePanel'
 import { DonationList } from '@/components/DonationList'
 import { ExpireButton } from '@/components/ExpireButton'
 import { ExplorerLink } from '@/components/ExplorerLink'
-import { GiveFiatPanel } from '@/components/GiveFiatPanel'
 import { IdleCapitalNote } from '@/components/IdleCapitalNote'
 import { NeedBadgeRow } from '@/components/NeedBadgeRow'
 import { NeedPresentation } from '@/components/NeedPresentation'
@@ -255,7 +254,9 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
             />
           ) : null}
 
-          {/* v3 deployments: card via an on-ramp into the donor's own wallet, and deposit addresses for exchanges. */}
+          {/* Every way in ends on chain. A card buys USDC through the Coinbase on-ramp into the donor's own wallet,
+              which then donates it; an exchange withdrawal lands in a deposit address that can only donate or
+              refund. No payment provider holds anyone's money on the way. */}
           {data.custodyMode === 'OnChain' && conversionsEnabled ? (
             <>
               <CardOnrampPanel
@@ -274,13 +275,7 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
             </>
           ) : null}
 
-          <GiveFiatPanel
-            needId={data.id}
-            custodyMode={data.custodyMode}
-            open={fundingOpen}
-            thirdPartyCostBps={data.thirdPartyCostBps}
-            taxStatus={data.taxStatus}
-          />
+          {data.custodyMode === 'OffChain' ? <Notice tone="info" title={t('offChainRetired')} /> : null}
 
           <IdleCapitalNote need={data} />
 

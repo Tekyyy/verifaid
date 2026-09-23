@@ -22,6 +22,18 @@ export type DonationChannel = 'digital' | 'cash'
 
 export const TAX_DESIGNATIONS: Record<TaxRegime, string> = { US_501C3: 'US:501c3', SG_IPC: 'SG:IPC' }
 
+/**
+ * The ways this platform takes money. Tokens only: a card goes through the Coinbase on-ramp, which buys USDC
+ * into the donor's own wallet before anything is given, so even a card payment arrives as a digital asset. The
+ * model above still knows about cash because the law does, and because a payment reference already on chain
+ * is still a cash gift; nothing new can be given that way.
+ */
+export const OFFERED_CHANNELS: readonly DonationChannel[] = ['digital']
+
+/** True when some way this platform takes money makes a gift to this organisation deductible. */
+export const deductibleHere = (status: OrgTaxStatusView | null | undefined): boolean =>
+  OFFERED_CHANNELS.some((channel) => isEligible(status, channel))
+
 const REGIME_CHANNELS: Record<TaxRegime, readonly DonationChannel[]> = {
   US_501C3: ['digital', 'cash'],
   SG_IPC: ['cash'],

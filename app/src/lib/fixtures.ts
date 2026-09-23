@@ -51,6 +51,8 @@ const NGO = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8' as Address
 const FIELD_AGENT = '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC' as Address
 const VERIFIER = '0x90F79bf6EB2c4f870365E785982E1f101E93b906' as Address
 const DONOR = '0x976EA74026E726554dB657fA54763abd0C3a0aa9' as Address
+/** A donor who paid by card: the Coinbase on-ramp bought USDC into this wallet, which then gave it. */
+const CARD_DONOR = '0x14dC79964da2C08b23698B3D3cc7Ca32193d9956' as Address
 const PROVIDER = '0x14dC79964da2C08b23698B3D3cc7Ca32193d9955' as Address
 /** The NGO's payout Safe: where its own disclosed share of a tranche goes. */
 const NGO_PAYOUT = '0xBcd4042DE499D14e55001CcbB24a551F3b954096' as Address
@@ -79,6 +81,11 @@ const REFUND_SIGNER = getAddress('0x1f2e3d4c5b6a79880a1b2c3d4e5f60718293a4b5')
 const EURC: Address =
   (hasDeployment(network) ? getDeployment(network).external.EURC : undefined) ??
   getAddress('0x808456652fdb597867f38412077a9182bf77359f')
+
+/** USDC as the bundled deployment knows it: what the card on-ramp delivers, and what the vaults hold. */
+const USDC: Address =
+  (hasDeployment(network) ? getDeployment(network).external.USDC : undefined) ??
+  getAddress('0x036cbd53842c5426634e7929541ec2318f3dcf7e')
 
 interface Terms {
   custodyMode?: NeedSummary['custodyMode']
@@ -389,17 +396,24 @@ const donation = (
 
 const DONATIONS_1: DonationView[] = [
   donation({ id: '1', needId: '1', kind: 'DIRECT', donor: DONOR, amount: '9000000000', receiptId: '1' }),
+  // Paid by card: the on-ramp delivered USDC to the donor's wallet, which gave it as it was — nothing to swap.
   donation({
     id: '2',
     needId: '1',
-    kind: 'FIAT',
-    donorRefHash: uid(7),
-    paymentRefHash: uid(8),
+    kind: 'CONVERTED',
+    donor: CARD_DONOR,
     amount: '3000000000',
-    gross: '3000000000',
-    fee: '0',
-    currency: 'EUR',
-    attestationUID: uid(9),
+    receiptId: '2',
+    conversion: {
+      tokenIn: USDC,
+      tokenInSymbol: 'USDC',
+      amountIn: '3000000000',
+      amountOut: '3000000000',
+      fairValue: '3000000000',
+      conversionFee: '0',
+      via: CARD_DONOR,
+      viaDepositAddress: false,
+    },
     timestamp: 1_757_020_000,
   }),
 ]
@@ -686,7 +700,25 @@ const TIMELINES: Record<string, TimelineEvent[]> = {
     ),
     event('1', 2, 'NeedVerified', { verifier: VERIFIER, approved: true }, 161, 1_757_004_000, uid(30)),
     event('1', 3, 'Donated', { donor: DONOR, amount: '9000000000', receiptId: '1' }, 178, 1_757_010_000),
-    event('1', 4, 'DonatedOnBehalf', { amount: '3000000000', kind: 'FIAT' }, 180, 1_757_020_000, uid(9)),
+    event(
+      '1',
+      4,
+      'DonatedConverted',
+      {
+        donor: CARD_DONOR,
+        depositAddress: null,
+        tokenIn: USDC,
+        tokenInSymbol: 'USDC',
+        amountIn: '3000000000',
+        converted: '3000000000',
+        fairValue: '3000000000',
+        amount: '3000000000',
+        conversionFee: '0',
+        receiptId: '2',
+      },
+      180,
+      1_757_020_000,
+    ),
     event('1', 5, 'FundingClosed', { totalDonated: '12000000000' }, 184, 1_757_030_000),
     event('1', 6, 'TrancheReleased', { index: 0, amount: '3600000000', to: NGO }, 190, 1_757_100_000),
     event(

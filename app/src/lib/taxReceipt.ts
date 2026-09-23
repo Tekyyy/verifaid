@@ -67,7 +67,7 @@ export const assessmentSentence = (assessment: DeductionAssessment, unit: string
     case 'channel':
       return (
         'Not deductible in Singapore: a donation of digital tokens is not a qualifying donation type under ' +
-        'IRAS rules. Only money given by card or bank transfer counts.'
+        'IRAS rules, and this platform takes no cash: a card payment buys USDC first, which is a digital token too.'
       )
     case 'revocable':
       return (
@@ -321,8 +321,9 @@ const renderSingapore = (
     report.paragraph(
       'IRAS grants a deduction for specific donation types: cash (including card, bank transfer and ' +
         'PayNow), shares listed in Singapore, and a few others. Digital payment tokens are not among them, so ' +
-        'this donation is a record of giving, not a deductible donation. To give deductibly to this ' +
-        'organisation, give by card or bank transfer.',
+        'this donation is a record of giving, not a deductible donation. Paying by card on this platform does ' +
+        'not change that: the card buys USDC before anything is given. To give deductibly, give to the ' +
+        'organisation directly, outside this platform.',
     )
     return
   }

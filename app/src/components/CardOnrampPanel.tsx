@@ -65,8 +65,10 @@ const MAX_EUR = 5_000n * 1_000_000n
  * install) receives the USDC and then approves and donates it through the forwarder factory in one batch,
  * gas-sponsored when a paymaster is configured.
  *
- * On test networks (`mock` mode) Coinbase cannot deliver, so a sandbox route mints test USDC instead. The conversion
- * cost counts against the need's disclosed cost cap, so a need that allows none does not offer this at all.
+ * On test networks (`mock` mode) Coinbase cannot deliver, so a sandbox route mints test USDC instead. This is the
+ * only way a card reaches a need: there is no payment provider holding money on anyone's behalf. On a USD
+ * deployment the USDC goes into the vault as it is, so it costs the need nothing and any need can take it; only
+ * where the vault holds another currency is the swap a cost the need must have disclosed.
  */
 export function CardOnrampPanel({
   needId,
@@ -260,7 +262,7 @@ export function CardOnrampPanel({
         <p className="mt-2 text-xs text-slate-600">{t('coinbaseNote')}</p>
       )}
 
-      {thirdPartyCostBps === 0 ? (
+      {!passThrough && thirdPartyCostBps === 0 ? (
         <p className="mt-3 text-sm text-slate-700">{tConversion('noCosts')}</p>
       ) : !open ? (
         <p className="mt-3 text-sm font-medium text-slate-700">{t('closed')}</p>

@@ -17,11 +17,9 @@ import {
   NEED_STATUS_VALUE,
   needStatusName,
   needsRegistryAbi,
-  nonCustodialLedgerAbi,
   proofOfAidResolverAbi,
   regionCode,
   roleRegistryAbi,
-  saltedRefHash,
   seal,
   semaphoreAbi,
   tokenSymbolOf,
@@ -50,20 +48,18 @@ import { attestation, fail, heading, info, note, step, tx } from './log.js'
  * can follow a need from "a verifier said this need is real" to "beneficiaries confirmed they received the aid,
  * and here is the money that moved because of it".
  *
- * Four scenarios, one per way a need can go or be paid for:
- *   1. On-chain custody (the proposal's Model B): stablecoin escrow, a wallet donor and a card donor, and every
- *      tranche paid straight from the vault to the suppliers of the need's payment plan.
- *   2. Off-chain custody (Model A): a payment provider holds the money; its attestations count the funding and
- *      release every tranche. No token touches the ledger.
- *   3. A funding deadline passing below the NGO's minimum: the need expires and the donor is refunded.
- *   4. Conversions (v3): USDC bought by card lands in the donor's own wallet and is donated as it is, because the
- *      vaults hold USDC; euros and ETH are swapped into it under the Chainlink bound; and an exchange withdrawal
- *      reaches a deposit address that can only ever donate to its need or refund.
- *
- *   5. Idle capital: a programme whose deliveries run for months lets the committed money wait in an ERC-4626
+ * Every scenario runs entirely on chain. Money only ever enters as tokens: a card buys USDC through the Coinbase
+ * on-ramp into the donor's own wallet, which then donates it; there is no payment provider holding anyone's money.
+ *   1. Escrow: a wallet donor and a card donor, and every tranche paid straight from the vault to the suppliers of
+ *      the need's payment plan.
+ *   2. A funding deadline passing below the NGO's minimum: the need expires and the donor is refunded.
+ *   3. Conversions: USDC bought by card is donated as it is, because the vaults hold USDC; euros and ETH are
+ *      swapped into it under the Chainlink bound; and an exchange withdrawal reaches a deposit address that can
+ *      only ever donate to its need or refund.
+ *   4. Idle capital: a programme whose deliveries run for months lets the committed money wait in an ERC-4626
  *      venue, earns on it, pays every supplier out of it, and hands the earnings to the NGO at the end.
  *
- *   pnpm demo:run anvil            all five
+ *   pnpm demo:run anvil            all four
  *   pnpm demo:run base-sepolia onchain idle
  */
 
@@ -71,8 +67,8 @@ const EXPECTED_RECIPIENTS = 10
 const REGION = regionCode('ES-CM')
 const BPS = 10_000n
 
-type Scenario = 'onchain' | 'offchain' | 'expiry' | 'conversion' | 'idle'
-const SCENARIOS: Scenario[] = ['onchain', 'offchain', 'expiry', 'conversion', 'idle']
+type Scenario = 'onchain' | 'expiry' | 'conversion' | 'idle'
+const SCENARIOS: Scenario[] = ['onchain', 'expiry', 'conversion', 'idle']
 
 interface NeedSpec {
   label: string
@@ -114,7 +110,6 @@ const main = async (): Promise<void> => {
 
   const links: string[] = []
   if (selected.includes('onchain')) links.push(...(await onChainScenario(ctx, programId, proofs)))
-  if (selected.includes('offchain')) links.push(...(await offChainScenario(ctx, programId, proofs)))
   if (selected.includes('expiry')) links.push(...(await expiryScenario(ctx, programId)))
   if (selected.includes('conversion')) {
     if (contracts.DonationForwarderFactory && contracts.ConversionRouter && external.USDC) {
@@ -156,10 +151,10 @@ const onChainScenario = async (ctx: DemoContext, programId: bigint, proofs: Proo
   const needId = await createNeed(ctx, programId, spec, zeroAddress)
   const vault = await verifyNeed(ctx, needId)
 
-  step('Donations: a wallet donor, and a card donor through the payment provider')
+  step('Donations: a wallet donor, and a card donor through the Coinbase on-ramp')
   const direct = 3_600_000_000n
   const receiptId = await donateDirect(ctx, vault, direct)
-  const card = await providerDeposit(ctx, needId, vault, spec.target - direct, 'CARD')
+  const card = await donateByCard(ctx, 'donor2', needId, spec.target - direct)
   await expectStatus(ctx, needId, 'Funded')
 
   await releaseOnChain(ctx, vault, 0)
@@ -309,50 +304,6 @@ const idleScenario = async (ctx: DemoContext, programId: bigint, proofs: Proofs)
   return [`need ${needId} (idle capital): ${ctx.dashboardUrl}/en/needs/${needId}`]
 }
 
-// ─── scenario 2: off-chain custody (Model A) ──────────────────────────────────
-
-const offChainScenario = async (ctx: DemoContext, programId: bigint, proofs: Proofs): Promise<string[]> => {
-  heading('2 · Off-chain custody: the payment provider holds the money, the chain holds the rules')
-  const spec: NeedSpec = {
-    label: 'emergency cash transfers',
-    category: 'CASH',
-    target: 3_000_000_000n,
-    trancheBps: [4000, 6000],
-    custodyMode: 'OffChain',
-    minFundingBps: 5000,
-    thirdPartyCostBps: 250,
-    fundingWindowSeconds: 30 * 86_400,
-    executionWindowSeconds: 90 * 86_400,
-    outcome:
-      '60 households receive two cash transfers through the provider; below 50% funding the need expires',
-  }
-  const provider = ctx.accounts.bankPartner.address
-  const needId = await createNeed(ctx, programId, spec, provider)
-  const ledger = await verifyNeed(ctx, needId)
-  note('no AidVault: the ledger records funding and releases, and never holds a token')
-
-  step('Payments received by the provider, recorded on-chain by attestation')
-  const cardRef = await providerRecord(ctx, needId, ledger, 1_000_000_000n, 150n, 'CARD')
-  await providerRecord(ctx, needId, ledger, 2_000_000_000n, 0n, 'BANK')
-  await expectStatus(ctx, needId, 'Funded')
-
-  step('The provider pays out the pre-financing tranche; its Settlement attestation releases it on-chain')
-  await settle(ctx, 'bankPartner', needId, ledger, 0, 50n)
-  await expectStatus(ctx, needId, 'InDelivery')
-
-  const signOff = await runDelivery(ctx, needId, 1, proofs)
-  step('The verified delivery unlocks the final tranche; the provider settles it')
-  await settle(ctx, 'bankPartner', needId, ledger, 1, 50n)
-  await expectStatus(ctx, needId, 'Completed')
-
-  await publishImpactReport(ctx, needId, ledger, signOff, 60)
-  return [
-    `need ${needId} (off-chain): ${ctx.dashboardUrl}/en/needs/${needId}`,
-    `  card donor tracking:      ${ctx.dashboardUrl}/en/track/${cardRef}`,
-    `  embeddable widget:        ${ctx.dashboardUrl}/en/embed/track/${cardRef}`,
-  ]
-}
-
 // ─── scenario 3: expiry below the minimum ─────────────────────────────────────
 
 const expiryScenario = async (ctx: DemoContext, programId: bigint): Promise<string[]> => {
@@ -441,29 +392,9 @@ const conversionScenario = async (ctx: DemoContext, programId: bigint): Promise<
       args: [tokenIn, amountIn, token],
     }) as Promise<bigint>
 
-  step("Card: Coinbase Onramp delivers USDC to the donor's own wallet")
   const bought = 2_000_000_000n
-  note('Coinbase Onramp does not deliver on test networks; the mock on-ramp mints test USDC instead')
-  await mintIfPossible(ctx, 'donor1', bought, usdc)
-  info('USDC in the wallet', formatAmount(bought))
-  note('the donor owns that wallet, as Coinbase requires: no platform account ever holds the money')
-
-  step('One tap donates it, and the vaults hold USDC, so there is nothing to swap')
-  info('fair value', `${formatAmount(await quote(usdc, bought))} units: the same money, no pool, no price`)
-  await send(ctx, 'donor1', {
-    address: usdc,
-    abi: mockEURCAbi as Abi,
-    functionName: 'approve',
-    args: [factory, bought],
-  })
-  const card = await send(ctx, 'donor1', {
-    address: factory,
-    abi: donationForwarderFactoryAbi as Abi,
-    functionName: 'donate',
-    args: [needId, usdc, bought],
-  })
-  const receiptId = logConversion(card.receipt, 'DonatedWithConversion')
-  tx(ctx.network, 'tx', card.hash)
+  info('fair value of card USDC', `${formatAmount(await quote(usdc, bought))} units: the same money, no pool`)
+  const receiptId = await donateByCard(ctx, 'donor1', needId, bought)
 
   if (convertible) {
     step('A wallet gives euros: the factory swaps EURC on Uniswap v3, bounded by Chainlink')
@@ -625,13 +556,6 @@ const preflight = async (ctx: DemoContext): Promise<void> => {
       'verifier 2 independent',
       (await read('isIndependent', [ctx.accounts.verifier2.address, ngo])) as boolean,
     ],
-    [
-      'payment provider registered',
-      (await read('hasRole', [
-        keccak256(stringToHex('BANK_PARTNER_ROLE')),
-        ctx.accounts.bankPartner.address,
-      ])) as boolean,
-    ],
   ]
   for (const [label, ok] of checks) {
     info(label, ok ? 'yes' : 'NO')
@@ -783,102 +707,41 @@ const donateDirect = async (ctx: DemoContext, vault: Address, amount: bigint): P
   return receiptId
 }
 
-/** Provider's per-payment references, salted so the chain carries a commitment only the provider can open. */
-const paymentRefs = (kind: string) => {
-  const salt = toSalt(process.env.BANK_REF_SALT)
-  const endToEndId = `${kind}-DEMO-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
-  return {
-    endToEndId,
-    paymentRefHash: saltedRefHash(salt, endToEndId),
-    donorRefHash: saltedRefHash(salt, `donor-${kind.toLowerCase()}-${Date.now()}`),
-  }
-}
-
-/** On-chain custody: the provider converts a card payment, deposits it, then attests gross, fee and net. */
-const providerDeposit = async (
+/**
+ * A card donation, the only kind there is: the Coinbase on-ramp buys USDC into the donor's own wallet, and one tap
+ * donates it through the forwarder factory. Coinbase does not deliver on test networks, so the mock on-ramp mints
+ * test USDC instead; on mainnet the purchase is Coinbase's hosted checkout and everything after it is identical.
+ */
+const donateByCard = async (
   ctx: DemoContext,
+  role: 'donor1' | 'donor2',
   needId: bigint,
-  vault: Address,
-  net: bigint,
-  kind: 'CARD' | 'BANK',
-): Promise<Hex> => {
-  const fee = (net * 100n) / BPS // 1% processing fee, within the need's disclosed cap
-  const refs = paymentRefs(kind)
-  await mintIfPossible(ctx, 'bankPartner', net)
-  await send(ctx, 'bankPartner', {
-    address: ctx.deployment.external.Token,
+  amount: bigint,
+): Promise<bigint> => {
+  const usdc = ctx.deployment.external.USDC as Address
+  const factory = ctx.deployment.contracts.DonationForwarderFactory as Address
+  step("Card: the Coinbase on-ramp delivers USDC to the donor's own wallet")
+  note('Coinbase does not deliver on test networks; the mock on-ramp mints test USDC instead')
+  await mintIfPossible(ctx, role, amount, usdc)
+  info('USDC in the wallet', formatAmount(amount))
+  note('the donor owns that wallet, as Coinbase requires: no platform account ever holds the money')
+
+  step('One tap gives it to the need, and the vaults hold USDC, so there is nothing to swap')
+  await send(ctx, role, {
+    address: usdc,
     abi: mockEURCAbi as Abi,
     functionName: 'approve',
-    args: [vault, net],
+    args: [factory, amount],
   })
-  const deposit = await send(ctx, 'bankPartner', {
-    address: vault,
-    abi: aidVaultAbi as Abi,
-    functionName: 'donateOnBehalf',
-    args: [net, refs.donorRefHash, refs.paymentRefHash],
+  const card = await send(ctx, role, {
+    address: factory,
+    abi: donationForwarderFactoryAbi as Abi,
+    functionName: 'donate',
+    args: [needId, usdc, amount],
   })
-  info(
-    `${kind.toLowerCase()} donation`,
-    `donor paid ${formatAmount(net + fee)}, fee ${formatAmount(fee)}, ${formatAmount(net)} deposited`,
-  )
-  tx(ctx.network, 'deposit', deposit.hash)
-
-  const recorded = await attest(ctx, 'bankPartner', {
-    schema: ctx.deployment.schemas.FundingRecorded,
-    recipient: vault,
-    revocable: false,
-    data: encodeSchemaData('FundingRecorded', [
-      needId,
-      net + fee,
-      fee,
-      net,
-      regionCode('EUR'),
-      refs.paymentRefHash,
-      refs.donorRefHash,
-    ]),
-  })
-  attestation(ctx.network, 'FundingRecorded', recorded.uid)
-  note('only salted hashes of the payment and donor references reach the chain')
-  return refs.paymentRefHash
-}
-
-/** Off-chain custody: the custodian attests a payment it holds; that attestation is the funding record. */
-const providerRecord = async (
-  ctx: DemoContext,
-  needId: bigint,
-  ledger: Address,
-  net: bigint,
-  feeBps: bigint,
-  kind: 'CARD' | 'BANK',
-): Promise<Hex> => {
-  const fee = (net * feeBps) / BPS
-  const refs = paymentRefs(kind)
-  const recorded = await attest(ctx, 'bankPartner', {
-    schema: ctx.deployment.schemas.FundingRecorded,
-    recipient: ledger,
-    revocable: false,
-    data: encodeSchemaData('FundingRecorded', [
-      needId,
-      net + fee,
-      fee,
-      net,
-      regionCode('EUR'),
-      refs.paymentRefHash,
-      refs.donorRefHash,
-    ]),
-  })
-  const raised = (await ctx.publicClient.readContract({
-    address: ledger,
-    abi: nonCustodialLedgerAbi,
-    functionName: 'totalDonated',
-  })) as bigint
-  info(
-    `${kind.toLowerCase()} payment held`,
-    `${formatAmount(net)} net (fee ${formatAmount(fee)}); raised ${formatAmount(raised)}`,
-  )
-  attestation(ctx.network, 'FundingRecorded', recorded.uid)
-  tx(ctx.network, 'tx', recorded.hash)
-  return refs.paymentRefHash
+  const receiptId = logConversion(card.receipt, 'DonatedWithConversion')
+  tx(ctx.network, 'tx', card.hash)
+  return receiptId
 }
 
 /**
@@ -923,44 +786,6 @@ const releaseOnChain = async (ctx: DemoContext, vault: Address, index: number): 
   }
   note("the NGO never holds the suppliers' money: the vault pays them directly")
   tx(ctx.network, 'tx', hash)
-}
-
-/**
- * A Settlement attestation for one tranche: gross is the whole tranche, fee what intermediaries kept on the way to
- * suppliers. On-chain custody the NGO reports it after the release; off-chain custody the custodian's report is
- * what releases the tranche.
- */
-const settle = async (
-  ctx: DemoContext,
-  role: 'ngo' | 'bankPartner',
-  needId: bigint,
-  ledger: Address,
-  index: number,
-  feeBps: bigint,
-): Promise<void> => {
-  const tranches = (await ctx.publicClient.readContract({
-    address: ledger,
-    abi: aidVaultAbi,
-    functionName: 'getTranches',
-  })) as readonly { amount: bigint }[]
-  const gross = tranches[index]?.amount ?? fail(`tranche ${index} not found`)
-  const fee = (gross * feeBps) / BPS
-  const report = await attest(ctx, role, {
-    schema: ctx.deployment.schemas.Settlement,
-    recipient: ledger,
-    revocable: false,
-    data: encodeSchemaData('Settlement', [
-      needId,
-      BigInt(index),
-      gross,
-      fee,
-      gross - fee,
-      keccak256(stringToHex(`supplier-invoice-${needId}-${index}`)),
-      keccak256(stringToHex('ECB-EUR-reference-rate')),
-    ]),
-  })
-  info(`tranche ${index} settled`, `${formatAmount(gross - fee)} to suppliers, ${formatAmount(fee)} in fees`)
-  attestation(ctx.network, 'Settlement', report.uid)
 }
 
 const runDelivery = async (
@@ -1113,19 +938,9 @@ const waitUntil = async (ctx: DemoContext, timestamp: bigint, label: string): Pr
   while ((await chainTime(ctx)) < timestamp) await new Promise((resolve) => setTimeout(resolve, 3000))
 }
 
-/**
- * The partner's reference salt: a 32-byte hex value is used as is, anything else (including an env var that is
- * present but empty, which is not the same as unset) is hashed into one.
- */
-const toSalt = (value: string | undefined): Hex => {
-  const trimmed = value?.trim()
-  if (trimmed && /^0x[0-9a-fA-F]{64}$/.test(trimmed)) return trimmed as Hex
-  return keccak256(stringToHex(trimmed || 'demo-bank-salt'))
-}
-
 const mintIfPossible = async (
   ctx: DemoContext,
-  role: 'donor1' | 'donor2' | 'bankPartner',
+  role: 'donor1' | 'donor2',
   amount: bigint,
   token: Address = ctx.deployment.external.Token,
 ): Promise<void> => {

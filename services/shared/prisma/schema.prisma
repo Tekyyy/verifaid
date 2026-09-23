@@ -83,58 +83,6 @@ model KeyGrant {
   @@index([granteeAddress])
 }
 
-/// A fiat donation the payment provider received: converted and deposited on-chain for on-chain custody, or held
-/// and attested for off-chain custody. Idempotency key: the ISO 20022 end-to-end reference (or checkout id).
-model FiatTransfer {
-  endToEndId     String   @id
-  needId         String
-  /// The need's ledger: an AidVault (OnChain) or a NonCustodialLedger (OffChain).
-  vault          String
-  amountBaseUnits String
-  amountEurCents  Int
-  /// Intermediary fee kept by the provider, in token base units (gross = amount + fee).
-  feeBaseUnits   String   @default("0")
-  /// ISO 4217 currency the donor paid in.
-  currency       String   @default("EUR")
-  /// SEPA (bank webhook) | CARD / BANK (checkout) | CSV (bulk import).
-  source         String   @default("SEPA")
-  /// OnChain | OffChain, copied from the need when the transfer was received.
-  custodyMode    String   @default("OnChain")
-  /// keccak256(abi.encode(partnerSalt, endToEndId)) — the raw reference never leaves this service.
-  paymentRefHash String   @unique
-  /// keccak256(abi.encode(partnerSalt, donorReference)).
-  donorRefHash   String
-  status         String   @default("RECEIVED")
-  donateTxHash   String?
-  attestTxHash   String?
-  attestationUID String?
-  error          String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  @@index([needId])
-}
-
-/// A payout the provider made for an off-chain need's tranche, reported on-chain as a Settlement attestation.
-model ProviderSettlement {
-  id               String   @id @default(uuid())
-  needId           String
-  trancheIndex     Int
-  grossBaseUnits   String
-  feeBaseUnits     String
-  /// keccak256(abi.encode(partnerSalt, supplierReference)).
-  supplierRefHash  String
-  fxRef            String
-  status           String   @default("RECEIVED")
-  attestTxHash     String?
-  attestationUID   String?
-  error            String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  @@unique([needId, trancheIndex])
-}
-
 /// A donation alert subscription keyed by a tracking reference (or a whole need). There is no account: the
 /// subscriber holds an unsubscribe token, stored only as a hash. An email address is envelope-encrypted and its
 /// data key destroyed on unsubscribe, so the address is unrecoverable afterwards (crypto-shredding).

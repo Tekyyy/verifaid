@@ -24,7 +24,7 @@ pnpm chain            # terminal 1: anvil
 pnpm deploy:local     # terminal 2: deploy + register schemas + seed demo data
 pnpm --filter @poa/indexer dev    # terminal 3: indexer on :42069
 pnpm --filter @poa/app dev        # terminal 4: dashboard on :3000
-pnpm services:up                  # optional: evidence, pii-vault, bank-connector (card checkout), notifier (alerts)
+pnpm services:up                  # optional: evidence, pii-vault, notifier (alerts)
 ```
 
 ### Base Sepolia (for a public, verifiable demo)

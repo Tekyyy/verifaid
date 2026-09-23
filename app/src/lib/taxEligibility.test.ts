@@ -4,6 +4,7 @@ import type { DonationTrack, OrgTaxStatusView } from '@poa/shared'
 import {
   assessDonation,
   channelOfRef,
+  deductibleHere,
   isEligible,
   parseJurisdiction,
   regimeOf,
@@ -148,5 +149,16 @@ describe('assessDonation', () => {
     if (result.kind !== 'deductible') return
     assert.equal(result.amount, 30_000_000n)
     assert.equal(result.partial, true)
+  })
+})
+
+describe('deductibleHere', () => {
+  it('is true only where a way of giving on this platform qualifies', () => {
+    // A 501(c)(3) takes tokens, and tokens are all this platform takes.
+    assert.equal(deductibleHere(status('US:501c3')), true)
+    // An IPC takes cash alone; a card here buys USDC first, so nothing given here is deductible.
+    assert.equal(deductibleHere(status('SG:IPC')), false)
+    assert.equal(deductibleHere(status('US:501c3', false)), false)
+    assert.equal(deductibleHere(null), false)
   })
 })

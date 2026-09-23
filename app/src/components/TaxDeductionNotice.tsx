@@ -1,6 +1,12 @@
 import type { OrgTaxStatusView } from '@poa/shared'
 import { useTranslations } from 'next-intl'
-import { type DonationChannel, isEligible, regimeOf, sgDeductionRate } from '@/lib/taxEligibility'
+import {
+  type DonationChannel,
+  deductibleHere,
+  isEligible,
+  regimeOf,
+  sgDeductionRate,
+} from '@/lib/taxEligibility'
 
 /**
  * Shown before a donor gives, and only when a gift to this need can be deducted: the organisation is a 501(c)(3)
@@ -11,11 +17,14 @@ export function TaxDeductionNotice({ taxStatus }: { taxStatus: OrgTaxStatusView 
   const t = useTranslations('deduction')
   const regime = regimeOf(taxStatus)
   if (!regime || !taxStatus) return null
+  // A Singapore IPC is deductible for cash alone, and this platform takes no cash — a card buys USDC first.
+  // Telling a donor a gift is deductible when no way of giving here makes it so would be worse than silence.
+  if (!deductibleHere(taxStatus)) return null
 
   const us = regime === 'US_501C3'
   const rate = sgDeductionRate(Math.floor(Date.now() / 1000))
   const points = us
-    ? [t('usDigital'), t('usCash'), t('usWhen'), t('usReceipt')]
+    ? [t('usDigital'), t('usWhen'), t('usReceipt')]
     : [rate ? t('sgRate', { rate }) : t('sgRateUnknown'), t('sgCashOnly'), t('sgNric'), t('sgWhen')]
 
   return (
