@@ -19,10 +19,12 @@ const MAX_PHOTOS = 12
  * The indexer keeps photos only for needs that NGO owns, which is what makes the badge on a need's card mean
  * "published by the organisation accountable for it".
  */
-export function PublishPhotosPanel() {
+export function PublishPhotosPanel({ needId: fixedNeedId }: { needId?: string } = {}) {
   const t = useTranslations('ngo')
   const tx = useTx()
-  const [needId, setNeedId] = useState('')
+  const [typedNeedId, setNeedId] = useState('')
+  // Fixed by the need dashboard; typed when the panel stands alone.
+  const needId = fixedNeedId ?? typedNeedId
   const [urls, setUrls] = useState('')
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -50,7 +52,9 @@ export function PublishPhotosPanel() {
 
   return (
     <Panel title={t('photosTitle')} description={t('photosBody')}>
-      <TextField label={t('needId')} value={needId} onChange={setNeedId} inputMode="numeric" />
+      {fixedNeedId === undefined ? (
+        <TextField label={t('needId')} value={typedNeedId} onChange={setNeedId} inputMode="numeric" />
+      ) : null}
       <TextArea label={t('photosUrls')} value={urls} onChange={setUrls} rows={3} hint={t('photosUrlsHint')} />
       <TextField label={t('photosNote')} value={note} onChange={setNote} hint={t('photosNoteHint')} />
       <p className="hint">{t('photosCount', { count: usable.length })}</p>

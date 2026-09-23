@@ -143,6 +143,12 @@ function CampaignRow({ need, long, now }: { need: NeedSummary; long: boolean; no
         >
           {t('needLabel', { id: need.id, category: need.categoryLabel })}
         </Link>
+        <Link
+          href={`/ngo/manage?need=${need.id}`}
+          className="text-sm font-medium text-teal-800 underline-offset-2 hover:underline"
+        >
+          {t('manageLink')}
+        </Link>
         <div className="flex flex-wrap items-center gap-1.5">
           {long ? (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">

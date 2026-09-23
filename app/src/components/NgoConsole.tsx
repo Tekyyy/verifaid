@@ -15,7 +15,6 @@ import { MissingDeployment } from '@/components/Notice'
 import { ProposePayeeChangePanel } from '@/components/PayeeChangePanel'
 import { ProgramPicker } from '@/components/ProgramPicker'
 import { PublishPhotosPanel } from '@/components/PublishPhotosPanel'
-import { ReleaseTranchePanel } from '@/components/ReleaseTranchePanel'
 import { SettlementPanel } from '@/components/SettlementPanel'
 import { TaxStatusPanel } from '@/components/TaxStatusPanel'
 import { TxStatus } from '@/components/TxStatus'
@@ -36,7 +35,6 @@ export function NgoConsole() {
       <CreateNeedPanel />
       <NeedPresentationPanel />
       <CloseFunding />
-      <ReleaseTranchePanel />
       <IdleCapitalPanel />
       <ProposePayeeChangePanel />
       <SettlementPanel />
@@ -169,11 +167,13 @@ function AddMembers() {
  * Closing early must respect the terms donors were shown: the ledger reverts below `minFundingBps` of the
  * target, so the panel reads both numbers and explains the threshold instead of letting the NGO hit a revert.
  */
-function CloseFunding() {
+export function CloseFunding({ needId: fixedNeedId }: { needId?: string } = {}) {
   const t = useTranslations('ngo')
   const tCommon = useTranslations('common')
   const tx = useTx()
-  const [needId, setNeedId] = useState('')
+  const [typedNeedId, setNeedId] = useState('')
+  // Fixed by the need dashboard; typed when the panel stands alone.
+  const needId = fixedNeedId ?? typedNeedId
   const enabled = /^\d+$/.test(needId)
   const ledger = useLedger(needId)
 
@@ -199,7 +199,9 @@ function CloseFunding() {
 
   return (
     <Panel title={t('closeTitle')} description={t('closeBody')}>
-      <TextField label={t('needId')} value={needId} onChange={setNeedId} inputMode="numeric" />
+      {fixedNeedId === undefined ? (
+        <TextField label={t('needId')} value={typedNeedId} onChange={setNeedId} inputMode="numeric" />
+      ) : null}
       <p className="hint mono">{ledger ?? '—'}</p>
       {terms && raised !== undefined ? (
         <div className="space-y-1 text-sm text-slate-800">
@@ -226,11 +228,13 @@ function CloseFunding() {
   )
 }
 
-function PublishImpactReport() {
+export function PublishImpactReport({ needId: fixedNeedId }: { needId?: string } = {}) {
   const t = useTranslations('ngo')
   const tErrors = useTranslations('errors')
   const tx = useTx()
-  const [needId, setNeedId] = useState('')
+  const [typedNeedId, setNeedId] = useState('')
+  // Fixed by the need dashboard; typed when the panel stands alone.
+  const needId = fixedNeedId ?? typedNeedId
   const [served, setServed] = useState('')
   const [kpiHash, setKpiHash] = useState('')
   const [reportCid, setReportCid] = useState('')
@@ -267,7 +271,9 @@ function PublishImpactReport() {
   return (
     <Panel title={t('impactTitle')} description={t('impactBody')}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <TextField label={t('needId')} value={needId} onChange={setNeedId} inputMode="numeric" />
+        {fixedNeedId === undefined ? (
+          <TextField label={t('needId')} value={typedNeedId} onChange={setNeedId} inputMode="numeric" />
+        ) : null}
         <TextField
           label={t('beneficiariesServed')}
           value={served}

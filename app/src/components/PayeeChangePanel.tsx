@@ -17,11 +17,13 @@ import { getNeed, getSuppliers } from '@/lib/indexer'
  * independent verifiers have approved it (the need's own threshold, never fewer than two). A tranche that is
  * already releasable cannot be redirected — the contract refuses it, so the work someone did is paid first.
  */
-export function ProposePayeeChangePanel() {
+export function ProposePayeeChangePanel({ needId: fixedNeedId }: { needId?: string } = {}) {
   const t = useTranslations('ngo')
   const tx = useTx()
   const id = useId()
-  const [needId, setNeedId] = useState('')
+  const [typedNeedId, setNeedId] = useState('')
+  // Fixed by the need dashboard; typed when the panel stands alone.
+  const needId = fixedNeedId ?? typedNeedId
   const [index, setIndex] = useState('')
   const [account, setAccount] = useState('')
   const [label, setLabel] = useState('')
@@ -60,7 +62,9 @@ export function ProposePayeeChangePanel() {
   return (
     <Panel title={t('changeTitle')} description={t('changeBody')}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <TextField label={t('needId')} value={needId} onChange={setNeedId} inputMode="numeric" />
+        {fixedNeedId === undefined ? (
+          <TextField label={t('needId')} value={typedNeedId} onChange={setNeedId} inputMode="numeric" />
+        ) : null}
         <div>
           <label className="label" htmlFor={`${id}-payee`}>
             {t('changeWhich')}

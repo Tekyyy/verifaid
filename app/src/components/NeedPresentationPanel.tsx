@@ -20,10 +20,12 @@ const MAX_GALLERY = 12
  * were fixed and verified at creation. Publishing again replaces it, so a presentation can be improved without
  * touching a single number donors were promised.
  */
-export function NeedPresentationPanel() {
+export function NeedPresentationPanel({ needId: fixedNeedId }: { needId?: string } = {}) {
   const t = useTranslations('ngo')
   const tx = useTx()
-  const [needId, setNeedId] = useState('')
+  const [typedNeedId, setNeedId] = useState('')
+  // Fixed by the need dashboard; typed when the panel stands alone.
+  const needId = fixedNeedId ?? typedNeedId
   const [cover, setCover] = useState('')
   const [summary, setSummary] = useState('')
   const [tags, setTags] = useState('')
@@ -67,7 +69,9 @@ export function NeedPresentationPanel() {
 
   return (
     <Panel title={t('presentationTitle')} description={t('presentationBody')}>
-      <TextField label={t('needId')} value={needId} onChange={setNeedId} inputMode="numeric" />
+      {fixedNeedId === undefined ? (
+        <TextField label={t('needId')} value={typedNeedId} onChange={setNeedId} inputMode="numeric" />
+      ) : null}
       <TextField
         label={t('presentationCover')}
         value={cover}

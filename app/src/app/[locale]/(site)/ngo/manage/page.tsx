@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
-import { NgoCampaignDashboard } from '@/components/NgoCampaignDashboard'
+import { Suspense } from 'react'
+import { NgoNeedDashboard } from '@/components/NgoNeedDashboard'
 import { NgoRoleNotice } from '@/components/NgoRoleNotice'
 import { MissingDeployment } from '@/components/Notice'
 import { Link } from '@/i18n/navigation'
@@ -30,7 +31,14 @@ export default async function NgoManagePage() {
         </Link>
       </header>
       <NgoRoleNotice />
-      {deployment ? <NgoCampaignDashboard /> : <MissingDeployment />}
+      {/* The dashboard reads the chosen need from the URL, which Next renders inside a Suspense boundary. */}
+      {deployment ? (
+        <Suspense>
+          <NgoNeedDashboard />
+        </Suspense>
+      ) : (
+        <MissingDeployment />
+      )}
     </div>
   )
 }

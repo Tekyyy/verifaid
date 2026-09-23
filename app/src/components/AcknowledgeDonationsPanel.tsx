@@ -22,11 +22,13 @@ import { acknowledgmentStatement } from '@/lib/taxReceipt'
  * It commits no donor's name: the acknowledgment is about the donation, and a donor adds their own details to
  * the document they download.
  */
-export function AcknowledgeDonationsPanel() {
+export function AcknowledgeDonationsPanel({ needId: fixedNeedId }: { needId?: string } = {}) {
   const t = useTranslations('tax')
   const tCommon = useTranslations('common')
   const tx = useTx()
-  const [needId, setNeedId] = useState('')
+  const [typedNeedId, setNeedId] = useState('')
+  // Fixed by the need dashboard; typed when the panel stands alone.
+  const needId = fixedNeedId ?? typedNeedId
   const [error, setError] = useState<string | null>(null)
 
   const need = useQuery({
@@ -76,7 +78,9 @@ export function AcknowledgeDonationsPanel() {
 
   return (
     <Panel title={t('ackTitle')} description={t('ackBody')}>
-      <TextField label={t('ackNeedId')} value={needId} onChange={setNeedId} inputMode="numeric" />
+      {fixedNeedId === undefined ? (
+        <TextField label={t('ackNeedId')} value={typedNeedId} onChange={setNeedId} inputMode="numeric" />
+      ) : null}
       {data && !data.taxStatus ? <p className="hint">{t('errorNoStatus')}</p> : null}
       {data && donations.length === 0 ? <p className="hint">{t('ackNone')}</p> : null}
 

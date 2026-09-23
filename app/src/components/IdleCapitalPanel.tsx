@@ -17,14 +17,16 @@ import { useLedger, useTx } from '@/lib/hooks'
  * eventually do it on a schedule. Nothing here can send money anywhere except back into the vault or, once the
  * need is over and the position closed, the earnings to the NGO.
  */
-export function IdleCapitalPanel() {
+export function IdleCapitalPanel({ needId: fixedNeedId }: { needId?: string } = {}) {
   const t = useTranslations('idle')
   const tCommon = useTranslations('common')
   const deploy = useTx()
   const unwind = useTx()
   const harvest = useTx()
   const payout = useTx()
-  const [needId, setNeedId] = useState('')
+  const [typedNeedId, setNeedId] = useState('')
+  // Fixed by the need dashboard; typed when the panel stands alone.
+  const needId = fixedNeedId ?? typedNeedId
   const vault = useLedger(needId)
 
   const enabled = Boolean(vault)
@@ -79,7 +81,9 @@ export function IdleCapitalPanel() {
 
   return (
     <Panel title={t('manageTitle')} description={t('manageBody')}>
-      <TextField label={t('needId')} value={needId} onChange={setNeedId} inputMode="numeric" />
+      {fixedNeedId === undefined ? (
+        <TextField label={t('needId')} value={typedNeedId} onChange={setNeedId} inputMode="numeric" />
+      ) : null}
 
       {vault ? (
         <>

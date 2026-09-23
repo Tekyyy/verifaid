@@ -30,6 +30,7 @@ export function SiteNav() {
   const navRef = useRef<HTMLElement>(null)
 
   // On a phone the bar is one row that scrolls sideways; keep the page you are on in view.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-centre after every navigation, not only on mount
   useEffect(() => {
     const current = navRef.current?.querySelector<HTMLElement>('[aria-current="page"]')
     const bar = navRef.current?.parentElement

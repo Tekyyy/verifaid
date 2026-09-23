@@ -20,12 +20,14 @@ const hashText = (text: string): Hex => (text.trim() ? keccak256(stringToHex(tex
  * how it reached the supplier — gross (must equal the tranche), the fee intermediaries kept, and hashed
  * supplier and FX references. The resolver caps all fees on the need, cumulatively, at the disclosed rate.
  */
-export function SettlementPanel() {
+export function SettlementPanel({ needId: fixedNeedId }: { needId?: string } = {}) {
   const t = useTranslations('ngo')
   const tCommon = useTranslations('common')
   const tErrors = useTranslations('errors')
   const tx = useTx()
-  const [needId, setNeedId] = useState('')
+  const [typedNeedId, setNeedId] = useState('')
+  // Fixed by the need dashboard; typed when the panel stands alone.
+  const needId = fixedNeedId ?? typedNeedId
   const [trancheIndex, setTrancheIndex] = useState('')
   const [fee, setFee] = useState('0')
   const [supplierRef, setSupplierRef] = useState('')
@@ -97,15 +99,17 @@ export function SettlementPanel() {
 
   return (
     <Panel title={t('settlementTitle')} description={t('settlementBody')}>
-      <TextField
-        label={t('needId')}
-        value={needId}
-        onChange={(value) => {
-          setNeedId(value)
-          setTrancheIndex('')
-        }}
-        inputMode="numeric"
-      />
+      {fixedNeedId === undefined ? (
+        <TextField
+          label={t('needId')}
+          value={typedNeedId}
+          onChange={(value) => {
+            setNeedId(value)
+            setTrancheIndex('')
+          }}
+          inputMode="numeric"
+        />
+      ) : null}
       <p className="hint mono">{ledger ?? '—'}</p>
 
       <div>

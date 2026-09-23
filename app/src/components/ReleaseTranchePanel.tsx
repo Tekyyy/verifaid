@@ -31,7 +31,7 @@ const loadCandidates = async (ngo: Address): Promise<Result<NeedDetail[]>> => {
  * releasable ones selectable. The contract decides who is paid — the need's payment plan, straight from the
  * vault — and the panel says so before the signature. The ids stay typeable when the indexer cannot answer.
  */
-export function ReleaseTranchePanel() {
+export function ReleaseTranchePanel({ needId: fixedNeedId }: { needId?: string } = {}) {
   const t = useTranslations('ngo')
   const tCommon = useTranslations('common')
   const tStatus = useTranslations('trancheStatus')
@@ -41,13 +41,19 @@ export function ReleaseTranchePanel() {
   const { address } = useAccount()
   const queryClient = useQueryClient()
   const tx = useTx()
-  const [needId, setNeedId] = useState('')
+  const [pickedNeedId, setNeedId] = useState('')
+  // Fixed by the need dashboard; picked from the dropdown when the panel stands alone.
+  const needId = fixedNeedId ?? pickedNeedId
   const [index, setIndex] = useState('')
   const vault = useLedger(needId)
 
   const query = useQuery({
-    queryKey: ['ngo-release', address],
-    queryFn: () => loadCandidates(address as Address),
+    queryKey: ['ngo-release', address, fixedNeedId],
+    queryFn: async (): Promise<Result<NeedDetail[]>> => {
+      if (fixedNeedId === undefined) return loadCandidates(address as Address)
+      const one = await getNeed(fixedNeedId)
+      return one.ok ? { ok: true, data: [one.data] } : one
+    },
     enabled: Boolean(address),
   })
   const candidates = query.data?.ok ? query.data.data : []
@@ -115,7 +121,9 @@ export function ReleaseTranchePanel() {
     return (
       <Panel title={t('releaseTitle')} description={t('releaseBody')}>
         <div className="grid gap-3 sm:grid-cols-2">
-          <TextField label={t('needId')} value={needId} onChange={setNeedId} inputMode="numeric" />
+          {fixedNeedId === undefined ? (
+            <TextField label={t('needId')} value={pickedNeedId} onChange={setNeedId} inputMode="numeric" />
+          ) : null}
           <TextField label={t('trancheIndex')} value={index} onChange={setIndex} inputMode="numeric" />
         </div>
         {button}
@@ -137,8 +145,8 @@ export function ReleaseTranchePanel() {
     <Panel title={t('releaseTitle')} description={t('releaseBody')}>
       {query.isLoading ? <p className="hint">{tCommon('loading')}</p> : null}
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
+      <div className={`grid gap-3 ${fixedNeedId === undefined ? 'sm:grid-cols-2' : ''}`}>
+        <div className={fixedNeedId === undefined ? '' : 'hidden'}>
           <label className="label" htmlFor={needSelectId}>
             {t('releaseNeed')}
           </label>
