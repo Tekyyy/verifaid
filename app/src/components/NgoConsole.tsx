@@ -4,8 +4,8 @@ import { aidVaultAbi, beneficiaryGroupsAbi, easAbi, needsRegistryAbi } from '@po
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
-import { type Address, type Hex, keccak256, toHex } from 'viem'
-import { useReadContract } from 'wagmi'
+import { type Address, type Hex, keccak256, parseEventLogs, toHex } from 'viem'
+import { useAccount, useReadContract } from 'wagmi'
 import { AcknowledgeDonationsPanel } from '@/components/AcknowledgeDonationsPanel'
 import { CreateNeedPanel } from '@/components/CreateNeedPanel'
 import { Advanced, FormError, Panel, TextArea, TextField } from '@/components/form'
@@ -22,6 +22,8 @@ import { deployment } from '@/lib/config'
 import { attestationRequest, schemaRecipient } from '@/lib/eas'
 import { amount, bpsPercent, isBytes32, isZeroHash, ZERO_BYTES32 } from '@/lib/format'
 import { useLedger, useTx } from '@/lib/hooks'
+import { getPrograms } from '@/lib/indexer'
+import { rememberProgramPolicy } from '@/lib/programNames'
 
 export function NgoConsole() {
   if (!deployment) return <MissingDeployment />
@@ -47,6 +49,7 @@ export function NgoConsole() {
 
 function CreateProgram() {
   const t = useTranslations('ngo')
+  const { address } = useAccount()
   const tx = useTx()
   const queryClient = useQueryClient()
   const [policy, setPolicy] = useState('')
@@ -60,8 +63,24 @@ function CreateProgram() {
       functionName: 'createProgram',
       args: [hash, uri],
     })
-    // The need form picks its programme from this list, so it must not need a reload to see a new one.
-    if (result) await queryClient.invalidateQueries({ queryKey: ['programs'] })
+    if (!result) return
+    rememberProgramPolicy(hash, policy)
+    // The need form picks its programme from this list, so it must not need a reload to see a new one. The
+    // indexer trails the receipt by a block or two; refreshing before it has the programme would cache "none".
+    const [event] = parseEventLogs({
+      abi: beneficiaryGroupsAbi,
+      eventName: 'ProgramCreated',
+      logs: result.logs,
+    })
+    if (event && address) {
+      const created = event.args.programId.toString()
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const programs = await getPrograms(address)
+        if (programs.ok && programs.data.some((program) => program.id === created)) break
+        await new Promise((resolve) => setTimeout(resolve, 1_500))
+      }
+    }
+    await queryClient.invalidateQueries({ queryKey: ['programs'] })
   }
 
   return (
