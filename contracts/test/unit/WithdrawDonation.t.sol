@@ -156,11 +156,13 @@ contract WithdrawDonationTest is PoATest {
         AidVault cappedVault = AidVault(registry.vaultOf(capped));
         uint256 receiptId = _donate(donor1, capped, 1000e6);
 
-        // A payment provider deposits 100 and keeps 20: fine at 1,100 raised, far over the cap at 100.
-        bytes32 paymentRef = keccak256("payment-ref");
-        bytes32 donorRef = keccak256("donor-ref");
-        _donateOnBehalf(capped, 100e6, donorRef, paymentRef);
-        _attestFundingRecorded(bankPartner, capped, 100e6, 20e6, paymentRef, donorRef);
+        // Another donor's euros convert into 100 at a cost of 20: fine at 1,100 raised, far over the cap at 100.
+        // The factory's donateVia is the one path that records a conversion cost against the need.
+        token.mint(address(forwarderFactory), 100e6);
+        vm.startPrank(address(forwarderFactory));
+        token.approve(address(cappedVault), 100e6);
+        cappedVault.donateVia(100e6, 20e6, donor2);
+        vm.stopPrank();
 
         vm.prank(donor1);
         vm.expectRevert(Errors.FeeExceedsDisclosure.selector);

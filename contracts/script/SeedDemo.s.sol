@@ -96,7 +96,7 @@ contract SeedDemo is Script, DeploymentIO {
 
         // ── 3. three needs covering every funding rule, all escrowed on chain ──
         INeedsRegistry.CreateNeedParams memory food =
-            _need(programId, "FOOD", 5000e6, 1, _bps(3000, 4000, 3000), INeedsRegistry.CustodyMode.OnChain, 6000, 150);
+            _need(programId, "FOOD", 5000e6, 1, _bps(3000, 4000, 3000), 6000, 150);
         food.payees = _plan(a.foodSupplier, "Mercados del Centro SL: food kits", 3, 1000);
         uint256 foodNeed = registry.createNeed(food);
         INeedsRegistry.CreateNeedParams memory shelter = _need(
@@ -105,14 +105,13 @@ contract SeedDemo is Script, DeploymentIO {
             highValueThreshold + 2000e6, // above the threshold → two verifiers required
             2,
             _bps(5000, 5000, 0),
-            INeedsRegistry.CustodyMode.OnChain,
             10_000,
             0
         );
         shelter.payees = _plan(a.shelterSupplier, "Refugio Kits SA: shelter kits", 2, 0);
         uint256 shelterNeed = registry.createNeed(shelter);
         INeedsRegistry.CreateNeedParams memory medical =
-            _need(programId, "MEDICAL", 3000e6, 1, _bps(4000, 6000, 0), INeedsRegistry.CustodyMode.OnChain, 5000, 250);
+            _need(programId, "MEDICAL", 3000e6, 1, _bps(4000, 6000, 0), 5000, 250);
         medical.payees = _plan(a.medicalSupplier, "Farmacia Central SL: medical kits", 2, 500);
         uint256 medicalNeed = registry.createNeed(medical);
         vm.stopBroadcast();
@@ -231,7 +230,6 @@ contract SeedDemo is Script, DeploymentIO {
         uint256 target,
         uint8 verificationsRequired,
         uint16[] memory trancheBps,
-        INeedsRegistry.CustodyMode custodyMode,
         uint16 minFundingBps,
         uint16 thirdPartyCostBps
     ) internal view returns (INeedsRegistry.CreateNeedParams memory) {
@@ -245,8 +243,6 @@ contract SeedDemo is Script, DeploymentIO {
             metadataURI: string.concat("ipfs://demo-need-", slug),
             verificationsRequired: verificationsRequired,
             trancheBps: trancheBps,
-            custodyMode: custodyMode,
-            custodian: address(0),
             fundingDeadline: uint64(block.timestamp + 30 days),
             executionDeadline: uint64(block.timestamp + 120 days),
             minFundingBps: minFundingBps,

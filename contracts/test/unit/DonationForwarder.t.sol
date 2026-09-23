@@ -143,7 +143,6 @@ contract DonationForwarderTest is PoATest {
     function test_donate_refusesNeedsThatAreNotAccepting() public {
         vm.prank(ngo);
         uint256 pending = registry.createNeed(_costedNeed(TARGET, COST_CAP_BPS));
-        (uint256 offChainNeed,,) = _verifiedOffChainNeed(TARGET, COST_CAP_BPS);
 
         usdc.mint(donor, 100e6);
         vm.deal(donor, 1); // so the value-mismatch call below fails in the factory, not for lack of ETH
@@ -151,8 +150,6 @@ contract DonationForwarderTest is PoATest {
         usdc.approve(address(forwarderFactory), 100e6);
         vm.expectRevert(Errors.NotAccepting.selector);
         forwarderFactory.donate(pending, address(usdc), 100e6);
-        vm.expectRevert(Errors.NotAccepting.selector);
-        forwarderFactory.donate(offChainNeed, address(usdc), 100e6);
         vm.expectRevert(Errors.ZeroAmount.selector);
         forwarderFactory.donate(needId, address(usdc), 0);
         vm.expectRevert(Errors.InvalidParameter.selector);

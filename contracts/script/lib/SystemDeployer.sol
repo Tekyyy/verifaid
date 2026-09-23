@@ -11,7 +11,6 @@ import {AidVaultFactory} from "../../src/funds/AidVaultFactory.sol";
 import {DonationForwarder} from "../../src/funds/DonationForwarder.sol";
 import {DonationForwarderFactory} from "../../src/funds/DonationForwarderFactory.sol";
 import {DonationReceipt} from "../../src/funds/DonationReceipt.sol";
-import {NonCustodialLedger} from "../../src/funds/NonCustodialLedger.sol";
 import {BeneficiaryGroups} from "../../src/identity/BeneficiaryGroups.sol";
 import {IAidVaultFactory} from "../../src/interfaces/IAidVaultFactory.sol";
 import {IConversionRouter} from "../../src/interfaces/IConversionRouter.sol";
@@ -92,7 +91,6 @@ abstract contract SystemDeployer is CommonBase {
         RoleRegistry roles;
         NeedsRegistry registry;
         AidVault vaultImplementation;
-        NonCustodialLedger ledgerImplementation;
         AidVaultFactory factory;
         DonationReceipt receipt;
         BeneficiaryGroups groups;
@@ -159,17 +157,10 @@ abstract contract SystemDeployer is CommonBase {
             IDonationForwarderFactory(address(s.forwarderFactory)),
             IFeeRecorder(address(s.resolver))
         );
-        s.ledgerImplementation = new NonCustodialLedger(
-            roles,
-            INeedsRegistry(address(s.registry)),
-            address(s.deliveryManager),
-            IAidVaultFactory(address(s.factory)),
-            address(s.resolver)
-        );
 
         s.registry.wire(address(s.factory), address(s.groups), address(s.deliveryManager), address(s.resolver));
         _approveYieldVenue(s, p);
-        s.factory.wire(address(s.registry), s.token, address(s.vaultImplementation), address(s.ledgerImplementation));
+        s.factory.wire(address(s.registry), s.token, address(s.vaultImplementation));
         s.groups.wire(address(s.deliveryManager));
         s.deliveryManager.wire(address(s.resolver));
     }

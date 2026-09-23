@@ -43,7 +43,6 @@ contract NeedTermsTest is PoATest {
 
     function test_createNeed_storesTheTerms() public {
         INeedsRegistry.CreateNeedParams memory p = _terms(6000);
-        _asOffChain(p, bankPartner);
         p.thirdPartyCostBps = 150;
         p.costDisclosureHash = COST_DISCLOSURE_HASH;
 
@@ -52,7 +51,6 @@ contract NeedTermsTest is PoATest {
         uint256 needId = _create(p);
 
         INeedsRegistry.Need memory n = registry.getNeed(needId);
-        assertEq(uint8(n.custodyMode), uint8(INeedsRegistry.CustodyMode.OffChain));
         assertEq(n.fundingDeadline, p.fundingDeadline);
         assertEq(n.executionDeadline, p.executionDeadline);
         assertEq(n.minFundingBps, 6000);
@@ -161,17 +159,12 @@ contract NeedTermsTest is PoATest {
         registry.expire(needId);
     }
 
-    /// @dev Money escrowed on-chain always has a horizon, so `expire` can always give it back eventually.
-    function test_createNeed_onChainCustodyMustNameADeliveryHorizon() public {
+    /// @dev Escrowed money always has a horizon, so `expire` can always give it back eventually.
+    function test_createNeed_mustNameADeliveryHorizon() public {
         INeedsRegistry.CreateNeedParams memory p = _needParams(programId, TARGET, 1, _threeTrancheBps());
         p.executionDeadline = 0;
         vm.prank(ngo);
         vm.expectRevert(Errors.InvalidParameter.selector);
-        registry.createNeed(p);
-
-        // Off-chain money is held by a named custodian, not by this system, so it may stay open-ended.
-        _asOffChain(p, bankPartner);
-        vm.prank(ngo);
         registry.createNeed(p);
     }
 

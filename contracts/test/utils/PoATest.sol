@@ -9,7 +9,6 @@ import {AidVault} from "../../src/funds/AidVault.sol";
 import {AidVaultFactory} from "../../src/funds/AidVaultFactory.sol";
 import {DonationForwarderFactory} from "../../src/funds/DonationForwarderFactory.sol";
 import {DonationReceipt} from "../../src/funds/DonationReceipt.sol";
-import {NonCustodialLedger} from "../../src/funds/NonCustodialLedger.sol";
 import {BeneficiaryGroups} from "../../src/identity/BeneficiaryGroups.sol";
 import {IAidVault} from "../../src/interfaces/IAidVault.sol";
 import {IDeliveryManager} from "../../src/interfaces/IDeliveryManager.sol";
@@ -78,7 +77,6 @@ abstract contract PoATest is Test, SystemDeployer {
     address internal verifier1 = makeAddr("verifier1");
     address internal verifier2 = makeAddr("verifier2");
     address internal verifier3 = makeAddr("verifier3");
-    address internal bankPartner = makeAddr("bankPartner");
     address internal donor1 = makeAddr("donor1");
     address internal donor2 = makeAddr("donor2");
     address internal relayer = makeAddr("relayer");
@@ -121,7 +119,6 @@ abstract contract PoATest is Test, SystemDeployer {
     address internal keeper = makeAddr("sweepKeeper");
 
     bytes32 internal needVerifiedSchema;
-    bytes32 internal fundingRecordedSchema;
     bytes32 internal deliveryEvidenceSchema;
     bytes32 internal deliveryVerifiedSchema;
     bytes32 internal settlementSchema;
@@ -219,15 +216,15 @@ abstract contract PoATest is Test, SystemDeployer {
     // ─── setup helpers ─────────────────────────────────────────────────────────
 
     function _registerSchemas() internal {
-        bytes32[6] memory uids;
-        for (uint256 i; i < 6; ++i) {
+        bytes32[5] memory uids;
+        for (uint256 i; i < 5; ++i) {
             (string memory schema, bool revocable, bytes32 expected) = resolver.schemaAt(i);
             uids[i] = schemaRegistry.register(schema, ISchemaResolver(address(resolver)), revocable);
             // The resolver derives the UIDs it accepts from its own address; the registry must agree.
             assertEq(uids[i], expected, "schema uid");
         }
-        (needVerifiedSchema, fundingRecordedSchema, deliveryEvidenceSchema) = (uids[0], uids[1], uids[2]);
-        (deliveryVerifiedSchema, settlementSchema, impactReportSchema) = (uids[3], uids[4], uids[5]);
+        (needVerifiedSchema, deliveryEvidenceSchema, deliveryVerifiedSchema) = (uids[0], uids[1], uids[2]);
+        (settlementSchema, impactReportSchema) = (uids[3], uids[4]);
     }
 
     function _registerActors() internal {
@@ -237,7 +234,6 @@ abstract contract PoATest is Test, SystemDeployer {
         roles.registerVerifier(verifier1);
         roles.registerVerifier(verifier2);
         roles.registerVerifier(verifier3);
-        roles.registerBankPartner(bankPartner);
         roles.registerSupplier(supplierA, keccak256("supplierA-registration"), "ipfs://supplierA");
         roles.registerSupplier(supplierB, keccak256("supplierB-registration"), "ipfs://supplierB");
         vm.stopPrank();
@@ -294,8 +290,6 @@ abstract contract PoATest is Test, SystemDeployer {
             metadataURI: "ipfs://need",
             verificationsRequired: verificationsRequired,
             trancheBps: bps,
-            custodyMode: INeedsRegistry.CustodyMode.OnChain,
-            custodian: address(0),
             fundingDeadline: 0,
             // On-chain custody always has a delivery horizon, so donors always have a way back (expire).
             executionDeadline: uint64(block.timestamp + DEFAULT_EXECUTION_WINDOW),
@@ -326,13 +320,6 @@ abstract contract PoATest is Test, SystemDeployer {
         for (uint256 i; i < tranches; ++i) {
             shares[i] = share;
         }
-    }
-
-    /// @dev Off-chain custody: the named provider holds (and pays out) the money, so the need has no payment plan.
-    function _asOffChain(INeedsRegistry.CreateNeedParams memory p, address custodian) internal pure {
-        p.custodyMode = INeedsRegistry.CustodyMode.OffChain;
-        p.custodian = custodian;
-        p.payees = new INeedsRegistry.Payee[](0);
     }
 
     function _createNeed(address owner, uint256 programId, uint256 target, uint8 verificationsRequired)
@@ -366,20 +353,6 @@ abstract contract PoATest is Test, SystemDeployer {
         vm.prank(ngo);
         needId = registry.createNeed(p);
         _attestNeedVerified(verifier1, needId, true);
-    }
-
-    /// @dev A verified off-chain (Model A) need funded through the payment provider's ledger.
-    function _verifiedOffChainNeed(uint256 target, uint16 thirdPartyCostBps)
-        internal
-        returns (uint256 needId, uint256 programId, NonCustodialLedger ledger)
-    {
-        programId = _createProgram(ngo, 10);
-        INeedsRegistry.CreateNeedParams memory p = _needParams(programId, target, 1, _threeTrancheBps());
-        _asOffChain(p, bankPartner);
-        p.thirdPartyCostBps = thirdPartyCostBps;
-        p.costDisclosureHash = thirdPartyCostBps == 0 ? bytes32(0) : COST_DISCLOSURE_HASH;
-        needId = _verifiedNeedWith(p);
-        ledger = NonCustodialLedger(registry.vaultOf(needId));
     }
 
     /// @dev Mock feeds go stale when a test warps time; this re-publishes the demo prices.
@@ -463,35 +436,6 @@ abstract contract PoATest is Test, SystemDeployer {
         );
     }
 
-    /// @dev A provider vouching for a payment with no fee (gross == net).
-    function _attestFundingRecorded(
-        address partner,
-        uint256 needId,
-        uint256 amount,
-        bytes32 paymentRefHash,
-        bytes32 donorRefHash
-    ) internal returns (bytes32 uid) {
-        return _attestFundingRecorded(partner, needId, amount, 0, paymentRefHash, donorRefHash);
-    }
-
-    function _attestFundingRecorded(
-        address partner,
-        uint256 needId,
-        uint256 net,
-        uint256 fee,
-        bytes32 paymentRefHash,
-        bytes32 donorRefHash
-    ) internal returns (bytes32 uid) {
-        uid = _attest(
-            fundingRecordedSchema,
-            partner,
-            registry.vaultOf(needId),
-            bytes32(0),
-            false,
-            abi.encode(needId, net + fee, fee, net, EUR, paymentRefHash, donorRefHash)
-        );
-    }
-
     function _attestSettlement(address attester, uint256 needId, uint256 trancheIndex, uint256 gross, uint256 fee)
         internal
         returns (bytes32 uid)
@@ -540,15 +484,6 @@ abstract contract PoATest is Test, SystemDeployer {
         vm.startPrank(donor);
         token.approve(vault, amount);
         receiptId = IAidVault(vault).donate(amount);
-        vm.stopPrank();
-    }
-
-    function _donateOnBehalf(uint256 needId, uint256 amount, bytes32 donorRefHash, bytes32 paymentRefHash) internal {
-        address vault = registry.vaultOf(needId);
-        token.mint(bankPartner, amount);
-        vm.startPrank(bankPartner);
-        token.approve(vault, amount);
-        IAidVault(vault).donateOnBehalf(amount, donorRefHash, paymentRefHash);
         vm.stopPrank();
     }
 

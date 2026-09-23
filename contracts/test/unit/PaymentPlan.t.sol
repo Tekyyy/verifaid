@@ -79,14 +79,8 @@ contract PaymentPlanTest is PoATest {
         assertEq(accounts[2], ngoPayout, "the NGO's share resolves to its payout Safe");
     }
 
-    function test_plan_isRequiredOnChainAndRefusedOffChain() public {
-        INeedsRegistry.CreateNeedParams memory p = _params(new INeedsRegistry.Payee[](0));
-        _expectCreateRevert(p, Errors.InvalidPaymentPlan.selector);
-
-        p = _params(_splitPlan());
-        p.custodyMode = INeedsRegistry.CustodyMode.OffChain;
-        p.custodian = bankPartner;
-        _expectCreateRevert(p, Errors.InvalidPaymentPlan.selector);
+    function test_plan_isRequired() public {
+        _expectCreateRevert(_params(new INeedsRegistry.Payee[](0)), Errors.InvalidPaymentPlan.selector);
     }
 
     function test_plan_sharesMustCoverEveryTrancheExactly() public {

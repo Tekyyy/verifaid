@@ -117,7 +117,6 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
         contracts.serialize("RoleRegistry", address(s.roles));
         contracts.serialize("NeedsRegistry", address(s.registry));
         contracts.serialize("AidVaultImplementation", address(s.vaultImplementation));
-        contracts.serialize("NonCustodialLedgerImplementation", address(s.ledgerImplementation));
         contracts.serialize("AidVaultFactory", address(s.factory));
         contracts.serialize("DonationReceipt", address(s.receipt));
         contracts.serialize("BeneficiaryGroups", address(s.groups));
@@ -178,7 +177,6 @@ contract Deploy is Script, SystemDeployer, SemaphoreDeployer, DeploymentIO {
     function _schemaPlaceholders() internal returns (string memory) {
         string memory schemas = "schemas";
         schemas.serialize("NeedVerified", bytes32(0));
-        schemas.serialize("FundingRecorded", bytes32(0));
         schemas.serialize("DeliveryEvidence", bytes32(0));
         schemas.serialize("DeliveryVerified", bytes32(0));
         schemas.serialize("Settlement", bytes32(0));

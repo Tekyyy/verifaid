@@ -9,7 +9,7 @@ import {Script} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
 
 /// @title RegisterSchemas
-/// @notice Registers the six Proof of Aid schemas against the single resolver and records the UIDs in
+/// @notice Registers the five Proof of Aid schemas against the single resolver and records the UIDs in
 ///         `deployments/<network>.json`.
 /// @dev Idempotent: a schema that already exists (same string + resolver + revocable flag) is skipped, because
 ///      its UID is a pure function of those three values — the same reason the resolver can derive the UIDs it
@@ -18,8 +18,7 @@ import {console2} from "forge-std/console2.sol";
 ///      forge script script/RegisterSchemas.s.sol --rpc-url base_sepolia --broadcast
 contract RegisterSchemas is Script, DeploymentIO {
     /// @dev Deployment-file keys, in `ProofOfAidResolver.schemaAt` order.
-    string[6] internal NAMES =
-        ["NeedVerified", "FundingRecorded", "DeliveryEvidence", "DeliveryVerified", "Settlement", "ImpactReport"];
+    string[5] internal NAMES = ["NeedVerified", "DeliveryEvidence", "DeliveryVerified", "Settlement", "ImpactReport"];
 
     function run() external {
         string memory deployment = _readDeployment();
@@ -31,7 +30,7 @@ contract RegisterSchemas is Script, DeploymentIO {
         if (deployerKey != 0) vm.startBroadcast(deployerKey);
         else vm.startBroadcast();
 
-        bytes32[6] memory uids;
+        bytes32[5] memory uids;
         for (uint256 i; i < NAMES.length; ++i) {
             (string memory schema, bool revocable, bytes32 expected) = resolver.schemaAt(i);
             uids[i] = _register(registry, schema, address(resolver), revocable);

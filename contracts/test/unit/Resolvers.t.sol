@@ -17,9 +17,6 @@ import {ISchemaResolver} from "@ethereum-attestation-service/eas-contracts/contr
 contract ResolversTest is PoATest {
     uint256 internal constant TARGET = 10_000e6;
 
-    bytes32 internal constant DONOR_REF = keccak256("donor-ref");
-    bytes32 internal constant PAYMENT_REF = keccak256("payment-ref");
-
     uint256 internal programId;
     uint256 internal needId;
     AidVault internal vault;
@@ -367,155 +364,31 @@ contract ResolversTest is PoATest {
         );
     }
 
-    // ─── FundingRecorded (on-chain custody) ────────────────────────────────────
+    // ─── conversion costs ──────────────────────────────────────────────────────
 
-    function _fundingPayload(uint256 gross, uint256 fee, uint256 net, bytes32 paymentRef, bytes32 donorRef)
-        internal
-        view
-        returns (bytes memory)
-    {
-        return abi.encode(needId, gross, fee, net, EUR, paymentRef, donorRef);
-    }
-
-    function test_fundingRecorded_happyPath() public {
-        _attestNeedVerified(verifier1, needId, true);
-        _donateOnBehalf(needId, 1000e6, DONOR_REF, PAYMENT_REF);
-
-        bytes32 uid = _attestFundingRecorded(bankPartner, needId, 1000e6, PAYMENT_REF, DONOR_REF);
-        assertEq(resolver.fundingAttestationOf(bankPartner, PAYMENT_REF), uid);
-    }
-
-    function test_fundingRecorded_requiresMatchingOnChainDeposit() public {
-        _attestNeedVerified(verifier1, needId, true);
-        _donateOnBehalf(needId, 1000e6, DONOR_REF, PAYMENT_REF);
-        address vaultAddress = registry.vaultOf(needId);
-
-        // wrong amount
-        vm.expectRevert(Errors.FundingMismatch.selector);
-        _attestRaw(
-            fundingRecordedSchema,
-            bankPartner,
-            _data(vaultAddress, bytes32(0), false, _fundingPayload(999e6, 0, 999e6, PAYMENT_REF, DONOR_REF))
-        );
-
-        // wrong donor reference
-        vm.expectRevert(Errors.FundingMismatch.selector);
-        _attestRaw(
-            fundingRecordedSchema,
-            bankPartner,
-            _data(vaultAddress, bytes32(0), false, _fundingPayload(1000e6, 0, 1000e6, PAYMENT_REF, keccak256("x")))
-        );
-
-        // unknown payment reference
-        vm.expectRevert(Errors.FundingMismatch.selector);
-        _attestRaw(
-            fundingRecordedSchema,
-            bankPartner,
-            _data(vaultAddress, bytes32(0), false, _fundingPayload(1000e6, 0, 1000e6, keccak256("nope"), DONOR_REF))
-        );
-    }
-
-    function test_fundingRecorded_onlyProvidersAndOnlyOnce() public {
-        _attestNeedVerified(verifier1, needId, true);
-        _donateOnBehalf(needId, 1000e6, DONOR_REF, PAYMENT_REF);
-        address vaultAddress = registry.vaultOf(needId);
-        bytes memory payload = _fundingPayload(1000e6, 0, 1000e6, PAYMENT_REF, DONOR_REF);
-
-        vm.expectRevert(Errors.Unauthorized.selector);
-        _attestRaw(fundingRecordedSchema, verifier1, _data(vaultAddress, bytes32(0), false, payload));
-
-        _attestFundingRecorded(bankPartner, needId, 1000e6, PAYMENT_REF, DONOR_REF);
-        vm.expectRevert(Errors.FundingAlreadyAttested.selector);
-        _attestRaw(fundingRecordedSchema, bankPartner, _data(vaultAddress, bytes32(0), false, payload));
-    }
-
-    function test_fundingRecorded_requiresVaultRecipient() public {
-        _attestNeedVerified(verifier1, needId, true);
-        _donateOnBehalf(needId, 1000e6, DONOR_REF, PAYMENT_REF);
-
-        vm.expectRevert(Errors.InvalidRecipient.selector);
-        _attestRaw(
-            fundingRecordedSchema,
-            bankPartner,
-            _data(donor1, bytes32(0), false, _fundingPayload(1000e6, 0, 1000e6, PAYMENT_REF, DONOR_REF))
-        );
-    }
-
-    function test_fundingRecorded_validatesAmountsAndFields() public {
-        _attestNeedVerified(verifier1, needId, true);
-        _donateOnBehalf(needId, 1000e6, DONOR_REF, PAYMENT_REF);
-        address vaultAddress = registry.vaultOf(needId);
-
-        // gross - fee must equal net
-        vm.expectRevert(Errors.AmountMismatch.selector);
-        _attestRaw(
-            fundingRecordedSchema,
-            bankPartner,
-            _data(vaultAddress, bytes32(0), false, _fundingPayload(1000e6, 1e6, 1000e6, PAYMENT_REF, DONOR_REF))
-        );
-
-        // this need disclosed no intermediary costs, so any fee breaks the disclosure
-        vm.expectRevert(Errors.FeeExceedsDisclosure.selector);
-        _attestRaw(
-            fundingRecordedSchema,
-            bankPartner,
-            _data(vaultAddress, bytes32(0), false, _fundingPayload(1001e6, 1e6, 1000e6, PAYMENT_REF, DONOR_REF))
-        );
-
-        // zero net, currency or payment reference
-        vm.expectRevert(Errors.InvalidParameter.selector);
-        _attestRaw(
-            fundingRecordedSchema,
-            bankPartner,
-            _data(vaultAddress, bytes32(0), false, _fundingPayload(0, 0, 0, PAYMENT_REF, DONOR_REF))
-        );
-        vm.expectRevert(Errors.InvalidParameter.selector);
-        _attestRaw(
-            fundingRecordedSchema,
-            bankPartner,
-            _data(
-                vaultAddress,
-                bytes32(0),
-                false,
-                abi.encode(needId, 1000e6, 0, 1000e6, bytes32(0), PAYMENT_REF, DONOR_REF)
-            )
-        );
-        vm.expectRevert(Errors.InvalidParameter.selector);
-        _attestRaw(
-            fundingRecordedSchema,
-            bankPartner,
-            _data(vaultAddress, bytes32(0), false, _fundingPayload(1000e6, 0, 1000e6, bytes32(0), DONOR_REF))
-        );
-    }
-
-    function test_fundingRecorded_feesWithinTheDisclosedCapAreAccepted() public {
+    /// @dev What a conversion costs on the way in counts against the need's disclosed cap, exactly at the boundary.
+    ///      Money only arrives on chain, so these are the only fees recorded before funding closes.
+    function test_conversionFees_upToTheDisclosedCapAreAccepted() public {
         INeedsRegistry.CreateNeedParams memory p = _needParams(programId, TARGET, 1, _threeTrancheBps());
         p.thirdPartyCostBps = 250; // 2.5%
         p.costDisclosureHash = COST_DISCLOSURE_HASH;
         uint256 costlyNeed = _verifiedNeedWith(p);
-        address vaultAddress = registry.vaultOf(costlyNeed);
+        AidVault costlyVault = AidVault(registry.vaultOf(costlyNeed));
+        token.mint(address(forwarderFactory), 2000e6);
+        vm.startPrank(address(forwarderFactory));
+        token.approve(address(costlyVault), 2000e6);
 
-        // 25 on 1000 is exactly the cap
-        _donateOnBehalf(costlyNeed, 975e6, DONOR_REF, PAYMENT_REF);
-        bytes32 uid = _attestFundingRecorded(bankPartner, costlyNeed, 975e6, 25e6, PAYMENT_REF, DONOR_REF);
-        assertEq(resolver.fundingAttestationOf(bankPartner, PAYMENT_REF), uid);
+        // 25 on 1000 paid is exactly the cap
+        costlyVault.donateVia(975e6, 25e6, donor1);
+        assertEq(resolver.fundingFeesOf(costlyNeed), 25e6);
 
-        bytes32 secondPayment = keccak256("payment-2");
-        _donateOnBehalf(costlyNeed, 974e6, DONOR_REF, secondPayment);
+        // 26 more on the next 1000 is not
         vm.expectRevert(Errors.FeeExceedsDisclosure.selector);
-        _attestRaw(
-            fundingRecordedSchema,
-            bankPartner,
-            _data(
-                vaultAddress,
-                bytes32(0),
-                false,
-                abi.encode(costlyNeed, 1000e6, 26e6, 974e6, EUR, secondPayment, DONOR_REF)
-            )
-        );
+        costlyVault.donateVia(974e6, 26e6, donor2);
+        vm.stopPrank();
     }
 
-    // ─── Settlement (on-chain custody) ─────────────────────────────────────────
+    // ─── Settlement ────────────────────────────────────────────────────────────
 
     function _settlementPayload(uint256 trancheIndex, uint256 gross, uint256 fee, bytes32 supplierRef)
         internal
@@ -732,7 +605,7 @@ contract ResolversTest is PoATest {
 
     // ─── irrevocability ────────────────────────────────────────────────────────
 
-    /// @dev Evidence, sign-offs and funding records are registered as non-revocable schemas, so EAS itself
+    /// @dev Evidence, sign-offs and settlements are registered as non-revocable schemas, so EAS itself
     ///      refuses the revocation before the resolver's `NotRevocable` guard is ever reached.
     function test_evidenceAndSignOffCannotBeRevoked() public {
         bytes4 irrevocable = bytes4(keccak256("Irrevocable()"));
@@ -747,19 +620,10 @@ contract ResolversTest is PoATest {
         _revoke(deliveryVerifiedSchema, verifier2, signOffUID);
     }
 
-    function test_fundingRecordsCannotBeRevoked() public {
-        _attestNeedVerified(verifier1, needId, true);
-        _donateOnBehalf(needId, 1000e6, DONOR_REF, PAYMENT_REF);
-        bytes32 uid = _attestFundingRecorded(bankPartner, needId, 1000e6, PAYMENT_REF, DONOR_REF);
-
-        vm.expectRevert(bytes4(keccak256("Irrevocable()")));
-        _revoke(fundingRecordedSchema, bankPartner, uid);
-    }
-
     function test_schemaAtRejectsUnknownIndex() public {
         vm.expectRevert(Errors.InvalidParameter.selector);
-        resolver.schemaAt(6);
-        assertEq(resolver.SCHEMA_COUNT(), 6);
+        resolver.schemaAt(5);
+        assertEq(resolver.SCHEMA_COUNT(), 5);
     }
 
     // ─── constructor guards ────────────────────────────────────────────────────

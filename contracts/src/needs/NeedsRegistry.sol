@@ -10,7 +10,6 @@ import {INeedsRegistry} from "../interfaces/INeedsRegistry.sol";
 import {IRoleRegistry} from "../interfaces/IRoleRegistry.sol";
 import {ITrancheLedger} from "../interfaces/ITrancheLedger.sol";
 import {Errors} from "../libraries/Errors.sol";
-import {Roles} from "../libraries/Roles.sol";
 
 /// @title NeedsRegistry
 /// @notice Registers previously verified needs and drives their lifecycle:
@@ -27,8 +26,8 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     uint16 public constant MAX_THIRD_PARTY_COST_BPS = 2000;
     /// @notice After the execution deadline, work already done keeps priority over expiry for this long: a
     ///         releasable tranche can still be paid and a verified delivery can still finish its challenge window.
-    ///         Bounded, so a tranche nobody can release (a suspended NGO, an absent custodian) cannot block
-    ///         refunds forever.
+    ///         Bounded, so a tranche nobody can release (a suspended NGO, a supplier that lost its role) cannot
+    ///         block refunds forever.
     uint256 public constant EXPIRY_GRACE_PERIOD = 14 days;
     /// @notice Most payees one need can have.
     uint256 public constant MAX_PAYEES = 5;
@@ -51,7 +50,7 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     /// @inheritdoc INeedsRegistry
     uint256 public needCount;
 
-    /// @dev Packed into five slots (six for off-chain custody). Display-only commitments (category, metadata URI, expected outcome, cost
+    /// @dev Packed into five slots. Display-only commitments (category, metadata URI, expected outcome, cost
     ///      disclosure) live in the `NeedCreated` event instead.
     struct NeedRecord {
         // slot 0
@@ -59,7 +58,6 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         uint8 verificationsRequired;
         uint8 verificationCount;
         NeedStatus status;
-        CustodyMode custodyMode;
         uint16 minFundingBps;
         uint16 thirdPartyCostBps;
         // slot 1
@@ -73,8 +71,6 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         // slots 3-4
         bytes32 regionCode;
         bytes32 dossierHash;
-        // slot 5, off-chain custody only
-        address custodian;
     }
 
     mapping(uint256 => NeedRecord) private _needs;
@@ -183,7 +179,6 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         NeedRecord storage n = _needs[needId];
         n.ngo = msg.sender;
         n.verificationsRequired = p.verificationsRequired;
-        n.custodyMode = p.custodyMode;
         n.minFundingBps = p.minFundingBps;
         n.thirdPartyCostBps = p.thirdPartyCostBps;
         n.fundingDeadline = uint40(p.fundingDeadline);
@@ -193,7 +188,6 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         n.trancheBps = _packTranches(p.trancheBps);
         n.regionCode = p.regionCode;
         n.dossierHash = p.dossierHash;
-        if (p.custodyMode == CustodyMode.OffChain) n.custodian = p.custodian;
         // status is Pending (the zero value)
         _storePayees(needId, p.payees);
 
@@ -413,8 +407,6 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
             trancheBps: _unpackTranches(n.trancheBps),
             vault: n.vault,
             status: n.status,
-            custodyMode: n.custodyMode,
-            custodian: n.custodian,
             fundingDeadline: n.fundingDeadline,
             executionDeadline: n.executionDeadline,
             minFundingBps: n.minFundingBps,
@@ -484,11 +476,6 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     }
 
     /// @inheritdoc INeedsRegistry
-    function custodyModeOf(uint256 needId) external view returns (CustodyMode) {
-        return _need(needId).custodyMode;
-    }
-
-    /// @inheritdoc INeedsRegistry
     function fundingDeadlineOf(uint256 needId) external view returns (uint64) {
         return _need(needId).fundingDeadline;
     }
@@ -496,11 +483,6 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     /// @inheritdoc INeedsRegistry
     function thirdPartyCostBpsOf(uint256 needId) external view returns (uint16) {
         return _need(needId).thirdPartyCostBps;
-    }
-
-    /// @inheritdoc INeedsRegistry
-    function custodianOf(uint256 needId) external view returns (address) {
-        return _need(needId).custodian;
     }
 
     /// @inheritdoc INeedsRegistry
@@ -575,16 +557,9 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         if (p.thirdPartyCostBps > MAX_THIRD_PARTY_COST_BPS) revert Errors.InvalidParameter();
         if ((p.thirdPartyCostBps == 0) != (p.costDisclosureHash == bytes32(0))) revert Errors.InvalidParameter();
         if (p.fundingDeadline != 0 && p.fundingDeadline <= block.timestamp) revert Errors.InvalidParameter();
-        // Off-chain money has exactly one custodian, named up front: a provider cannot adopt someone else's need
-        // by recording a token amount first, and nobody but the custodian can report its payouts.
-        if (p.custodyMode == CustodyMode.OffChain) {
-            if (!roles.hasRole(Roles.BANK_PARTNER_ROLE, p.custodian)) revert Errors.InvalidParameter();
-        } else if (p.custodian != address(0)) {
-            revert Errors.InvalidParameter();
-        }
-        // Money escrowed on-chain always has a horizon: without one, a need whose plan cannot be paid (a supplier
-        // that lost its role, say) could never be expired, and donors would have no permissionless way back.
-        if (p.custodyMode == CustodyMode.OnChain && p.executionDeadline == 0) revert Errors.InvalidParameter();
+        // Escrowed money always has a horizon: without one, a need whose plan cannot be paid (a supplier that lost
+        // its role, say) could never be expired, and donors would have no permissionless way back.
+        if (p.executionDeadline == 0) revert Errors.InvalidParameter();
         if (p.executionDeadline != 0) {
             // Delivery cannot be due before money can have arrived.
             if (p.executionDeadline <= block.timestamp || p.executionDeadline <= p.fundingDeadline) {
@@ -595,14 +570,9 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         _validatePayees(p);
     }
 
-    /// @dev The rules of a payment plan. Off-chain money is paid by its custodian, so only on-chain needs have one,
-    ///      and every on-chain need must: its vault pays nobody that is not in it.
+    /// @dev The rules of a payment plan. Every need has one: its vault pays nobody that is not in it.
     function _validatePayees(CreateNeedParams calldata p) internal view {
         uint256 count = p.payees.length;
-        if (p.custodyMode == CustodyMode.OffChain) {
-            if (count != 0) revert Errors.InvalidPaymentPlan();
-            return;
-        }
         if (count == 0 || count > MAX_PAYEES) revert Errors.InvalidPaymentPlan();
         uint256 tranches = p.trancheBps.length;
         uint256[MAX_TRANCHES] memory sums;
@@ -687,10 +657,10 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         return s == NeedStatus.Completed || s == NeedStatus.Cancelled || s == NeedStatus.Expired;
     }
 
-    /// @dev Verification threshold reached: deploy (or reuse) the ledger and open funding.
+    /// @dev Verification threshold reached: deploy (or reuse) the vault and open funding.
     function _onVerified(uint256 needId, NeedRecord storage n) internal {
         _transition(needId, n, NeedStatus.Verified);
-        if (n.vault == address(0)) n.vault = vaultFactory.createVault(needId, n.custodyMode);
+        if (n.vault == address(0)) n.vault = vaultFactory.createVault(needId);
         emit NeedVerified(needId, n.vault);
         _transition(needId, n, NeedStatus.Funding);
     }

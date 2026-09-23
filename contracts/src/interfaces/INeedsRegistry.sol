@@ -21,15 +21,6 @@ interface INeedsRegistry is IRoleAware {
         Expired
     }
 
-    /// @notice Where the money for a need lives.
-    /// @dev `OnChain`: stablecoin is escrowed in an AidVault and released by the contracts (proposal Model B).
-    ///      `OffChain`: a regulated payment provider holds the money; `FundingRecorded` and `Settlement`
-    ///      attestations drive a NonCustodialLedger that mirrors the same tranche rules (proposal Model A).
-    enum CustodyMode {
-        OnChain,
-        OffChain
-    }
-
     /// @notice One recipient of a need's money, fixed when the need is created. The vault pays payees directly.
     struct Payee {
         address account; // a registered supplier, or address(0) for the NGO's own payout Safe (its disclosed share)
@@ -64,15 +55,13 @@ interface INeedsRegistry is IRoleAware {
         string metadataURI; // event only: public, non-personal description
         uint8 verificationsRequired;
         uint16[] trancheBps; // sums to 10_000
-        CustodyMode custodyMode;
-        address custodian; // OffChain only: the payment provider (BANK_PARTNER_ROLE) that holds the money
         uint64 fundingDeadline; // 0 = open-ended; after it anyone may call `expire`
-        uint64 executionDeadline; // 0 = none; after it unreleased funds can be returned via `expire`
+        uint64 executionDeadline; // required; after it unreleased funds can be returned via `expire`
         uint16 minFundingBps; // share of the target that must be raised to execute (10_000 = all or nothing)
-        uint16 thirdPartyCostBps; // disclosed cap on intermediary costs (payment, FX, banking) per amount
+        uint16 thirdPartyCostBps; // disclosed cap on intermediary costs (conversions, payouts) per amount
         bytes32 expectedOutcomeHash; // event only: expected outcome and partial-execution terms
         bytes32 costDisclosureHash; // event only: the third-party cost disclosure document
-        Payee[] payees; // OnChain only (required): who the vault pays, and how much of each tranche
+        Payee[] payees; // required: who the vault pays, and how much of each tranche
     }
 
     /// @notice Stored view of a need.
@@ -86,10 +75,8 @@ interface INeedsRegistry is IRoleAware {
         uint8 verificationsRequired;
         uint8 verificationCount;
         uint16[] trancheBps;
-        address vault; // AidVault (OnChain) or NonCustodialLedger (OffChain); zero until verified
+        address vault; // the need's AidVault; zero until verified
         NeedStatus status;
-        CustodyMode custodyMode;
-        address custodian;
         uint64 fundingDeadline;
         uint64 executionDeadline;
         uint16 minFundingBps;
@@ -216,10 +203,8 @@ interface INeedsRegistry is IRoleAware {
     function dossierHashOf(uint256 needId) external view returns (bytes32);
     function regionCodeOf(uint256 needId) external view returns (bytes32);
     function trancheBpsOf(uint256 needId) external view returns (uint16[] memory);
-    function custodyModeOf(uint256 needId) external view returns (CustodyMode);
     function thirdPartyCostBpsOf(uint256 needId) external view returns (uint16);
 
     /// @notice When funding closes, or zero for a need that raises until its target is reached.
     function fundingDeadlineOf(uint256 needId) external view returns (uint64);
-    function custodianOf(uint256 needId) external view returns (address);
 }

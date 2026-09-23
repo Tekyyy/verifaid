@@ -32,7 +32,6 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
     address public immutable admin;
     address public immutable ngo;
     address public immutable deliveryManager;
-    address public immutable bankPartner;
     uint256 public immutable needId;
 
     address[3] public donors;
@@ -40,8 +39,6 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
     mapping(address => uint256[]) public receiptsOf;
     MockYieldVault public venue;
     address[3] public payees; // the plan: supplier A, supplier B, the NGO's payout Safe
-    bytes32[2] public donorRefs;
-    uint256 public paymentRefNonce;
     uint256 public deployCalls;
     uint256 public unwindCalls;
     uint256 public harvestCalls;
@@ -50,7 +47,6 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
 
     // ─── call counters, reported by `forge test -vv` after the invariant run ───
     uint256 public donateCalls;
-    uint256 public donateOnBehalfCalls;
     uint256 public releaseCalls;
     uint256 public refundCalls;
     uint256 public cancelCalls;
@@ -75,8 +71,7 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
         NeedsRegistry registry_,
         address admin_,
         address ngo_,
-        address deliveryManager_,
-        address bankPartner_
+        address deliveryManager_
     ) {
         vault = vault_;
         token = token_;
@@ -84,11 +79,9 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
         admin = admin_;
         ngo = ngo_;
         deliveryManager = deliveryManager_;
-        bankPartner = bankPartner_;
         needId = vault_.needId();
 
         donors = [makeAddr("invDonor1"), makeAddr("invDonor2"), makeAddr("invDonor3")];
-        donorRefs = [keccak256("invRef1"), keccak256("invRef2")];
     }
 
     function setPayees(address[3] memory payees_) external {
@@ -205,22 +198,6 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
         receiptsOf[donor].push(vault.donate(remaining));
         vm.stopPrank();
         donateCalls++;
-    }
-
-    function donateOnBehalf(uint256 refSeed, uint256 amount) external {
-        if (!_fundingOpen()) return;
-        uint256 remaining = _remaining();
-        if (remaining == 0) return;
-        bytes32 donorRef = donorRefs[refSeed % donorRefs.length];
-        amount = bound(amount, 1, remaining);
-        bytes32 paymentRef = keccak256(abi.encode("payment", paymentRefNonce++));
-
-        token.mint(bankPartner, amount);
-        vm.startPrank(bankPartner);
-        token.approve(address(vault), amount);
-        vault.donateOnBehalf(amount, donorRef, paymentRef);
-        vm.stopPrank();
-        donateOnBehalfCalls++;
     }
 
     function closeFunding() external {
@@ -376,15 +353,6 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
             claimHeldCalls++;
         } catch {} // still frozen
     }
-
-    function claimRefundByRef(uint256 refSeed) external {
-        if (!_refundable()) return;
-        bytes32 donorRef = donorRefs[refSeed % donorRefs.length];
-        if (vault.donatedByRef(donorRef) == 0) return; // cleared once refunded
-        vm.prank(bankPartner);
-        vault.claimRefundByRef(donorRef, bankPartner);
-        refundCalls++;
-    }
 }
 
 contract AidVaultInvariantTest is PoATest {
@@ -430,7 +398,7 @@ contract AidVaultInvariantTest is PoATest {
         _attestNeedVerified(verifier2, needId, true);
         vault = AidVault(registry.vaultOf(needId));
 
-        handler = new VaultHandler(vault, token, registry, admin, ngo, address(deliveryManager), bankPartner);
+        handler = new VaultHandler(vault, token, registry, admin, ngo, address(deliveryManager));
         handler.setPayees([supplierA, supplierB, ngoPayout]);
         handler.setVenue(venue);
         vm.prank(admin);
@@ -439,28 +407,28 @@ contract AidVaultInvariantTest is PoATest {
             forwarderFactory, usdc, [eurUsdFeed, usdcUsdFeed, ethUsdFeed], [MOCK_EUR_USD, MOCK_USDC_USD, MOCK_ETH_USD]
         );
 
-        bytes4[] memory selectors = new bytes4[](21);
+        // Money arrives three ways, all on chain: a wallet, a converted token, and a deposit address. The last
+        // is the only path that refunds by reference, so claimForwarderRefund keeps that route fuzzed.
+        bytes4[] memory selectors = new bytes4[](19);
         selectors[0] = VaultHandler.donate.selector;
-        selectors[1] = VaultHandler.donateOnBehalf.selector;
-        selectors[2] = VaultHandler.closeFunding.selector;
-        selectors[3] = VaultHandler.advanceTranches.selector;
-        selectors[4] = VaultHandler.cancel.selector;
-        selectors[5] = VaultHandler.claimRefund.selector;
-        selectors[6] = VaultHandler.claimRefundByRef.selector;
-        selectors[7] = VaultHandler.warp.selector;
-        selectors[8] = VaultHandler.expire.selector;
-        selectors[9] = VaultHandler.donateConverted.selector;
-        selectors[10] = VaultHandler.depositAndSweep.selector;
-        selectors[11] = VaultHandler.claimForwarderRefund.selector;
-        selectors[12] = VaultHandler.setPayeeFrozen.selector;
-        selectors[13] = VaultHandler.claimHeldPayment.selector;
-        selectors[14] = VaultHandler.withdrawDonation.selector;
-        selectors[15] = VaultHandler.deployIdle.selector;
-        selectors[16] = VaultHandler.unwind.selector;
-        selectors[17] = VaultHandler.harvest.selector;
-        selectors[18] = VaultHandler.payYield.selector;
-        selectors[19] = VaultHandler.moveVenue.selector;
-        selectors[20] = VaultHandler.fundToTarget.selector;
+        selectors[1] = VaultHandler.closeFunding.selector;
+        selectors[2] = VaultHandler.advanceTranches.selector;
+        selectors[3] = VaultHandler.cancel.selector;
+        selectors[4] = VaultHandler.claimRefund.selector;
+        selectors[5] = VaultHandler.warp.selector;
+        selectors[6] = VaultHandler.expire.selector;
+        selectors[7] = VaultHandler.donateConverted.selector;
+        selectors[8] = VaultHandler.depositAndSweep.selector;
+        selectors[9] = VaultHandler.claimForwarderRefund.selector;
+        selectors[10] = VaultHandler.setPayeeFrozen.selector;
+        selectors[11] = VaultHandler.claimHeldPayment.selector;
+        selectors[12] = VaultHandler.withdrawDonation.selector;
+        selectors[13] = VaultHandler.deployIdle.selector;
+        selectors[14] = VaultHandler.unwind.selector;
+        selectors[15] = VaultHandler.harvest.selector;
+        selectors[16] = VaultHandler.payYield.selector;
+        selectors[17] = VaultHandler.moveVenue.selector;
+        selectors[18] = VaultHandler.fundToTarget.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
         targetContract(address(handler));
     }
@@ -542,8 +510,8 @@ contract AidVaultInvariantTest is PoATest {
     function invariant_callSummary() public view {
         // Surfaced with -vvv so a run that exercised nothing is visible rather than silently green.
         assertTrue(
-            handler.donateCalls() + handler.donateOnBehalfCalls() + handler.releaseCalls() + handler.refundCalls()
-                    + handler.cancelCalls() + handler.expireCalls() + handler.convertedCalls() + handler.sweepCalls()
+            handler.donateCalls() + handler.releaseCalls() + handler.refundCalls() + handler.cancelCalls()
+                    + handler.expireCalls() + handler.convertedCalls() + handler.sweepCalls()
                     + handler.forwarderRefundCalls() + handler.freezeCalls() + handler.claimHeldCalls()
                     + handler.withdrawCalls() + handler.deployCalls() + handler.unwindCalls() + handler.harvestCalls()
                     + handler.payYieldCalls() + handler.venueCalls() >= 0

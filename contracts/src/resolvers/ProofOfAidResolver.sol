@@ -1,39 +1,36 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {IAidVault} from "../interfaces/IAidVault.sol";
 import {IDeliveryManager} from "../interfaces/IDeliveryManager.sol";
 import {IFeeRecorder} from "../interfaces/IFeeRecorder.sol";
 import {INeedsRegistry} from "../interfaces/INeedsRegistry.sol";
-import {INonCustodialLedger} from "../interfaces/INonCustodialLedger.sol";
 import {IRoleRegistry} from "../interfaces/IRoleRegistry.sol";
 import {ITrancheLedger} from "../interfaces/ITrancheLedger.sol";
 import {Errors} from "../libraries/Errors.sol";
-import {Roles} from "../libraries/Roles.sol";
 import {Attestation, IEAS} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
 import {SchemaResolver} from "@ethereum-attestation-service/eas-contracts/contracts/resolver/SchemaResolver.sol";
 
 /// @title ProofOfAidResolver
-/// @notice The single EAS resolver for all six Proof of Aid schemas. Every attestation that moves money or state
+/// @notice The single EAS resolver for all five Proof of Aid schemas. Every attestation that moves money or state
 ///         passes through here, which validates the attester's role and the payload before forwarding it.
 /// @dev The resolver derives each schema's UID from its own address exactly as the SchemaRegistry does
 ///      (`keccak256(abi.encodePacked(schema, resolver, revocable))`) and dispatches on it. Attestations under any
-///      other schema that points at this resolver are rejected, so indexers can trust the six official UIDs.
+///      other schema that points at this resolver are rejected, so indexers can trust the five official UIDs.
 ///
 ///      Lifecycle, in the order a donor sees it:
 ///        NeedVerified      independent verifier approves the dossier            → funding opens
-///        FundingRecorded   payment provider vouches for money it received       → Funded
 ///        Settlement        payout of a released tranche, with fees and FX ref   → Settled
 ///        DeliveryEvidence  field agent files encrypted evidence                 ┐
 ///        DeliveryVerified  independent verifier signs the delivery off          ┘ → Delivered
 ///        ImpactReport      NGO publishes outcomes, chained to the last sign-off → Impact confirmed
+///
+///      Money only ever arrives on chain — a wallet, a card through the Coinbase on-ramp into the donor's own
+///      wallet, or an exchange withdrawal to a deposit address — so no attestation is needed to say it did.
 contract ProofOfAidResolver is SchemaResolver, IFeeRecorder {
     uint16 internal constant BPS_DENOMINATOR = 10_000;
-    uint256 public constant SCHEMA_COUNT = 6;
+    uint256 public constant SCHEMA_COUNT = 5;
 
     string public constant NEED_VERIFIED_SCHEMA = "uint256 needId,bytes32 dossierHash,bool approved,bytes32 reportHash";
-    string public constant FUNDING_RECORDED_SCHEMA =
-        "uint256 needId,uint256 gross,uint256 fee,uint256 net,bytes32 currency,bytes32 paymentRefHash,bytes32 donorRefHash";
     string public constant DELIVERY_EVIDENCE_SCHEMA =
         "uint256 deliveryId,bytes32 evidenceHash,string evidenceCID,uint32 itemsDelivered,bytes32 regionCode";
     string public constant DELIVERY_VERIFIED_SCHEMA = "uint256 deliveryId,bool approved,bytes32 reportHash";
@@ -43,7 +40,6 @@ contract ProofOfAidResolver is SchemaResolver, IFeeRecorder {
         "uint256 needId,uint32 beneficiariesServed,bytes32 kpiHash,string reportCID";
 
     bytes32 public immutable NEED_VERIFIED_UID;
-    bytes32 public immutable FUNDING_RECORDED_UID;
     bytes32 public immutable DELIVERY_EVIDENCE_UID;
     bytes32 public immutable DELIVERY_VERIFIED_UID;
     bytes32 public immutable SETTLEMENT_UID;
@@ -53,9 +49,7 @@ contract ProofOfAidResolver is SchemaResolver, IFeeRecorder {
     INeedsRegistry public immutable registry;
     IDeliveryManager public immutable deliveryManager;
 
-    /// @notice provider => paymentRefHash => FundingRecorded attestation UID (references are scoped per provider).
-    mapping(address => mapping(bytes32 => bytes32)) public fundingAttestationOf;
-    /// @notice needId => fees intermediaries kept on the way in (FundingRecorded).
+    /// @notice needId => what conversions cost on the way in (oracle fair value minus what the swap delivered).
     mapping(uint256 => uint256) public fundingFeesOf;
     /// @notice needId => fees intermediaries kept on the way out (Settlement).
     mapping(uint256 => uint256) public settlementFeesOf;
@@ -64,7 +58,6 @@ contract ProofOfAidResolver is SchemaResolver, IFeeRecorder {
     /// @notice needId => UID of the live (non-revoked) impact report.
     mapping(uint256 => bytes32) public activeReportOf;
 
-    event FundingAttestationLinked(uint256 indexed needId, bytes32 indexed paymentRefHash, bytes32 attestationUID);
     event SettlementLinked(
         uint256 indexed needId,
         uint256 indexed trancheIndex,
@@ -87,7 +80,6 @@ contract ProofOfAidResolver is SchemaResolver, IFeeRecorder {
         deliveryManager = deliveryManager_;
 
         NEED_VERIFIED_UID = _uid(NEED_VERIFIED_SCHEMA, true);
-        FUNDING_RECORDED_UID = _uid(FUNDING_RECORDED_SCHEMA, false);
         DELIVERY_EVIDENCE_UID = _uid(DELIVERY_EVIDENCE_SCHEMA, false);
         DELIVERY_VERIFIED_UID = _uid(DELIVERY_VERIFIED_SCHEMA, false);
         SETTLEMENT_UID = _uid(SETTLEMENT_SCHEMA, false);
@@ -98,11 +90,10 @@ contract ProofOfAidResolver is SchemaResolver, IFeeRecorder {
     function schemaAt(uint256 index) external view returns (string memory schema, bool revocable, bytes32 uid) {
         // forge-lint: disable-start(boolean-cst)
         if (index == 0) return (NEED_VERIFIED_SCHEMA, true, NEED_VERIFIED_UID);
-        if (index == 1) return (FUNDING_RECORDED_SCHEMA, false, FUNDING_RECORDED_UID);
-        if (index == 2) return (DELIVERY_EVIDENCE_SCHEMA, false, DELIVERY_EVIDENCE_UID);
-        if (index == 3) return (DELIVERY_VERIFIED_SCHEMA, false, DELIVERY_VERIFIED_UID);
-        if (index == 4) return (SETTLEMENT_SCHEMA, false, SETTLEMENT_UID);
-        if (index == 5) return (IMPACT_REPORT_SCHEMA, true, IMPACT_REPORT_UID);
+        if (index == 1) return (DELIVERY_EVIDENCE_SCHEMA, false, DELIVERY_EVIDENCE_UID);
+        if (index == 2) return (DELIVERY_VERIFIED_SCHEMA, false, DELIVERY_VERIFIED_UID);
+        if (index == 3) return (SETTLEMENT_SCHEMA, false, SETTLEMENT_UID);
+        if (index == 4) return (IMPACT_REPORT_SCHEMA, true, IMPACT_REPORT_UID);
         // forge-lint: disable-end(boolean-cst)
         revert Errors.InvalidParameter();
     }
@@ -111,7 +102,7 @@ contract ProofOfAidResolver is SchemaResolver, IFeeRecorder {
 
     /// @inheritdoc IFeeRecorder
     /// @dev Conversion costs are computed by the contracts (oracle fair value minus swap output), so they need no
-    ///      attestation; they share the attested funding fees' budget under the need's disclosed cap.
+    ///      attestation; with settlement fees they share the budget of the need's disclosed cap.
     function recordConversionFee(uint256 needId, uint256 fee) external {
         INeedsRegistry.Need memory n = registry.getNeed(needId);
         if (msg.sender != n.vault || n.vault == address(0)) revert Errors.Unauthorized();
@@ -128,7 +119,6 @@ contract ProofOfAidResolver is SchemaResolver, IFeeRecorder {
         if (roles.paused()) revert Errors.SystemPaused();
 
         if (schema == NEED_VERIFIED_UID) _onNeedVerified(a);
-        else if (schema == FUNDING_RECORDED_UID) _onFundingRecorded(a);
         else if (schema == DELIVERY_EVIDENCE_UID) _onDeliveryEvidence(a);
         else if (schema == DELIVERY_VERIFIED_UID) _onDeliveryVerified(a);
         else if (schema == SETTLEMENT_UID) _onSettlement(a);
@@ -150,10 +140,7 @@ contract ProofOfAidResolver is SchemaResolver, IFeeRecorder {
                 delete activeReportOf[needId];
                 emit ImpactReportRevoked(needId, a.uid);
             }
-        } else if (
-            schema == FUNDING_RECORDED_UID || schema == DELIVERY_EVIDENCE_UID || schema == DELIVERY_VERIFIED_UID
-                || schema == SETTLEMENT_UID
-        ) {
+        } else if (schema == DELIVERY_EVIDENCE_UID || schema == DELIVERY_VERIFIED_UID || schema == SETTLEMENT_UID) {
             // Money, evidence and sign-offs are irrevocable; disagreement goes through challenges and disputes.
             revert Errors.NotRevocable();
         } else {
@@ -174,47 +161,6 @@ contract ProofOfAidResolver is SchemaResolver, IFeeRecorder {
         if (!roles.isIndependent(a.attester, registry.ngoOf(needId))) revert Errors.NotIndependent();
 
         registry.onVerificationAttested(needId, a.attester, approved, a.uid);
-    }
-
-    // ─── FundingRecorded ───────────────────────────────────────────────────────
-
-    /// @dev A payment provider (BANK_PARTNER_ROLE) vouches for a payment. Amounts are in the need's stablecoin
-    ///      base units; `currency` is what the donor paid in. For an on-chain need the matching deposit must
-    ///      already be in the vault; for an off-chain need this attestation *is* the funding record.
-    function _onFundingRecorded(Attestation calldata a) internal {
-        (
-            uint256 needId,
-            uint256 gross,
-            uint256 fee,
-            uint256 net,
-            bytes32 currency,
-            bytes32 paymentRefHash,
-            bytes32 donorRefHash
-        ) = abi.decode(a.data, (uint256, uint256, uint256, uint256, bytes32, bytes32, bytes32));
-
-        if (!roles.hasRole(Roles.BANK_PARTNER_ROLE, a.attester)) revert Errors.Unauthorized();
-        if (net == 0 || currency == bytes32(0) || paymentRefHash == bytes32(0) || donorRefHash == bytes32(0)) {
-            revert Errors.InvalidParameter();
-        }
-        INeedsRegistry.Need memory n = registry.getNeed(needId);
-        if (n.vault == address(0) || a.recipient != n.vault) revert Errors.InvalidRecipient();
-        _checkAmounts(gross, fee, net);
-        if (fundingAttestationOf[a.attester][paymentRefHash] != bytes32(0)) revert Errors.FundingAlreadyAttested();
-        fundingAttestationOf[a.attester][paymentRefHash] = a.uid;
-        fundingFeesOf[needId] += fee;
-
-        if (n.custodyMode == INeedsRegistry.CustodyMode.OnChain) {
-            if (!IAidVault(n.vault).fiatDepositMatches(paymentRefHash, a.attester, donorRefHash, net)) {
-                revert Errors.FundingMismatch();
-            }
-        } else {
-            // Only the custodian the NGO named can say it received money for this need.
-            if (a.attester != n.custodian) revert Errors.Unauthorized();
-            INonCustodialLedger(n.vault)
-                .recordFunding(a.attester, gross, fee, net, currency, paymentRefHash, donorRefHash);
-        }
-        _checkCostCap(needId, n.vault, n.thirdPartyCostBps);
-        emit FundingAttestationLinked(needId, paymentRefHash, a.uid);
     }
 
     // ─── DeliveryEvidence ──────────────────────────────────────────────────────
@@ -260,9 +206,7 @@ contract ProofOfAidResolver is SchemaResolver, IFeeRecorder {
     // ─── Settlement ────────────────────────────────────────────────────────────
 
     /// @dev Reconciles one tranche payout: gross must equal the tranche, fees must stay within the disclosed cap.
-    ///      On-chain custody: the vault already released the tranche; the NGO reports how it reached the supplier.
-    ///      Off-chain custody: the custodian holding the money reports the payout, which is what releases the
-    ///      tranche in the ledger (the same checks as an on-chain release apply there).
+    ///      The vault has already released the tranche; the NGO reports how it reached the supplier.
     function _onSettlement(Attestation calldata a) internal {
         (uint256 needId, uint256 trancheIndex, uint256 gross, uint256 fee, uint256 net, bytes32 supplierRefHash,) =
             abi.decode(a.data, (uint256, uint256, uint256, uint256, uint256, bytes32, bytes32));
@@ -280,16 +224,9 @@ contract ProofOfAidResolver is SchemaResolver, IFeeRecorder {
         settlementOf[needId][trancheIndex] = a.uid;
         settlementFeesOf[needId] += fee;
 
-        if (n.custodyMode == INeedsRegistry.CustodyMode.OnChain) {
-            if (a.attester != n.ngo) revert Errors.Unauthorized();
-            if (tranches[trancheIndex].status != ITrancheLedger.TrancheStatus.Released) {
-                revert Errors.InvalidTrancheStatus();
-            }
-        } else {
-            // The designation is the authority, not a live role: a custodian that loses its role must still be
-            // able to report paying out money it already holds (the same rule as refunds by reference).
-            if (a.attester != n.custodian) revert Errors.Unauthorized();
-            INonCustodialLedger(n.vault).recordRelease(trancheIndex);
+        if (a.attester != n.ngo) revert Errors.Unauthorized();
+        if (tranches[trancheIndex].status != ITrancheLedger.TrancheStatus.Released) {
+            revert Errors.InvalidTrancheStatus();
         }
         _checkCostCap(needId, n.vault, n.thirdPartyCostBps);
         emit SettlementLinked(needId, trancheIndex, a.uid, gross, fee, net);
@@ -324,9 +261,9 @@ contract ProofOfAidResolver is SchemaResolver, IFeeRecorder {
         if (gross < fee || gross - fee != net) revert Errors.AmountMismatch();
     }
 
-    /// @dev The disclosure is binding and cumulative: everything intermediaries kept on the way in and on the way
-    ///      out, together, stays within `thirdPartyCostBps` of what donors paid. Checking each fee on its own would
-    ///      let a funding fee and a settlement fee stack past the cap donors were shown.
+    /// @dev The disclosure is binding and cumulative: everything intermediaries kept on the way in (conversions)
+    ///      and on the way out (settlements), together, stays within `thirdPartyCostBps` of what donors paid.
+    ///      Checking each fee on its own would let a conversion and a settlement stack past the cap donors saw.
     function _checkCostCap(uint256 needId, address ledger, uint16 costCapBps) internal view {
         uint256 fundingFees = fundingFeesOf[needId];
         uint256 paidByDonors = ITrancheLedger(ledger).totalDonated() + fundingFees;

@@ -21,8 +21,8 @@ contract LifecycleTest is PoATest {
     uint256 internal constant TARGET = 30_000e6; // above the high-value threshold → 2 verifiers required
     uint32 internal constant EXPECTED_RECIPIENTS = 10;
 
-    bytes32 internal constant DONOR_REF = keccak256(abi.encode("salt", "donor-jane"));
-    bytes32 internal constant PAYMENT_REF = keccak256(abi.encode("salt", "SEPA-E2E-0001"));
+    /// @dev Paid by card: the Coinbase on-ramp bought USDC into this wallet, which then donated it.
+    address internal cardDonor = makeAddr("cardDonor");
 
     function test_fullLifecycle_threeTranches() public {
         // ── 2. NGO creates a program and enrols beneficiary identity commitments ──
@@ -43,16 +43,15 @@ contract LifecycleTest is PoATest {
         AidVault vault = AidVault(registry.vaultOf(needId));
         assertTrue(address(vault) != address(0));
 
-        // ── 5. Donations: two crypto donors and one fiat donor via the bank partner ──
+        // ── 5. Donations: two wallet donors and one who paid by card through the on-ramp ──
         uint256 receipt1 = _donate(donor1, needId, 12_000e6);
         uint256 receipt2 = _donate(donor2, needId, 8000e6);
         assertEq(receipt.ownerOf(receipt1), donor1);
         assertEq(receipt.ownerOf(receipt2), donor2);
         assertEq(receipt.receiptOf(receipt1).amount, 12_000e6);
 
-        _donateOnBehalf(needId, 10_000e6, DONOR_REF, PAYMENT_REF);
-        bytes32 fiatUID = _attestFundingRecorded(bankPartner, needId, 10_000e6, PAYMENT_REF, DONOR_REF);
-        assertEq(resolver.fundingAttestationOf(bankPartner, PAYMENT_REF), fiatUID);
+        uint256 receipt3 = _donate(cardDonor, needId, 10_000e6);
+        assertEq(receipt.ownerOf(receipt3), cardDonor, "a card donor holds a receipt like anyone else");
 
         // ── 6. Target reached → funding closed → tranche 0 (pre-financing) released ──
         assertEq(vault.totalDonated(), TARGET);
@@ -249,7 +248,7 @@ contract LifecycleTest is PoATest {
 
         _donate(donor1, needId, 6000e6);
         _donate(donor2, needId, 4000e6);
-        _donateOnBehalf(needId, 10_000e6, DONOR_REF, PAYMENT_REF);
+        _donate(cardDonor, needId, 10_000e6);
         vault.releaseTranche(0); // 30% = 6000 paid out as pre-financing
 
         // a delivery goes wrong and the admin cancels the need
@@ -268,8 +267,8 @@ contract LifecycleTest is PoATest {
         uint256 r1 = vault.claimRefund();
         vm.prank(donor2);
         uint256 r2 = vault.claimRefund();
-        vm.prank(bankPartner);
-        uint256 r3 = vault.claimRefundByRef(DONOR_REF, bankPartner);
+        vm.prank(cardDonor);
+        uint256 r3 = vault.claimRefund();
 
         assertEq(r1, (6000e6 * unreleased) / 20_000e6, "30% of the remaining pool");
         assertEq(r2, (4000e6 * unreleased) / 20_000e6);

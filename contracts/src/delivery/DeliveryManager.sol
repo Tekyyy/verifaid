@@ -15,7 +15,7 @@ import {ISemaphore} from "@semaphore-protocol/contracts/interfaces/ISemaphore.so
 ///         (1) field evidence attested by the NGO's field agent,
 ///         (2) anonymous Semaphore receipt confirmations from enrolled beneficiaries,
 ///         (3) an approving attestation from a verifier independent of the NGO,
-///         followed by a challenge window. Works identically for custodial and non-custodial needs.
+///         followed by a challenge window.
 contract DeliveryManager is IDeliveryManager, RoleAware {
     uint16 public constant BPS_DENOMINATOR = 10_000;
 

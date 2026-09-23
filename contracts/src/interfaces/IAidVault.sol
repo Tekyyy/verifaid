@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {ITrancheLedger} from "./ITrancheLedger.sol";
 
 /// @title IAidVault
-/// @notice Custodial ledger (`CustodyMode.OnChain`): per-need escrow that holds stablecoin donations and releases
+/// @notice Per-need escrow that holds stablecoin donations and releases
 ///         them in tranches.
 interface IAidVault is ITrancheLedger {
     /// @notice Idle capital left for the venue, and came back.
@@ -17,9 +17,6 @@ interface IAidVault is ITrancheLedger {
     event SleeveLoss(uint256 indexed needId, address indexed venue, uint256 shortfall);
 
     event Donated(uint256 indexed needId, address indexed donor, uint256 amount, uint256 receiptId);
-    event DonatedOnBehalf(
-        uint256 indexed needId, address indexed partner, uint256 amount, bytes32 donorRefHash, bytes32 paymentRefHash
-    );
     /// @notice A converted donation delivered by a DonationForwarder (card on-ramp or wallet in another token).
     /// @param receiptTo Wallet credited with the donation and its receipt; zero when the forwarder holds the claim.
     event DonatedVia(
@@ -44,9 +41,6 @@ interface IAidVault is ITrancheLedger {
 
     /// @notice Donates `amount` stablecoin (requires prior approval) and mints a soulbound receipt to the caller.
     function donate(uint256 amount) external returns (uint256 receiptId);
-
-    /// @notice Deposits a fiat donation converted to stablecoin by a payment provider (BANK_PARTNER_ROLE).
-    function donateOnBehalf(uint256 amount, bytes32 donorRefHash, bytes32 paymentRefHash) external;
 
     /// @notice Deposits a converted donation. Callable only by forwarders from the DonationForwarderFactory.
     ///         With a `receiptTo` wallet the donation is credited to it and receipted; otherwise it is credited to
@@ -79,14 +73,8 @@ interface IAidVault is ITrancheLedger {
     /// @notice Pro-rata refund of the unreleased balance to a direct donor of a cancelled or expired need.
     function claimRefund() external returns (uint256 amount);
 
-    /// @notice Pro-rata refund for a fiat donor, executed by the provider that deposited it.
+    /// @notice Pro-rata refund of a donation a deposit address holds the claim to, executed by that forwarder.
     function claimRefundByRef(bytes32 donorRefHash, address to) external returns (uint256 amount);
 
     function totalRefunded() external view returns (uint256);
-
-    /// @notice True if `paymentRefHash` was deposited by `partner` for `donorRefHash` with exactly `amount`.
-    function fiatDepositMatches(bytes32 paymentRefHash, address partner, bytes32 donorRefHash, uint256 amount)
-        external
-        view
-        returns (bool);
 }

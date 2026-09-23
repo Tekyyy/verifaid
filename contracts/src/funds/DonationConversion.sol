@@ -27,10 +27,10 @@ library DonationConversion {
         uint256 receiptId;
     }
 
-    /// @notice True while `needId` is on-chain custody, open for funding and below its target.
+    /// @notice True while `needId` is open for funding and below its target.
     function accepting(INeedsRegistry registry, uint256 needId) internal view returns (bool) {
         (, uint256 target,, bool open) = registry.fundingTermsOf(needId);
-        if (!open || registry.custodyModeOf(needId) != INeedsRegistry.CustodyMode.OnChain) return false;
+        if (!open) return false;
         return ITrancheLedger(registry.vaultOf(needId)).totalDonated() < target;
     }
 

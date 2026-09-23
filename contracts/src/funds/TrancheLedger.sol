@@ -10,7 +10,7 @@ import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
 /// @title TrancheLedger
-/// @notice Funding and tranche bookkeeping shared by AidVault (custodial) and NonCustodialLedger.
+/// @notice Funding and tranche bookkeeping for AidVault.
 /// @dev Deployed as EIP-1167 clones whose only immutable argument is the need id, appended to the clone's code.
 ///      Everything else a ledger needs (registry, delivery manager, factory, token...) is an immutable of the
 ///      implementation, shared by every clone through `delegatecall`. A new ledger therefore writes no storage
@@ -175,7 +175,7 @@ abstract contract TrancheLedger is ITrancheLedger, ReentrancyGuardTransient {
         emit TrancheReleasable(id, 0, 0);
     }
 
-    /// @dev Book-keeping of a release, common to both custody modes. Returns what was released and to whom it goes.
+    /// @dev Book-keeping of a release. Returns what was released and the NGO's payout address.
     function _release(uint256 id, uint256 index) internal returns (uint256 amount, address payout) {
         if (index >= _trancheCount) revert Errors.InvalidTrancheIndex();
         TrancheState storage t = _tranches[index];

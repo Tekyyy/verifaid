@@ -68,7 +68,6 @@ contract NeedsRegistryTest is PoATest {
         assertEq(n.trancheBps[1], 4000);
         assertEq(n.vault, address(0));
         assertEq(n.status, INeedsRegistry.NeedStatus.Pending);
-        assertEq(uint8(n.custodyMode), uint8(INeedsRegistry.CustodyMode.OnChain));
         assertEq(n.fundingDeadline, 0);
         assertEq(n.executionDeadline, block.timestamp + DEFAULT_EXECUTION_WINDOW);
         assertEq(n.minFundingBps, 1);
@@ -82,7 +81,6 @@ contract NeedsRegistryTest is PoATest {
         assertEq(registry.regionCodeOf(needId), REGION);
         assertEq(registry.trancheBpsOf(needId).length, 3);
         assertEq(registry.vaultOf(needId), address(0));
-        assertEq(uint8(registry.custodyModeOf(needId)), uint8(INeedsRegistry.CustodyMode.OnChain));
         assertEq(registry.thirdPartyCostBpsOf(needId), 0);
         (address coreNgo, address coreVault, uint256 coreProgram, INeedsRegistry.NeedStatus coreStatus) =
             registry.coreOf(needId);

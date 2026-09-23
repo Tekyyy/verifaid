@@ -2,8 +2,7 @@
 pragma solidity ^0.8.24;
 
 /// @title ITrancheLedger
-/// @notice Funding and tranche bookkeeping shared by both custody modes: the custodial AidVault and the
-///         NonCustodialLedger. DeliveryManager only ever talks to this interface, so deliveries work the same way
+/// @notice Funding and tranche bookkeeping. DeliveryManager only ever talks to this interface, so deliveries work the same way
 ///         whether the money sits in escrow on-chain or with a payment provider off-chain.
 interface ITrancheLedger {
     enum TrancheStatus {
@@ -21,7 +20,7 @@ interface ITrancheLedger {
 
     event FundingClosed(uint256 indexed needId, uint256 totalDonated);
     event TrancheReleasable(uint256 indexed needId, uint256 indexed index, uint256 deliveryId);
-    /// @param to The NGO's payout Safe for off-chain custody; zero for a vault, which pays the payment plan's payees
+    /// @param to Always zero: a vault pays the payment plan's payees, recorded in the `PayeePaid` events that follow
     ///        (see `IAidVault.PayeePaid`).
     event TrancheReleased(uint256 indexed needId, uint256 indexed index, uint256 amount, address to);
 

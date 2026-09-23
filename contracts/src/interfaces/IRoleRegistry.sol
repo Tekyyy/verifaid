@@ -18,8 +18,6 @@ interface IRoleRegistry is IAccessControl {
     event NgoStatusChanged(address indexed ngo, bool active);
     event VerifierRegistered(address indexed verifier);
     event VerifierRemoved(address indexed verifier);
-    event BankPartnerRegistered(address indexed partner);
-    event BankPartnerRemoved(address indexed partner);
     event FieldAgentAdded(address indexed ngo, address indexed agent);
     event FieldAgentRemoved(address indexed ngo, address indexed agent);
     event SupplierRegistered(address indexed supplier, bytes32 credentialHash, string metadataURI);
@@ -36,12 +34,6 @@ interface IRoleRegistry is IAccessControl {
 
     /// @notice Revokes VERIFIER_ROLE. Admin only.
     function removeVerifier(address verifier) external;
-
-    /// @notice Grants BANK_PARTNER_ROLE. Admin only.
-    function registerBankPartner(address partner) external;
-
-    /// @notice Revokes BANK_PARTNER_ROLE. Admin only.
-    function removeBankPartner(address partner) external;
 
     /// @notice Grants SUPPLIER_ROLE to a vetted service provider a vault may pay directly. Admin only.
     /// @param credentialHash Hash of the supplier's company registration / due-diligence file.

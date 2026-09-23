@@ -17,7 +17,6 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     bytes32 public constant NGO_ROLE = Roles.NGO_ROLE;
     bytes32 public constant VERIFIER_ROLE = Roles.VERIFIER_ROLE;
     bytes32 public constant FIELD_AGENT_ROLE = Roles.FIELD_AGENT_ROLE;
-    bytes32 public constant BANK_PARTNER_ROLE = Roles.BANK_PARTNER_ROLE;
     bytes32 public constant SUPPLIER_ROLE = Roles.SUPPLIER_ROLE;
 
     /// @notice NGO profiles (organization data only).
@@ -85,23 +84,8 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     }
 
     /// @inheritdoc IRoleRegistry
-    function registerBankPartner(address partner) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (partner == address(0)) revert Errors.ZeroAddress();
-        if (hasRole(BANK_PARTNER_ROLE, partner)) revert Errors.AlreadyRegistered();
-        _claimOperationalRole(partner, BANK_PARTNER_ROLE);
-        _grantRole(BANK_PARTNER_ROLE, partner);
-        emit BankPartnerRegistered(partner);
-    }
-
-    /// @inheritdoc IRoleRegistry
-    function removeBankPartner(address partner) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (!_revokeRole(BANK_PARTNER_ROLE, partner)) revert Errors.InvalidParameter();
-        emit BankPartnerRemoved(partner);
-    }
-
-    /// @inheritdoc IRoleRegistry
     /// @dev A supplier is a separate party by construction: it cannot also be an NGO, a payout Safe, a verifier,
-    ///      a payment provider or a field agent, so an NGO cannot list its own treasury as a "supplier".
+    ///      or a field agent, so an NGO cannot list its own treasury as a "supplier".
     function registerSupplier(address supplier, bytes32 credentialHash, string calldata uri)
         external
         onlyRole(DEFAULT_ADMIN_ROLE)
@@ -229,9 +213,9 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
         bytes32 everHeld = everHeldRole[account];
         if (everHeld != bytes32(0) && everHeld != role) revert Errors.RoleConflict();
         if (
-            hasRole(NGO_ROLE, account) || hasRole(VERIFIER_ROLE, account) || hasRole(BANK_PARTNER_ROLE, account)
-                || hasRole(SUPPLIER_ROLE, account) || fieldAgentNgo[account] != address(0)
-                || ngos[account].payoutAddress != address(0) || isPayoutAddress[account]
+            hasRole(NGO_ROLE, account) || hasRole(VERIFIER_ROLE, account) || hasRole(SUPPLIER_ROLE, account)
+                || fieldAgentNgo[account] != address(0) || ngos[account].payoutAddress != address(0)
+                || isPayoutAddress[account]
         ) revert Errors.RoleConflict();
     }
 }

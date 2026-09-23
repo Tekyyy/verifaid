@@ -80,14 +80,14 @@ contract VaultMathFuzzTest is PoATest {
     function testFuzz_refundsSplitTheUnreleasedBalance(
         uint256 a,
         uint256 b,
-        uint256 fiat,
+        uint256 c,
         bool releaseFirstTranche,
         bool releaseSecondTranche
     ) public {
         a = bound(a, 1e6, 100_000e6);
         b = bound(b, 1e6, 100_000e6);
-        fiat = bound(fiat, 1e6, 100_000e6);
-        uint256 target = a + b + fiat;
+        c = bound(c, 1e6, 100_000e6);
+        uint256 target = a + b + c;
 
         vm.prank(ngo);
         uint256 needId = registry.createNeed(_needParams(programId, target, 2, _threeTrancheBps()));
@@ -95,10 +95,10 @@ contract VaultMathFuzzTest is PoATest {
         _attestNeedVerified(verifier2, needId, true);
         AidVault vault = AidVault(registry.vaultOf(needId));
 
-        bytes32 donorRef = keccak256("fiat-donor");
+        address donor3 = makeAddr("donor3");
         _donate(donor1, needId, a);
         _donate(donor2, needId, b);
-        _donateOnBehalf(needId, fiat, donorRef, keccak256("payment-ref"));
+        _donate(donor3, needId, c);
         assertTrue(vault.fundingClosed(), "target reached");
 
         if (releaseFirstTranche) {
@@ -118,8 +118,8 @@ contract VaultMathFuzzTest is PoATest {
         uint256 r1 = vault.claimRefund();
         vm.prank(donor2);
         uint256 r2 = vault.claimRefund();
-        vm.prank(bankPartner);
-        uint256 r3 = vault.claimRefundByRef(donorRef, bankPartner);
+        vm.prank(donor3);
+        uint256 r3 = vault.claimRefund();
 
         assertLe(r1 + r2 + r3, unreleased, "refunds never exceed the unreleased balance");
         // floor rounding can strand at most 1 base unit per claimant

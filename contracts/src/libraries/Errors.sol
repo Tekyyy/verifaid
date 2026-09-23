@@ -52,7 +52,6 @@ library Errors {
     error WithdrawalLocked();
     error ExceedsTarget();
     error NothingDonated();
-    error PaymentRefAlreadyUsed();
     error DonorRefPartnerMismatch();
     error InvalidTrancheIndex();
     error InvalidTrancheStatus();
@@ -109,8 +108,6 @@ library Errors {
     error ExpiringAttestation();
     error NotRevocable();
     error RegionMismatch();
-    error FundingMismatch();
-    error FundingAlreadyAttested();
     error FeeExceedsDisclosure();
     error AmountMismatch();
     error SettlementAlreadyRecorded();

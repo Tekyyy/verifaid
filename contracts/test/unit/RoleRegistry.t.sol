@@ -88,7 +88,7 @@ contract RoleRegistryTest is PoATest {
 
         vm.prank(admin);
         vm.expectRevert(Errors.RoleConflict.selector);
-        roles.registerNgo(bankPartner, makeAddr("p3"), keccak256("c"), "");
+        roles.registerNgo(supplierA, makeAddr("p3"), keccak256("c"), "");
 
         // an address already serving as some NGO's payout Safe
         vm.prank(admin);
@@ -101,7 +101,7 @@ contract RoleRegistryTest is PoATest {
         vm.expectRevert(Errors.RoleConflict.selector);
         roles.registerNgo(makeAddr("n1"), verifier1, keccak256("c"), "");
         vm.expectRevert(Errors.RoleConflict.selector);
-        roles.registerNgo(makeAddr("n2"), bankPartner, keccak256("c"), "");
+        roles.registerNgo(makeAddr("n2"), supplierA, keccak256("c"), "");
         vm.expectRevert(Errors.RoleConflict.selector);
         roles.registerNgo(makeAddr("n3"), fieldAgent, keccak256("c"), "");
         vm.stopPrank();
@@ -191,7 +191,7 @@ contract RoleRegistryTest is PoATest {
         vm.expectRevert(Errors.RoleConflict.selector);
         roles.registerVerifier(fieldAgent);
         vm.expectRevert(Errors.RoleConflict.selector);
-        roles.registerVerifier(bankPartner);
+        roles.registerVerifier(supplierA);
         vm.expectRevert(Errors.RoleConflict.selector);
         roles.registerVerifier(ngoPayout);
         vm.stopPrank();
@@ -212,34 +212,6 @@ contract RoleRegistryTest is PoATest {
         vm.prank(admin);
         vm.expectRevert(Errors.InvalidParameter.selector);
         roles.removeVerifier(verifier1);
-    }
-
-    function test_registerAndRemoveBankPartner() public {
-        address p = makeAddr("partner2");
-        vm.expectEmit(true, false, false, false, address(roles));
-        emit IRoleRegistry.BankPartnerRegistered(p);
-        vm.prank(admin);
-        roles.registerBankPartner(p);
-        assertTrue(roles.hasRole(roles.BANK_PARTNER_ROLE(), p));
-
-        vm.expectEmit(true, false, false, false, address(roles));
-        emit IRoleRegistry.BankPartnerRemoved(p);
-        vm.prank(admin);
-        roles.removeBankPartner(p);
-        assertFalse(roles.hasRole(roles.BANK_PARTNER_ROLE(), p));
-    }
-
-    function test_registerBankPartner_reverts() public {
-        vm.startPrank(admin);
-        vm.expectRevert(Errors.ZeroAddress.selector);
-        roles.registerBankPartner(address(0));
-        vm.expectRevert(Errors.AlreadyRegistered.selector);
-        roles.registerBankPartner(bankPartner);
-        vm.expectRevert(Errors.RoleConflict.selector);
-        roles.registerBankPartner(verifier1);
-        vm.expectRevert(Errors.InvalidParameter.selector);
-        roles.removeBankPartner(outsider);
-        vm.stopPrank();
     }
 
     // ─── field agents ──────────────────────────────────────────────────────────

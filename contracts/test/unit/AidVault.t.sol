@@ -20,8 +20,8 @@ contract AidVaultTest is PoATest {
     uint256 internal programId;
     AidVault internal vault;
 
-    bytes32 internal constant DONOR_REF = keccak256("salted-donor-ref");
-    bytes32 internal constant PAYMENT_REF = keccak256("salted-payment-ref");
+    /// @dev A deposit address that holds its own claim: since §20 the only party that refunds by reference.
+    address internal depositAddress = makeAddr("depositAddress");
 
     function setUp() public override {
         super.setUp();
@@ -40,7 +40,6 @@ contract AidVaultTest is PoATest {
         assertEq(vault.deliveryManager(), address(deliveryManager));
         assertEq(vault.trancheCount(), 3);
         assertTrue(factory.isVault(address(vault)));
-        assertTrue(factory.isLedger(address(vault)));
 
         ITrancheLedger.Tranche[] memory tranches = vault.getTranches();
         assertEq(tranches[0].bps, 3000);
@@ -170,88 +169,32 @@ contract AidVaultTest is PoATest {
         assertEq(vault.trancheStatus(0), ITrancheLedger.TrancheStatus.Releasable);
     }
 
-    // ─── fiat donations ────────────────────────────────────────────────────────
+    // ─── donations a deposit address holds the claim to ────────────────────────
 
-    function test_donateOnBehalf() public {
-        _fundDonor(bankPartner, needId, 2000e6);
-        vm.expectEmit(true, true, false, true, address(vault));
-        emit IAidVault.DonatedOnBehalf(needId, bankPartner, 2000e6, DONOR_REF, PAYMENT_REF);
-        vm.prank(bankPartner);
-        vault.donateOnBehalf(2000e6, DONOR_REF, PAYMENT_REF);
+    /// @dev Credits `amount` to the deposit address by reference, through the forwarder path it uses in production.
+    function _creditDepositAddress(uint256 amount) internal returns (bytes32 key) {
+        key = bytes32(uint256(uint160(depositAddress)));
+        vm.mockCall(
+            address(forwarderFactory),
+            abi.encodeWithSelector(IDonationForwarderFactory.isForwarder.selector, depositAddress),
+            abi.encode(true)
+        );
+        token.mint(depositAddress, amount);
+        vm.startPrank(depositAddress);
+        token.approve(address(vault), amount);
+        vault.donateVia(amount, 0, address(0));
+        vm.stopPrank();
+    }
+
+    function test_donateVia_creditsADepositAddressByReference() public {
+        bytes32 key = _creditDepositAddress(2000e6);
 
         assertEq(vault.totalDonated(), 2000e6);
-        assertEq(vault.donatedByRef(DONOR_REF), 2000e6);
-        assertEq(vault.refPartner(DONOR_REF), bankPartner);
-        assertTrue(factory.isPaymentRefConsumed(bankPartner, PAYMENT_REF));
-
-        // one digest per deposit is all the resolver needs to check a FundingRecorded attestation
-        assertTrue(vault.fiatDepositMatches(PAYMENT_REF, bankPartner, DONOR_REF, 2000e6));
-        assertFalse(vault.fiatDepositMatches(PAYMENT_REF, bankPartner, DONOR_REF, 1999e6));
-        assertFalse(vault.fiatDepositMatches(PAYMENT_REF, outsider, DONOR_REF, 2000e6));
-        assertFalse(vault.fiatDepositMatches(keccak256("unknown"), bankPartner, DONOR_REF, 2000e6));
-
-        // no NFT receipt is minted for fiat donors
+        assertEq(vault.donatedByRef(key), 2000e6);
+        assertEq(vault.refPartner(key), depositAddress, "only the deposit address can claim its refund");
+        // the deposit address holds the claim, so there is no wallet to hand a receipt to
         assertEq(receipt.totalMinted(), 0);
         assertVaultInvariant(vault);
-    }
-
-    function test_donateOnBehalf_revertsForNonPartner() public {
-        token.mint(donor1, 100e6);
-        vm.startPrank(donor1);
-        token.approve(address(vault), 100e6);
-        vm.expectRevert(Errors.Unauthorized.selector);
-        vault.donateOnBehalf(100e6, DONOR_REF, PAYMENT_REF);
-        vm.stopPrank();
-    }
-
-    function test_donateOnBehalf_revertsOnZeroRefs() public {
-        token.mint(bankPartner, 100e6);
-        vm.startPrank(bankPartner);
-        token.approve(address(vault), 100e6);
-        vm.expectRevert(Errors.InvalidParameter.selector);
-        vault.donateOnBehalf(100e6, bytes32(0), PAYMENT_REF);
-        vm.expectRevert(Errors.InvalidParameter.selector);
-        vault.donateOnBehalf(100e6, DONOR_REF, bytes32(0));
-        vm.stopPrank();
-    }
-
-    function test_donateOnBehalf_rejectsReusedPaymentReference() public {
-        _donateOnBehalf(needId, 1000e6, DONOR_REF, PAYMENT_REF);
-        token.mint(bankPartner, 1000e6);
-        vm.startPrank(bankPartner);
-        token.approve(address(vault), 1000e6);
-        vm.expectRevert(Errors.PaymentRefAlreadyUsed.selector);
-        vault.donateOnBehalf(1000e6, DONOR_REF, PAYMENT_REF);
-        vm.stopPrank();
-    }
-
-    function test_donateOnBehalf_rejectsPaymentReferenceReusedOnAnotherNeed() public {
-        _donateOnBehalf(needId, 1000e6, DONOR_REF, PAYMENT_REF);
-
-        uint256 otherNeed = _createNeed(ngo, programId, 5000e6, 1);
-        _attestNeedVerified(verifier1, otherNeed, true);
-        address otherVault = registry.vaultOf(otherNeed);
-
-        token.mint(bankPartner, 1000e6);
-        vm.startPrank(bankPartner);
-        token.approve(otherVault, 1000e6);
-        vm.expectRevert(Errors.PaymentRefAlreadyUsed.selector);
-        IAidVault(otherVault).donateOnBehalf(1000e6, DONOR_REF, PAYMENT_REF);
-        vm.stopPrank();
-    }
-
-    function test_donateOnBehalf_rejectsForeignPartnerForSameDonorRef() public {
-        _donateOnBehalf(needId, 1000e6, DONOR_REF, PAYMENT_REF);
-
-        address partner2 = makeAddr("partner2");
-        vm.prank(admin);
-        roles.registerBankPartner(partner2);
-        token.mint(partner2, 1000e6);
-        vm.startPrank(partner2);
-        token.approve(address(vault), 1000e6);
-        vm.expectRevert(Errors.DonorRefPartnerMismatch.selector);
-        vault.donateOnBehalf(1000e6, DONOR_REF, keccak256("other-payment-ref"));
-        vm.stopPrank();
     }
 
     // ─── closing funding ───────────────────────────────────────────────────────
@@ -506,85 +449,60 @@ contract AidVaultTest is PoATest {
     }
 
     function test_claimRefundByRef() public {
-        _donateOnBehalf(needId, 1000e6, DONOR_REF, PAYMENT_REF);
+        bytes32 key = _creditDepositAddress(1000e6);
         vm.prank(ngo);
         registry.cancelNeed(needId);
 
-        address fiatDonorAccount = makeAddr("fiatDonorAccount");
+        address refundTo = makeAddr("refundTo");
         vm.expectEmit(true, true, true, true, address(vault));
-        emit IAidVault.RefundedByRef(needId, DONOR_REF, fiatDonorAccount, 1000e6);
-        vm.prank(bankPartner);
-        uint256 refunded = vault.claimRefundByRef(DONOR_REF, fiatDonorAccount);
+        emit IAidVault.RefundedByRef(needId, key, refundTo, 1000e6);
+        vm.prank(depositAddress);
+        uint256 refunded = vault.claimRefundByRef(key, refundTo);
 
         assertEq(refunded, 1000e6);
-        assertEq(token.balanceOf(fiatDonorAccount), 1000e6);
+        assertEq(token.balanceOf(refundTo), 1000e6);
         assertVaultInvariant(vault);
     }
 
     function test_claimRefundByRef_reverts() public {
-        _donateOnBehalf(needId, 1000e6, DONOR_REF, PAYMENT_REF);
+        bytes32 key = _creditDepositAddress(1000e6);
 
         vm.prank(outsider);
         vm.expectRevert(Errors.Unauthorized.selector);
-        vault.claimRefundByRef(DONOR_REF, outsider);
+        vault.claimRefundByRef(key, outsider);
 
-        address partner2 = makeAddr("partner2");
-        vm.prank(admin);
-        roles.registerBankPartner(partner2);
-        vm.prank(partner2);
-        vm.expectRevert(Errors.Unauthorized.selector);
-        vault.claimRefundByRef(DONOR_REF, partner2);
-
-        vm.prank(bankPartner);
+        vm.prank(depositAddress);
         vm.expectRevert(Errors.ZeroAddress.selector);
-        vault.claimRefundByRef(DONOR_REF, address(0));
+        vault.claimRefundByRef(key, address(0));
 
-        vm.prank(bankPartner);
+        vm.prank(depositAddress);
         vm.expectRevert(Errors.NotRefundable.selector);
-        vault.claimRefundByRef(DONOR_REF, bankPartner);
+        vault.claimRefundByRef(key, depositAddress);
 
         vm.prank(ngo);
         registry.cancelNeed(needId);
 
-        // an unknown donor reference is indistinguishable from someone else's reference
-        vm.prank(bankPartner);
+        // an unknown reference is indistinguishable from someone else's reference
+        vm.prank(depositAddress);
         vm.expectRevert(Errors.Unauthorized.selector);
-        vault.claimRefundByRef(keccak256("unknown"), bankPartner);
+        vault.claimRefundByRef(keccak256("unknown"), depositAddress);
 
-        vm.prank(bankPartner);
-        vault.claimRefundByRef(DONOR_REF, bankPartner);
-        vm.prank(bankPartner);
+        vm.prank(depositAddress);
+        vault.claimRefundByRef(key, depositAddress);
+        vm.prank(depositAddress);
         vm.expectRevert(Errors.NothingToRefund.selector);
-        vault.claimRefundByRef(DONOR_REF, bankPartner);
-    }
-
-    /// @dev Revoking a partner's role must not strand the refunds of the donors it deposited for: authorization
-    ///      is ownership of the reference, not a live role.
-    function test_claimRefundByRef_survivesPartnerDeregistration() public {
-        _donateOnBehalf(needId, 1000e6, DONOR_REF, PAYMENT_REF);
-        vm.prank(ngo);
-        registry.cancelNeed(needId);
-
-        vm.prank(admin);
-        roles.removeBankPartner(bankPartner);
-
-        address fiatDonorAccount = makeAddr("fiatDonorAccount");
-        vm.prank(bankPartner);
-        uint256 refunded = vault.claimRefundByRef(DONOR_REF, fiatDonorAccount);
-        assertEq(refunded, 1000e6);
-        assertEq(token.balanceOf(fiatDonorAccount), 1000e6);
-        assertVaultInvariant(vault);
+        vault.claimRefundByRef(key, depositAddress);
     }
 
     /// @dev Refunding into the vault would inflate totalRefunded without moving tokens, breaking the invariant.
     function test_claimRefundByRef_rejectsTheVaultAsRecipient() public {
-        _donateOnBehalf(needId, 1000e6, DONOR_REF, PAYMENT_REF);
+        bytes32 key = _creditDepositAddress(1000e6);
         vm.prank(ngo);
         registry.cancelNeed(needId);
 
-        vm.prank(bankPartner);
+        vm.prank(depositAddress);
         vm.expectRevert(Errors.ZeroAddress.selector);
-        vault.claimRefundByRef(DONOR_REF, address(vault));
+        vault.claimRefundByRef(key, address(vault));
         assertVaultInvariant(vault);
     }
 
@@ -598,13 +516,6 @@ contract AidVaultTest is PoATest {
         vm.expectRevert(Errors.NgoInactive.selector);
         vault.donate(100e6);
 
-        token.mint(bankPartner, 100e6);
-        vm.startPrank(bankPartner);
-        token.approve(address(vault), 100e6);
-        vm.expectRevert(Errors.NgoInactive.selector);
-        vault.donateOnBehalf(100e6, DONOR_REF, PAYMENT_REF);
-        vm.stopPrank();
-
         vm.prank(admin);
         roles.setNgoActive(ngo, true);
         vm.prank(donor1);
@@ -614,7 +525,7 @@ contract AidVaultTest is PoATest {
 
     function test_mixedDonorsRefundPoolIsShared() public {
         _donate(donor1, needId, 500e6);
-        _donateOnBehalf(needId, 500e6, DONOR_REF, PAYMENT_REF);
+        bytes32 key = _creditDepositAddress(500e6);
         vm.prank(ngo);
         vault.closeFunding();
         vault.releaseTranche(0);
@@ -623,11 +534,11 @@ contract AidVaultTest is PoATest {
 
         vm.prank(donor1);
         uint256 direct = vault.claimRefund();
-        vm.prank(bankPartner);
-        uint256 fiat = vault.claimRefundByRef(DONOR_REF, bankPartner);
+        vm.prank(depositAddress);
+        uint256 byRef = vault.claimRefundByRef(key, depositAddress);
 
-        assertEq(direct, fiat);
-        assertEq(direct + fiat, vault.totalDonated() - vault.totalReleased());
+        assertEq(direct, byRef, "a wallet and a deposit address share the pool pro rata");
+        assertEq(direct + byRef, vault.totalDonated() - vault.totalReleased());
         assertVaultInvariant(vault);
     }
 

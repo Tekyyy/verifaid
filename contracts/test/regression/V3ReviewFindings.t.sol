@@ -183,26 +183,9 @@ contract V3ReviewFindingsTest is PoATest {
     }
 
     // ─── 6: a forwarder could take over a reference a provider already owned ───
-
-    function test_F6_aForwarderCannotTakeOverAProvidersReference() public {
-        uint256 needId = _need(9000e6, 200);
-        IDonationForwarder.Intent memory it = _intent(needId, "f6");
-        address forwarder = forwarderFactory.forwarderAddress(it);
-        bytes32 key = bytes32(uint256(uint160(forwarder)));
-        _donateOnBehalf(needId, 1000e6, key, keccak256("pay-1"));
-
-        token.mint(forwarder, 1e6);
-        vm.prank(keeper);
-        vm.expectRevert(Errors.DonorRefPartnerMismatch.selector);
-        forwarderFactory.sweep(it, address(token));
-
-        AidVault vault = AidVault(registry.vaultOf(needId));
-        assertEq(vault.refPartner(key), bankPartner, "the provider keeps its reference and its refunds");
-        forwarderFactory.deploy(it); // the reverted sweep rolled its deployment back too
-        vm.prank(donor); // the deposit address's own money is still the donor's to take back
-        IDonationForwarder(forwarder).refund(address(token));
-        assertEq(token.balanceOf(donor), 1e6);
-    }
+    // Structurally gone since §20: no payment provider writes donor references any more, and a forwarder's
+    // reference is its own address, so no other party can claim one first. `donateVia` still refuses a key it
+    // does not own, as a guard for any future writer.
 
     // ─── 7: addresses were handed out for intents that could never be deployed ─
 

@@ -9,14 +9,13 @@ import {IFeeRecorder} from "../interfaces/IFeeRecorder.sol";
 import {INeedsRegistry} from "../interfaces/INeedsRegistry.sol";
 import {IRoleRegistry} from "../interfaces/IRoleRegistry.sol";
 import {Errors} from "../libraries/Errors.sol";
-import {Roles} from "../libraries/Roles.sol";
 import {TrancheLedger} from "./TrancheLedger.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title AidVault
-/// @notice Escrow for a single need (`CustodyMode.OnChain`). Holds stablecoin until tranches are unlocked by
+/// @notice Escrow for a single need. Holds stablecoin until tranches are unlocked by
 ///         verified deliveries, then pays each tranche straight to the suppliers of the need's payment plan.
 /// @dev There is intentionally no admin withdrawal path: funds leave only as tranche payments to the payees the
 ///      plan names (the NGO only for its disclosed share) or as pro-rata refunds.
@@ -57,13 +56,11 @@ contract AidVault is TrancheLedger, IAidVault {
 
     /// @notice Unrefunded direct donations per donor address (cleared when the refund is paid).
     mapping(address => uint256) public donatedBy;
-    /// @notice Unrefunded fiat donations per salted donor reference hash (cleared when the refund is paid).
+    /// @notice Unrefunded donations a deposit address holds the claim to, keyed by the forwarder's own address
+    ///         (cleared when the refund is paid). A deposit address that credits a wallet uses `donatedBy` instead.
     mapping(bytes32 => uint256) public donatedByRef;
-    /// @notice Payment provider that owns a donor reference (only it may claim refunds for that reference).
+    /// @notice The forwarder that owns a reference: only it may claim that reference's refund.
     mapping(bytes32 => address) public refPartner;
-    /// @notice keccak256(partner, paymentRefHash) => keccak256(donorRefHash, amount): one slot per deposit, enough
-    ///         for the resolver to check a `FundingRecorded` attestation against what was actually deposited.
-    mapping(bytes32 => bytes32) public fiatDepositDigest;
 
     constructor(
         IRoleRegistry roles_,
@@ -106,36 +103,9 @@ contract AidVault is TrancheLedger, IAidVault {
     }
 
     /// @inheritdoc IAidVault
-    /// @dev No receipt NFT is minted for fiat donations: the donor is represented only by `donorRefHash`.
-    function donateOnBehalf(uint256 amount, bytes32 donorRefHash, bytes32 paymentRefHash)
-        external
-        nonReentrant
-        onlyClone
-    {
-        _requireNotPaused();
-        if (!roles.hasRole(Roles.BANK_PARTNER_ROLE, msg.sender)) revert Errors.Unauthorized();
-        if (donorRefHash == bytes32(0) || paymentRefHash == bytes32(0)) revert Errors.InvalidParameter();
-        address owner = refPartner[donorRefHash];
-        if (owner != address(0) && owner != msg.sender) revert Errors.DonorRefPartnerMismatch();
-        uint256 id = needId();
-        uint256 target = _checkFunding(id, amount);
-
-        _totalDonated += uint128(amount);
-        donatedByRef[donorRefHash] += amount;
-        if (owner == address(0)) refPartner[donorRefHash] = msg.sender;
-        fiatDepositDigest[_depositKey(msg.sender, paymentRefHash)] = _digest(donorRefHash, amount);
-
-        factory.consumePaymentRef(msg.sender, paymentRefHash); // reverts if this provider already used it anywhere
-        token.safeTransferFrom(msg.sender, address(this), amount);
-        emit DonatedOnBehalf(id, msg.sender, amount, donorRefHash, paymentRefHash);
-
-        if (_totalDonated == target) _closeFunding(id);
-    }
-
-    /// @inheritdoc IAidVault
     /// @dev A forwarder-credited donation is keyed by the forwarder's own address in `donatedByRef`, with the
-    ///      forwarder as its `refPartner`, so refunds reuse `claimRefundByRef`. Like `donateOnBehalf`, a key already
-    ///      owned by another depositor is refused rather than taken over.
+    ///      forwarder as its `refPartner`, so refunds go through `claimRefundByRef`. A key already owned by
+    ///      another depositor is refused rather than taken over.
     function donateVia(uint256 amount, uint256 conversionFee, address receiptTo)
         external
         nonReentrant
@@ -363,9 +333,8 @@ contract AidVault is TrancheLedger, IAidVault {
     }
 
     /// @inheritdoc IAidVault
-    /// @dev Authorization is ownership of the reference, deliberately *not* a live BANK_PARTNER_ROLE check:
-    ///      the partner that deposited the money must still be able to return it to its donor after the admin
-    ///      de-registers it, otherwise revoking a partner's role would strand its donors' refunds forever.
+    /// @dev Authorization is ownership of the reference: only the deposit address that credited itself can
+    ///      claim, and it pays out only to the refund destination it committed to when it was created.
     function claimRefundByRef(bytes32 donorRefHash, address to)
         external
         nonReentrant
@@ -396,16 +365,6 @@ contract AidVault is TrancheLedger, IAidVault {
     /// @inheritdoc IAidVault
     function totalRefunded() external view returns (uint256) {
         return _totalRefunded;
-    }
-
-    /// @inheritdoc IAidVault
-    function fiatDepositMatches(bytes32 paymentRefHash, address partner, bytes32 donorRefHash, uint256 amount)
-        external
-        view
-        returns (bool)
-    {
-        bytes32 digest = fiatDepositDigest[_depositKey(partner, paymentRefHash)];
-        return digest != bytes32(0) && digest == _digest(donorRefHash, amount);
     }
 
     /// @notice Refund a direct donor could claim right now (0 unless the need is cancelled or expired).
@@ -540,13 +499,5 @@ contract AidVault is TrancheLedger, IAidVault {
 
     function _isRefundable(INeedsRegistry.NeedStatus s) internal pure returns (bool) {
         return s == INeedsRegistry.NeedStatus.Cancelled || s == INeedsRegistry.NeedStatus.Expired;
-    }
-
-    function _depositKey(address partner, bytes32 paymentRefHash) internal pure returns (bytes32) {
-        return keccak256(abi.encode(partner, paymentRefHash));
-    }
-
-    function _digest(bytes32 donorRefHash, uint256 amount) internal pure returns (bytes32) {
-        return keccak256(abi.encode(donorRefHash, amount));
     }
 }
