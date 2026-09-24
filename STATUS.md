@@ -3,7 +3,7 @@
 A snapshot of everything this machine and the working session hold: what is live, what is running, where the
 keys are (names only, never values), how to operate it, and what is still open.
 
-*Last updated: 2026-09-24 · v10 live from branch `feature/beneficiary-needs` (pushed to GitHub; not merged into `main` yet)*
+*Last updated: 2026-09-24 · v10 live; `main` and `feature/beneficiary-needs` both at the same code on GitHub*
 
 ---
 
@@ -17,7 +17,7 @@ keys are (names only, never values), how to operate it, and what is still open.
 | Tests | 391 Foundry, 26 shared, 64 notifier, 91 app — all passing; typecheck and Biome lint clean |
 | Demo | all 7 scenarios passed on anvil and on Base Sepolia |
 | Your wallets | `0xa087…42Da` and `0x4C2d…3636` registered as NGOs; 1,000,000 test USDC each in `0xa087…42Da`, `0x4C2d…3636`, `0x28EA…F708` |
-| Branch | `feature/beneficiary-needs` holds v10; `main` is still v9 code |
+| Branch | `main` holds v10 (fast-forwarded from `feature/beneficiary-needs`) |
 | Open | threshold counts other money that cannot vote (item #1, reward credit already excluded); Pinata key; paymaster URL |
 
 ---
