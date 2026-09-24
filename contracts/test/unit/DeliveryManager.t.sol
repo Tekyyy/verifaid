@@ -121,13 +121,13 @@ contract DeliveryManagerTest is PoATest {
         IRoleRegistry r = IRoleRegistry(address(roles));
         INeedsRegistry n = INeedsRegistry(address(registry));
         vm.expectRevert(Errors.InvalidParameter.selector);
-        new ReleasePolicy(r, n, "nobody", 0, 0, false, 1); // no voice at all
+        new ReleasePolicy(r, n, "nobody", 0, 0, false, 1, address(0)); // no voice at all
         vm.expectRevert(Errors.InvalidParameter.selector);
-        new ReleasePolicy(r, n, "half", 3000, 0, false, 1); // donors could approve but never reject
+        new ReleasePolicy(r, n, "half", 3000, 0, false, 1, address(0)); // donors could approve but never reject
         vm.expectRevert(Errors.InvalidParameter.selector);
-        new ReleasePolicy(r, n, "over", 10_001, 5000, false, 1);
+        new ReleasePolicy(r, n, "over", 10_001, 5000, false, 1, address(0));
         vm.expectRevert(Errors.InvalidParameter.selector);
-        new ReleasePolicy(r, n, "", 3000, 5000, false, 1);
+        new ReleasePolicy(r, n, "", 3000, 5000, false, 1, address(0));
     }
 
     // ─── submitting evidence ───────────────────────────────────────────────────

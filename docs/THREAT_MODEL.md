@@ -440,8 +440,9 @@ or puts something false in front of donors.*
   A pot is the NGO's own money, locked in `CommunityProofs` when it opens; the vault is never touched. Only the NGO
   that answers for the need can open, pay from or close its pot early, and the contract pays only proof filed before
   the deadline, once per wallet per need, from wallets that do not run the need (the NGO, the beneficiary and their
-  payout wallets are refused). Nothing is paid automatically, so a flood of wallets filing photos of nothing costs the
-  NGO nothing. After the deadline anyone can close a pot, and the balance goes back to the NGO only. Every proof stays
+  payout wallets are refused). One wallet may file three proofs per need, so flooding a page takes a funded wallet per
+  three proofs, and the page folds everything after the first ten. Nothing is paid automatically, so a flood of
+  wallets filing photos of nothing costs the NGO nothing. After the deadline anyone can close a pot, and the balance goes back to the NGO only. Every proof stays
   public whether or not it was rewarded, and the page shows which were, so an NGO that rewards only flattering proof
   does it in the open. Photos go through the evidence upload: location and camera data stripped, size and type
   checked, rate-limited, and committed by hash.
@@ -450,6 +451,26 @@ or puts something false in front of donors.*
   that is false, hostile or shows a person stays listed. Its photos can be removed from the upload store, but the
   manifest (the note and the files' hashes and addresses) stays in the event log, and pinned copies cannot be recalled
   (§3.10). A proof filer's wallet is public and linked to the place they photographed.
+
+### 3.26 Reward credit and giving baskets (v10)
+
+*A reward is cashed out or used to buy a vote, reward money freezes a need, or a basket gift is skimmed or misrouted.*
+
+- **Mitigation.** A reward never leaves `CommunityProofs` except as a donation: `creditOf` can only be spent through
+  `giveCredit`, which donates through the factory into a vault, and a failed need's refund comes back as credit, pro
+  rata to what each filer gave. The donor of record is the contract, which cannot vote or sign, so an NGO rewarding
+  wallets it controls buys no say on anyone's evidence; and `ReleasePolicy` leaves the contract's donations out of
+  the donor thresholds, so credit poured into a need cannot make its approval unreachable either. A basket gift is
+  split in one transaction by the factory, which keeps nothing: each part goes straight to a vault in the giver's name
+  and whatever no need can take is returned in the same call. Needs are named in strictly increasing order (none
+  twice, at most 25), and a need that is not raising money, is past a deadline, is full or belongs to a suspended NGO
+  takes nothing instead of failing the whole gift.
+- **Residual risk.** The factory does not know a need's category, so a caller can label any set of needs with any
+  basket id; the indexer only counts a part for a basket when the need is of its category, and the money is a
+  legitimate donation either way. The split follows the needs' room at the moment the gift lands, which may differ
+  from the preview. Reward credit is a claim on the contract's balance: a bug in `CommunityProofs` would put every
+  unspent reward at risk (it holds pots and credit together, and is not audited). Credit sits unspent for as long as
+  its holder leaves it; there is no expiry and no one else can give it.
 
 ### 3.10 GDPR versus immutability
 

@@ -151,7 +151,13 @@ export interface DeliveryVoteView {
  * CONVERTED: another token (USDC bought with a card, ETH, an exchange withdrawal) was swapped on-chain into the
  *   vault token under the oracle bound, from a wallet or a deposit address.
  */
-export type DonationKind = 'DIRECT' | 'CONVERTED'
+/**
+ * DIRECT: a wallet donated the vault's own currency. CONVERTED: another token was swapped into it on the way in.
+ * BASKET: part of a gift to a basket (a category's open needs), split equally by the factory; the giver is the
+ *   donor of record, with a receipt and a say. REWARD: reward credit a proof's filer gave away; the donor of record is
+ *   the CommunityProofs contract (reward money carries no say), and `rewardFrom` is who gave it.
+ */
+export type DonationKind = 'DIRECT' | 'CONVERTED' | 'BASKET' | 'REWARD'
 
 /** What happened on-chain when a donation arrived in another token. */
 export interface ConversionView {
@@ -185,8 +191,64 @@ export interface DonationView {
   receiptId: string | null
   /** Set for CONVERTED donations. */
   conversion: ConversionView | null
+  /** BASKET and REWARD gifts made through a basket: its id (a category's hash) and its category label. */
+  basket: Hex | null
+  basketLabel: string | null
+  /** REWARD only: the wallet whose reward credit this was. */
+  rewardFrom: Address | null
   txHash: Hex
   timestamp: number
+}
+
+/**
+ * A giving basket: every need of one category raising money right now. A gift to it is split equally between them,
+ * by the contract, and each part is a donation in the giver's name.
+ */
+export interface BasketView {
+  /** The category label ("WATER"), which is also the basket's address in the app (/baskets/water). */
+  category: string
+  /** The basket's on-chain id: the category's hash, as a need's category is committed. */
+  id: Hex
+  /** Needs of the category taking money right now, oldest first; a gift is split between these. */
+  openNeedIds: string[]
+  /** What they still need between them, in base units. */
+  stillNeeded: string
+  /** Everything given through this basket so far (by wallets and by reward credit). */
+  givenThroughBasket: string
+  gifts: number
+  /** The category's record: every need ever posted in it, how many were completed, what reached its payees. */
+  needsTotal: number
+  needsCompleted: number
+  released: string
+}
+
+export interface BasketGiftView {
+  id: string
+  donor: Address
+  /** True when the giver spent reward credit, not their own money (the donor of record is then the contract). */
+  fromCredit: boolean
+  total: string
+  returned: string
+  needs: { needId: string; amount: string }[]
+  txHash: Hex
+  timestamp: number
+}
+
+export interface BasketDetail extends BasketView {
+  needs: NeedSummary[]
+  recentGifts: BasketGiftView[]
+}
+
+/** Reward credit a wallet gave to one need, and whether it came back when the need failed. */
+export interface CreditGiftView {
+  needId: string
+  needStatus: NeedStatus
+  /** Given, not yet reclaimed. */
+  given: string
+  /** Came back as credit after the need failed. */
+  reclaimed: string
+  /** True when the need failed and the credit can be reclaimed now. */
+  reclaimable: boolean
 }
 
 /** A tranche payout reconciled by a Settlement attestation: what reached the supplier and what fees took. */
@@ -344,7 +406,7 @@ export interface CommunityProofView {
   manifestText: string
   submittedAt: number
   txHash: Hex
-  /** Set when the need's NGO paid for it from one of its reward pots. */
+  /** Set when the need's NGO rewarded it from one of its pots, as credit the filer can only give away. */
   reward: { bountyId: string; amount: string; timestamp: number; txHash: Hex } | null
 }
 
@@ -503,6 +565,9 @@ export type TimelineEventType =
   | 'CommunityProofRewarded'
   | 'ProofBountyOpened'
   | 'ProofBountyClosed'
+  | 'DonatedBasket'
+  | 'DonatedReward'
+  | 'CreditReclaimed'
 
 export interface TimelineEvent {
   id: string
@@ -632,6 +697,11 @@ export interface DonorStageView {
    * been filed yet. The UI shows this instead of pretending the stage is either done or not started.
    */
   pending: string | null
+  /**
+   * The stage does not exist for this need, so it is never reached and never missing: Impact confirmed on a need a
+   * person posted for themselves, which publishes no impact report (it serves one household).
+   */
+  notApplicable: boolean
 }
 
 /** How a donation ended up, independent of the stage it reached. */

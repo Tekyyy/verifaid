@@ -1,18 +1,24 @@
-import type {
-  DeliveryView,
-  DepositAddressView,
-  DonationTrack,
-  DonorTrace,
-  ImpactSummary,
-  NeedDetail,
-  NeedSort,
-  NeedSummary,
-  OpenBountyView,
-  ProgramView,
-  SupplierApplicationView,
-  SupplierDetail,
-  SupplierView,
-  TimelineEvent,
+import {
+  type BasketDetail,
+  type BasketView,
+  basketId,
+  CATEGORIES,
+  type CreditGiftView,
+  type DeliveryView,
+  type DepositAddressView,
+  type DonationTrack,
+  type DonorTrace,
+  type ImpactSummary,
+  MAX_BASKET_NEEDS,
+  type NeedDetail,
+  type NeedSort,
+  type NeedSummary,
+  type OpenBountyView,
+  type ProgramView,
+  type SupplierApplicationView,
+  type SupplierDetail,
+  type SupplierView,
+  type TimelineEvent,
 } from '@poa/shared'
 import { indexerUrl, useFixtures } from './config'
 import * as fixtures from './fixtures'
@@ -178,6 +184,53 @@ export const getSuppliers = async (): Promise<Result<SupplierView[]>> =>
 
 export const getSupplier = async (address: string): Promise<Result<SupplierDetail>> =>
   useFixtures ? fixtures.supplier(address) : get<SupplierDetail>(`/suppliers/${encodeURIComponent(address)}`)
+
+/**
+ * The sample data has no basket gifts, but its needs still make baskets: each category's needs raising money, as the
+ * indexer would list them.
+ */
+const fixtureBasket = (category: string): BasketDetail => {
+  const all = fixtures.filterNeeds({ category })
+  const open = all
+    .filter((need) => need.status === 'Funding' && BigInt(need.fundingGap) > 0n)
+    .sort((a, b) => Number(a.id) - Number(b.id))
+    .slice(0, MAX_BASKET_NEEDS)
+  const sum = (values: string[]) => values.reduce((total, value) => total + BigInt(value), 0n).toString()
+  return {
+    category,
+    id: basketId(category),
+    openNeedIds: open.map((need) => need.id),
+    stillNeeded: sum(open.map((need) => need.fundingGap)),
+    givenThroughBasket: '0',
+    gifts: 0,
+    needsTotal: all.length,
+    needsCompleted: all.filter((need) => need.status === 'Completed').length,
+    released: sum(all.map((need) => need.totalReleased)),
+    needs: open,
+    recentGifts: [],
+  }
+}
+
+/** One giving basket per category: the needs a gift to it would be split between, and what it has done. */
+export const getBaskets = async (): Promise<Result<BasketView[]>> =>
+  useFixtures
+    ? { ok: true, data: CATEGORIES.map((category) => fixtureBasket(category)) }
+    : get<BasketView[]>('/baskets')
+
+/** `category` is the label ("water" or "WATER"); 404 for one that is not a basket. */
+export const getBasket = async (category: string): Promise<Result<BasketDetail>> => {
+  const label = category.toUpperCase()
+  if (useFixtures) {
+    return (CATEGORIES as readonly string[]).includes(label)
+      ? { ok: true, data: fixtureBasket(label) }
+      : { ok: false, error: { kind: 'http', status: 404, detail: 'unknown basket' } }
+  }
+  return get<BasketDetail>(`/baskets/${encodeURIComponent(label.toLowerCase())}`)
+}
+
+/** Where a wallet's reward credit went; the balance itself is read from the contract. */
+export const getCredits = async (address: string): Promise<Result<CreditGiftView[]>> =>
+  useFixtures ? { ok: true, data: [] } : get<CreditGiftView[]>(`/credits/${encodeURIComponent(address)}`)
 
 /** Same-origin RSS feeds (proxied), so a reader subscribes to this site rather than to the indexer's port. */
 export const needFeedPath = (id: string): string => `/api/indexer/needs/${encodeURIComponent(id)}/feed.rss`

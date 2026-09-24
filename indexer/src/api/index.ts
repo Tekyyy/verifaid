@@ -1,11 +1,17 @@
 import { db } from 'ponder:api'
 import schema from 'ponder:schema'
 import {
+  type BasketDetail,
+  type BasketView,
+  basketId,
+  CATEGORIES,
+  type CreditGiftView,
   categoryHash,
   categoryLabel,
   type DeliveryView,
   type DepositAddressView,
   type DonationTrack,
+  MAX_BASKET_NEEDS,
   type DonorReceiptTrace,
   type DonorTrace,
   type ImpactBucket,
@@ -40,6 +46,7 @@ import { buildDonationTrack } from './track.js'
 import {
   combineSweeps,
   type DonationRow,
+  toBasketGiftView,
   fundingGapOf,
   liveReport,
   type NeedRow,
@@ -703,6 +710,115 @@ app.get('/donors/:address/trace', async (c) => {
   }
 
   return c.json({ donor, totalDonated: totalDonated.toString(), receipts: traces } satisfies DonorTrace)
+})
+
+// ─── giving baskets ──────────────────────────────────────────────────────────
+
+/**
+ * A basket is a category: a gift to it is split equally, by the factory, between that category's needs taking
+ * money right now (raising, before their deadlines, below their target, run by an active NGO — what the contract's
+ * `_room` checks). At most MAX_BASKET_NEEDS go in one gift, the oldest first.
+ */
+const basketOf = async (label: string, now: number) => {
+  const id = basketId(label).toLowerCase() as Hex
+  const [needs, inactive, given, gifts] = await Promise.all([
+    db.select().from(schema.need).where(eq(schema.need.category, id)).orderBy(asc(schema.need.id)),
+    db.select({ address: schema.ngo.address }).from(schema.ngo).where(eq(schema.ngo.active, false)),
+    db.select({ amount: schema.donation.amount }).from(schema.donation).where(eq(schema.donation.basket, id)),
+    db.select({ id: schema.basketGift.id }).from(schema.basketGift).where(eq(schema.basketGift.basket, id)),
+  ])
+  const suspended = new Set(inactive.map((row) => row.address.toLowerCase()))
+  const open = needs
+    .filter(
+      (row) => isOpenForFunding(row, now) && fundingGapOf(row) > 0n && !suspended.has(row.ngo.toLowerCase()),
+    )
+    .slice(0, MAX_BASKET_NEEDS)
+  const view: BasketView = {
+    category: label,
+    id,
+    openNeedIds: open.map((row) => row.id.toString()),
+    stillNeeded: open.reduce((sum, row) => sum + fundingGapOf(row), 0n).toString(),
+    givenThroughBasket: given.reduce((sum, row) => sum + row.amount, 0n).toString(),
+    gifts: gifts.length,
+    needsTotal: needs.length,
+    needsCompleted: needs.filter((row) => row.status === 'Completed').length,
+    released: needs.reduce((sum, row) => sum + row.totalReleased, 0n).toString(),
+  }
+  return { view, open }
+}
+
+app.get('/baskets', async (c) => {
+  const now = Math.floor(Date.now() / 1000)
+  const baskets = await Promise.all(CATEGORIES.map((label) => basketOf(label, now)))
+  return c.json(baskets.map(({ view }) => view) satisfies BasketView[])
+})
+
+/** `/baskets/water`: the basket, the needs a gift would be split between, and its latest gifts. */
+app.get('/baskets/:category', async (c) => {
+  const label = c.req.param('category').toUpperCase()
+  if (!(CATEGORIES as readonly string[]).includes(label)) return c.json({ error: 'unknown basket' }, 404)
+  const { view, open } = await basketOf(label, Math.floor(Date.now() / 1000))
+  const [badges, presentations, taxStatus, policies, recent] = await Promise.all([
+    badgesFor(open),
+    presentationsFor(open),
+    taxStatusFor(open),
+    policyIndex(),
+    db
+      .select()
+      .from(schema.basketGift)
+      .where(eq(schema.basketGift.basket, view.id))
+      .orderBy(desc(schema.basketGift.timestamp))
+      .limit(20),
+  ])
+  return c.json({
+    ...view,
+    needs: open.map((row) => ({
+      ...toNeedSummary(row, policies),
+      badges: badges.get(row.id) ?? EMPTY_BADGES,
+      presentation: presentations.get(row.id) ?? null,
+      taxStatus: taxStatusOf(row, taxStatus),
+    })),
+    recentGifts: recent.map(toBasketGiftView),
+  } satisfies BasketDetail)
+})
+
+// ─── reward credit ───────────────────────────────────────────────────────────
+
+/**
+ * Where a wallet's reward credit went. The balance itself is read from CommunityProofs.creditOf, which is the truth;
+ * this is the history, and which of those needs failed so their share can be reclaimed as credit.
+ */
+app.get('/credits/:address', async (c) => {
+  const wallet = c.req.param('address').toLowerCase()
+  if (!/^0x[0-9a-f]{40}$/.test(wallet)) return c.json({ error: 'invalid address' }, 400)
+  const gifts = await db
+    .select()
+    .from(schema.creditGift)
+    .where(eq(schema.creditGift.wallet, wallet as Address))
+    .orderBy(desc(schema.creditGift.updatedAt))
+  if (gifts.length === 0) return c.json([] satisfies CreditGiftView[])
+  const needs = await db
+    .select({ id: schema.need.id, status: schema.need.status })
+    .from(schema.need)
+    .where(
+      inArray(
+        schema.need.id,
+        gifts.map((gift) => gift.needId),
+      ),
+    )
+  const statusOf = new Map(needs.map((row) => [row.id, row.status as NeedStatus]))
+  return c.json(
+    gifts.map((gift) => {
+      const needStatus = statusOf.get(gift.needId) ?? 'Pending'
+      return {
+        needId: gift.needId.toString(),
+        needStatus,
+        given: gift.given.toString(),
+        reclaimed: gift.reclaimed.toString(),
+        reclaimable: gift.given > 0n && (needStatus === 'Cancelled' || needStatus === 'Expired'),
+      }
+    }) satisfies CreditGiftView[],
+  )
 })
 
 // ─── impact ──────────────────────────────────────────────────────────────────

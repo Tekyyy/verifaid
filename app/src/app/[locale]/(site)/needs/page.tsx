@@ -4,6 +4,7 @@ import { getTranslations } from 'next-intl/server'
 import { NeedCard } from '@/components/NeedCard'
 import { NeedFilters } from '@/components/NeedFilters'
 import { EmptyState, IndexerNotice } from '@/components/Notice'
+import { Link } from '@/i18n/navigation'
 import { type NeedFilters as Filters, getNeeds } from '@/lib/indexer'
 
 export const dynamic = 'force-dynamic'
@@ -59,6 +60,11 @@ export default async function NeedsPage({
       <header>
         <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
         <p className="mt-1 text-sm text-slate-700">{t('subtitle')}</p>
+        <p className="mt-2 text-sm">
+          <Link className="link" href="/baskets">
+            {t('basketsHint')}
+          </Link>
+        </p>
       </header>
 
       <NeedFilters values={filters} countries={countries} />

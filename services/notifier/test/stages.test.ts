@@ -125,6 +125,14 @@ describe('stage diffing', () => {
     expect(progress.stages.find((view) => view.stage === 'Settled')?.at).toBe(1_700_000_500)
   })
 
+  it("marks Impact confirmed not applicable on a person's own need, which completes without a report", () => {
+    const own = needFixture('5', { status: 'Completed', beneficiary: '0x00000000000000000000000000000000000000b1' })
+    const progress = needProgress(own)
+    const impact = progress.stages.find((view) => view.stage === 'ImpactConfirmed')
+    expect(impact).toMatchObject({ reached: false, notApplicable: true })
+    expect(reachedNames(progress)).toEqual(['Verified', 'Funded', 'Completed'])
+  })
+
   it('ignores a revoked impact report', () => {
     const need5 = needFixture('5', {
       status: 'InDelivery',

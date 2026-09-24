@@ -36,6 +36,14 @@ export const timelineTitle = (row: TimelineRow): string => {
       return 'A verification was revoked'
     case 'Donated':
       return `Donation of ${amount(data, 'amount')}`
+    case 'DonatedBasket':
+      return data.basket
+        ? `Donation of ${amount(data, 'amount')} through the ${String(data.basket).toLowerCase()} basket`
+        : `Donation of ${amount(data, 'amount')}, part of a gift split between several needs`
+    case 'DonatedReward':
+      return `Donation of ${amount(data, 'amount')} from a reward for proof of delivery`
+    case 'CreditReclaimed':
+      return `The need failed: ${amount(data, 'amount')} of reward credit went back to the wallet that gave it`
     case 'FundingClosed':
       return `Funding closed at ${amount(data, 'totalDonated')}`
     case 'TrancheReleasable':

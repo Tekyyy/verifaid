@@ -36,6 +36,9 @@ export interface EvidenceManifest {
 
 /** Mirrors `DeliveryManager.MAX_MANIFEST_BYTES`. */
 export const MAX_MANIFEST_BYTES = 8192
+
+/** Mirrors `CommunityProofs.MAX_PROOFS_PER_WALLET`: proofs one wallet may file about one need. */
+export const MAX_PROOFS_PER_WALLET = 3
 export const MAX_EVIDENCE_FILES = 12
 export const MAX_NOTE_LENGTH = 1500
 

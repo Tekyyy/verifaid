@@ -3,6 +3,7 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, it } from 'vitest'
 import { DONOR_STAGES, trackingRefKind } from '../src/api.js'
 import { createSessionToken, verifySessionToken, verifyWebhookSignature } from '../src/auth.js'
+import { basketId, equalSplit } from '../src/baskets.js'
 import {
   CERTIFICATION_TYPES,
   certificationTypedData,
@@ -125,6 +126,30 @@ describe('schemas', () => {
       keccak256(stringToHex('fx')),
     ])
     expect(decodeSchemaData<SettlementData>('Settlement', settlement)[4]).toBe(297_000000n)
+  })
+})
+
+describe('basket splits', () => {
+  it('splits equally, serving the needs with the least room first, as the contract does', () => {
+    expect(equalSplit(300n, [1000n, 1000n, 1000n])).toEqual({ amounts: [100n, 100n, 100n], returned: 0n })
+    expect(equalSplit(300n, [1000n, 50n, 1000n])).toEqual({ amounts: [125n, 50n, 125n], returned: 0n })
+    expect(equalSplit(100n, [0n, 40n])).toEqual({ amounts: [0n, 40n], returned: 60n })
+    // Rounding dust goes to the need with the most room.
+    expect(equalSplit(10n, [100n, 100n, 200n])).toEqual({ amounts: [3n, 3n, 4n], returned: 0n })
+  })
+
+  it('never gives a need more than its room, and loses nothing', () => {
+    for (let run = 0; run < 200; run++) {
+      const rooms = Array.from({ length: 1 + (run % 5) }, (_, i) => BigInt((run * 7919 + i * 104729) % 1000))
+      const total = BigInt((run * 15485863) % 3000) + 1n
+      const { amounts, returned } = equalSplit(total, rooms)
+      for (const [i, amount] of amounts.entries()) expect(amount <= (rooms[i] ?? 0n)).toBe(true)
+      expect(amounts.reduce((sum, amount) => sum + amount, 0n) + returned).toBe(total)
+    }
+  })
+
+  it('names a basket by its category hash', () => {
+    expect(basketId('WATER')).toBe(categoryHash('WATER'))
   })
 })
 

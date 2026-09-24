@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {AidVault} from "../../src/funds/AidVault.sol";
 import {ICommunityProofs} from "../../src/interfaces/ICommunityProofs.sol";
+import {IDeliveryManager} from "../../src/interfaces/IDeliveryManager.sol";
+import {INeedsRegistry} from "../../src/interfaces/INeedsRegistry.sol";
+import {IReleasePolicy} from "../../src/interfaces/IReleasePolicy.sol";
 import {Errors} from "../../src/libraries/Errors.sol";
 import {PoATest} from "../utils/PoATest.sol";
 
-/// @notice Proof of delivery from anyone, and the reward pots an NGO funds for it.
+/// @notice Proof of delivery from anyone, and the reward pots an NGO funds for it. Rewards are credit its holder can
+///         only give away — to a need or a basket — never cash.
 contract CommunityProofsTest is PoATest {
     uint256 internal constant TARGET = 3000e6;
     uint256 internal constant REWARD = 5e6;
@@ -13,7 +18,7 @@ contract CommunityProofsTest is PoATest {
     address internal walker = makeAddr("walker");
     address internal neighbour = makeAddr("neighbour");
 
-    // â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── helpers ───────────────────────────────────────────────────────────────
 
     function _submit(address who, uint256 needId) internal returns (uint256 proofId) {
         vm.prank(who);
@@ -35,7 +40,7 @@ contract CommunityProofsTest is PoATest {
         communityProofs.rewardProof(proofId);
     }
 
-    // â”€â”€â”€ filing proof â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── filing proof ──────────────────────────────────────────────────────────
 
     function test_submitProof_anyoneCanFileProofOnceTheMoneyMoves() public {
         (uint256 needId,,) = _needInDelivery(TARGET);
@@ -73,6 +78,23 @@ contract CommunityProofsTest is PoATest {
         _submit(ngo, theirs); // the certifying NGO still answers for it
     }
 
+    /// @dev A few proofs per wallet per need, enough to follow a delivery; flooding a page takes a wallet per three.
+    function test_submitProof_aFewPerWalletPerNeed() public {
+        (uint256 needId,,) = _needInDelivery(TARGET);
+        uint256 limit = communityProofs.MAX_PROOFS_PER_WALLET();
+        for (uint256 i; i < limit; ++i) {
+            _submit(walker, needId);
+        }
+        assertEq(communityProofs.proofsFiled(needId, walker), limit);
+        vm.prank(walker);
+        vm.expectRevert(Errors.ProofLimitReached.selector);
+        communityProofs.submitProof(needId, MANIFEST);
+
+        _submit(neighbour, needId); // another wallet still can
+        (uint256 other,,) = _needInDelivery(TARGET);
+        _submit(walker, other); // and so can this one, about another need
+    }
+
     function test_submitProof_needsAManifestOfSaneSize() public {
         (uint256 needId,,) = _needInDelivery(TARGET);
         vm.prank(walker);
@@ -85,7 +107,7 @@ contract CommunityProofsTest is PoATest {
         communityProofs.submitProof(needId, string(tooLong));
     }
 
-    // â”€â”€â”€ reward pots â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── reward pots ───────────────────────────────────────────────────────────
 
     function test_openBounty_theNgoLocksTheRewardsFromItsOwnWallet() public {
         (uint256 needId,,) = _needInDelivery(TARGET);
@@ -126,7 +148,7 @@ contract CommunityProofsTest is PoATest {
         uint256 bountyId = _open(ngo, needId, 3);
         uint256 proofId = _submit(walker, needId);
         _reward(proofId);
-        assertEq(token.balanceOf(walker), REWARD);
+        assertEq(communityProofs.creditOf(walker), REWARD);
         assertEq(communityProofs.bountyOf(bountyId).rewardsPaid, 1);
     }
 
@@ -144,9 +166,9 @@ contract CommunityProofsTest is PoATest {
         vm.stopPrank();
     }
 
-    // â”€â”€â”€ paying rewards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── paying rewards ────────────────────────────────────────────────────────
 
-    function test_rewardProof_paysTheWalletThatFiledIt() public {
+    function test_rewardProof_creditsTheWalletThatFiledIt_neverInCash() public {
         (uint256 needId,,) = _needInDelivery(TARGET);
         uint256 bountyId = _open(ngo, needId, 2);
         uint256 proofId = _submit(walker, needId);
@@ -155,7 +177,9 @@ contract CommunityProofsTest is PoATest {
         emit ICommunityProofs.ProofRewarded(proofId, bountyId, needId, walker, REWARD);
         _reward(proofId);
 
-        assertEq(token.balanceOf(walker), REWARD);
+        assertEq(token.balanceOf(walker), 0, "a reward is not cash");
+        assertEq(communityProofs.creditOf(walker), REWARD);
+        assertEq(token.balanceOf(address(communityProofs)), 2 * REWARD, "it stays here until it is given");
         assertTrue(communityProofs.proofOf(proofId).rewarded);
         assertTrue(communityProofs.rewardedOn(needId, walker));
         assertEq(communityProofs.bountyOf(bountyId).balance, REWARD);
@@ -204,7 +228,7 @@ contract CommunityProofsTest is PoATest {
         _reward(proofId);
     }
 
-    // â”€â”€â”€ closing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── closing ───────────────────────────────────────────────────────────────
 
     function test_closeBounty_returnsWhatIsLeftToTheNgo() public {
         (uint256 needId,,) = _needInDelivery(TARGET);
@@ -244,7 +268,140 @@ contract CommunityProofsTest is PoATest {
         assertEq(token.balanceOf(outsider), 0);
     }
 
-    // â”€â”€â”€ pause â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── giving credit ─────────────────────────────────────────────────────────
+
+    /// @dev `who` files proof on a need of its own and is rewarded: REWARD of credit.
+    function _earn(address who) internal {
+        (uint256 needId,,) = _needInDelivery(TARGET);
+        _open(ngo, needId, 1);
+        _reward(_submit(who, needId));
+    }
+
+    function test_giveCredit_donatesInThisContractsName_soItCarriesNoSay() public {
+        _earn(walker);
+        (uint256 raising,, AidVault vault) = _verifiedNeed(TARGET);
+        uint256[] memory one = new uint256[](1);
+        one[0] = raising;
+
+        vm.prank(walker);
+        communityProofs.giveCredit(bytes32(0), one, REWARD);
+
+        assertEq(communityProofs.creditOf(walker), 0);
+        assertEq(vault.donatedBy(address(communityProofs)), REWARD);
+        assertEq(vault.donatedBy(walker), 0, "the validator is not a donor of record");
+        assertEq(vault.totalDonated(), REWARD);
+        assertEq(communityProofs.creditGivenTo(raising, walker), REWARD);
+        assertEq(token.balanceOf(walker), 0);
+        (IReleasePolicy.Voice voice,) = deliveryManager.voiceOf(raising, walker);
+        assertEq(uint8(voice), uint8(IReleasePolicy.Voice.None), "an NGO's reward buys no vote");
+    }
+
+    function test_giveCredit_toABasket_splitsItEqually() public {
+        _earn(walker);
+        (uint256 a,, AidVault va) = _verifiedNeed(TARGET);
+        (uint256 b,, AidVault vb) = _verifiedNeed(TARGET);
+        uint256[] memory basket = new uint256[](2);
+        (basket[0], basket[1]) = (a, b);
+
+        uint256[] memory expected = new uint256[](2);
+        (expected[0], expected[1]) = (REWARD / 2, REWARD / 2);
+        vm.expectEmit(true, true, false, true, address(communityProofs));
+        emit ICommunityProofs.CreditGiven(walker, keccak256("WATER"), basket, expected);
+        vm.prank(walker);
+        communityProofs.giveCredit(keccak256("WATER"), basket, REWARD);
+
+        assertEq(va.donatedBy(address(communityProofs)), REWARD / 2);
+        assertEq(vb.donatedBy(address(communityProofs)), REWARD / 2);
+        assertEq(communityProofs.creditOf(walker), 0);
+    }
+
+    function test_giveCredit_whatNoNeedCouldTakeIsStillCredit() public {
+        _earn(walker);
+        (uint256 almostFull,,) = _verifiedNeed(1000e6);
+        _donate(donor1, almostFull, 1000e6 - 2e6); // room for 2 more
+        uint256[] memory one = new uint256[](1);
+        one[0] = almostFull;
+
+        vm.prank(walker);
+        communityProofs.giveCredit(bytes32(0), one, REWARD);
+
+        assertEq(communityProofs.creditGivenTo(almostFull, walker), 2e6);
+        assertEq(communityProofs.creditOf(walker), REWARD - 2e6);
+        assertEq(registry.statusOf(almostFull), INeedsRegistry.NeedStatus.Funded, "the gift filled it");
+    }
+
+    function test_giveCredit_onlyWhatTheWalletHolds() public {
+        _earn(walker);
+        (uint256 raising,,) = _verifiedNeed(TARGET);
+        uint256[] memory one = new uint256[](1);
+        one[0] = raising;
+        vm.startPrank(walker);
+        vm.expectRevert(Errors.InsufficientCredit.selector);
+        communityProofs.giveCredit(bytes32(0), one, REWARD + 1);
+        vm.expectRevert(Errors.ZeroAmount.selector);
+        communityProofs.giveCredit(bytes32(0), one, 0);
+        vm.stopPrank();
+        vm.prank(neighbour); // never rewarded
+        vm.expectRevert(Errors.InsufficientCredit.selector);
+        communityProofs.giveCredit(bytes32(0), one, 1);
+    }
+
+    /// @dev Reward credit has no voice, and no threshold counts it. Here it is 5 of the 7 raised: counted, "30%
+    ///      approve" would need 2.1 from the one donor who can vote, who gave 2 — and the need could never move.
+    function test_rewardCreditCountsForNoThreshold_soTheDonorsWhoCanVoteStillDecide() public {
+        _earn(walker);
+        (uint256 needId,, AidVault vault) = _verifiedNeed(7e6);
+        uint256[] memory one = new uint256[](1);
+        one[0] = needId;
+        vm.prank(walker);
+        communityProofs.giveCredit(bytes32(0), one, REWARD);
+        _donate(donor2, needId, 2e6); // reaches the target: funding closes
+        vault.releaseTranche(0);
+
+        assertEq(deliveryManager.rulesOf(needId).donorApproval, 600_000, "30% of the 2 that can vote");
+        uint256 deliveryId = _submitEvidence(needId);
+        vm.prank(donor2);
+        deliveryManager.approve(deliveryId);
+        assertEq(uint8(deliveryManager.getDelivery(deliveryId).status), uint8(IDeliveryManager.DeliveryStatus.Approved));
+    }
+
+    /// @dev A need the credit went to fails: the refund comes back as credit, shared by what each gave to it.
+    function test_reclaimCredit_aFailedNeedsRefundComesBackAsCredit_proRata() public {
+        _earn(walker);
+        _earn(neighbour);
+        (uint256 doomed,,) = _verifiedNeed(TARGET);
+        uint256[] memory one = new uint256[](1);
+        one[0] = doomed;
+        vm.prank(walker);
+        communityProofs.giveCredit(bytes32(0), one, 4e6);
+        vm.prank(neighbour);
+        communityProofs.giveCredit(bytes32(0), one, 1e6);
+
+        vm.prank(walker);
+        vm.expectRevert(Errors.NotRefundable.selector);
+        communityProofs.reclaimCredit(doomed); // still raising
+
+        vm.prank(ngo);
+        registry.cancelNeed(doomed);
+
+        vm.expectEmit(true, true, false, true, address(communityProofs));
+        emit ICommunityProofs.CreditRefunded(walker, doomed, 4e6);
+        vm.prank(walker);
+        communityProofs.reclaimCredit(doomed);
+        vm.prank(neighbour);
+        communityProofs.reclaimCredit(doomed);
+
+        assertEq(communityProofs.creditOf(walker), REWARD, "4 given, 4 back, 1 never given");
+        assertEq(communityProofs.creditOf(neighbour), REWARD);
+        assertEq(token.balanceOf(walker), 0, "it came back as credit, not cash");
+        assertEq(token.balanceOf(neighbour), 0);
+
+        vm.prank(walker);
+        vm.expectRevert(Errors.NothingToRefund.selector);
+        communityProofs.reclaimCredit(doomed);
+    }
+
+    // ─── pause ─────────────────────────────────────────────────────────────────
 
     function test_pause_stopsFilingAndPaying_butNotTheRefund() public {
         (uint256 needId,,) = _needInDelivery(TARGET);

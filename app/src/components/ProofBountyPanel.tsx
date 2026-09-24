@@ -24,8 +24,8 @@ import { useTx } from '@/lib/hooks'
 
 /**
  * The NGO's reward pot for community proof on one need. Opening one locks `reward × count` from the NGO's own wallet
- * — never donors' money — in the CommunityProofs contract; paying a proof sends one reward to the wallet that filed
- * it, once per wallet per need; closing returns what is left.
+ * — never donors' money — in the CommunityProofs contract; rewarding a proof credits one reward to the wallet that
+ * filed it, once per wallet per need, as credit it can only give to a need or a basket; closing returns what is left.
  */
 export function ProofBountyPanel({ need }: { need: NeedDetail }) {
   const t = useTranslations('community')

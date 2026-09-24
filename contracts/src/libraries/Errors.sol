@@ -85,6 +85,12 @@ library Errors {
     error NoOpenBounty();
     /// @dev A wallet is paid once per need, however many proofs it files.
     error AlreadyRewarded();
+    /// @dev More reward credit asked for than the wallet holds.
+    error InsufficientCredit();
+    /// @dev A wallet already filed as many proofs about this need as one wallet may.
+    error ProofLimitReached();
+    /// @dev A need a person posted for themselves publishes no impact report.
+    error ImpactReportNotApplicable();
     /// @dev Filed after the pot's deadline, which is what the NGO promised to pay for.
     error ProofAfterDeadline();
 

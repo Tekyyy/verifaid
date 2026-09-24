@@ -360,8 +360,8 @@ function useNextStep(need: NeedDetail, viewer: Viewer): string {
   const nextLocked = need.tranches.find((tranche) => tranche.status === 'Locked')
   const underReview = [...need.deliveries].reverse().find((delivery) => delivery.status === 'Open')
   const minimum = (BigInt(need.targetAmount) * BigInt(need.minFundingBps) + 9_999n) / 10_000n
-  // The impact report stays the NGO's voice: a beneficiary who ran the need is told the NGO writes it.
-  const completed = need.beneficiary && viewer !== 'sponsor' ? 'next.CompletedOwn' : 'next.Completed'
+  // A person's own need publishes no impact report: once the last tranche is paid there is nothing left to do.
+  const completed = need.beneficiary ? 'next.CompletedPersonal' : 'next.Completed'
   // A tranche goes where the payment plan says: to suppliers on an NGO's need, to the person on a beneficiary's own.
   const release = !need.beneficiary
     ? 'next.release'
@@ -485,7 +485,8 @@ function NeedActions({ need, viewer }: { need: NeedDetail; viewer: Viewer }) {
     },
     {
       key: 'impact',
-      show: ngoVoice && (s === 'InDelivery' || s === 'Completed'),
+      // Not on a person's own need: it serves one household, and the resolver refuses a report for it.
+      show: ngoVoice && !need.beneficiary && (s === 'InDelivery' || s === 'Completed'),
       panel: <PublishImpactReport needId={need.id} />,
     },
     { key: 'presentation', show: runs && !closed, panel: <NeedPresentationPanel needId={need.id} /> },

@@ -93,6 +93,7 @@ const stage = (
   txHash: (reached?.txHash as Hex | null | undefined) ?? null,
   attestationUID: ((attestationUID ?? reached?.attestationUID) as Hex | null | undefined) ?? null,
   pending: reached ? null : pending,
+  notApplicable: false,
 })
 
 export const buildDonationTrack = (inputs: TrackInputs): DonationTrack => {
@@ -188,11 +189,14 @@ export const buildDonationTrack = (inputs: TrackInputs): DonationTrack => {
     report && !report.revoked
       ? timeline.find((row) => row.type === 'ImpactReportPublished' && row.attestationUID === report.uid)
       : undefined
-  const impactStage = stage(
-    'ImpactConfirmed',
-    reportEvent,
-    need.status === 'Completed' ? 'Need completed; impact report not yet published' : null,
-  )
+  // A person's own need publishes no impact report: it ends when the donors approve the receipts for its last tranche.
+  const impactStage = need.beneficiary
+    ? { ...stage('ImpactConfirmed', undefined, null), notApplicable: true }
+    : stage(
+        'ImpactConfirmed',
+        reportEvent,
+        need.status === 'Completed' ? 'Need completed; impact report not yet published' : null,
+      )
 
   const stages = [verifiedStage, fundedStage, settledStage, deliveredStage, impactStage]
   const currentStage = [...stages].reverse().find((view) => view.reached)?.stage ?? null

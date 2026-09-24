@@ -3,12 +3,43 @@ import { useTranslations } from 'next-intl'
 import { ConversionNote } from '@/components/ConversionNote'
 import { ExplorerLink } from '@/components/ExplorerLink'
 import { Link } from '@/i18n/navigation'
-import { amount, timestamp } from '@/lib/format'
+import { basketName } from '@/lib/baskets'
+import { amount, shorten, timestamp } from '@/lib/format'
 
 /** Message key (namespace `need`) of each donation kind's label. */
 export const KIND_KEY: Record<DonationKind, string> = {
   DIRECT: 'donationDirect',
   CONVERTED: 'donationConvertedKind',
+  BASKET: 'donationBasketKind',
+  REWARD: 'donationRewardKind',
+}
+
+/** Where a basket part or a reward came from, in one line; nothing for a plain donation. */
+export function DonationOrigin({ donation }: { donation: DonationView }) {
+  const t = useTranslations('need')
+  const tBaskets = useTranslations('baskets')
+  if (donation.kind === 'REWARD' && donation.rewardFrom) {
+    return (
+      <p className="mt-1 text-slate-600">
+        {t('donationRewardFrom', { wallet: shorten(donation.rewardFrom) })}
+        {donation.basketLabel
+          ? ` ${t('donationThroughBasket', { basket: basketName(tBaskets, donation.basketLabel) })}.`
+          : ''}
+      </p>
+    )
+  }
+  if (donation.kind !== 'BASKET') return null
+  return (
+    <p className="mt-1 text-slate-600">
+      {donation.basketLabel ? (
+        <Link className="link" href={`/baskets/${donation.basketLabel.toLowerCase()}`}>
+          {t('donationThroughBasket', { basket: basketName(tBaskets, donation.basketLabel) })}
+        </Link>
+      ) : (
+        t('donationSplitGift')
+      )}
+    </p>
+  )
 }
 
 /**
@@ -42,6 +73,7 @@ export function DonationList({ donations }: { donations: DonationView[] }) {
               <span className="text-slate-600">{t(KIND_KEY[donation.kind])}</span>
             </div>
             {donation.conversion ? <ConversionNote conversion={donation.conversion} /> : null}
+            <DonationOrigin donation={donation} />
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
               <ExplorerLink kind="tx" value={donation.txHash} />
               <span className="text-slate-500">{timestamp(donation.timestamp)}</span>

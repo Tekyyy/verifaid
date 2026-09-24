@@ -442,6 +442,9 @@ const donation = (
   donorRefHash: null,
   receiptId: null,
   conversion: null,
+  basket: null,
+  basketLabel: null,
+  rewardFrom: null,
   withdrawn: '0',
   txHash: tx(Number(fields.id)),
   timestamp: 1_757_010_000,
@@ -1165,7 +1168,9 @@ export const programs = (ngo: string): ProgramView[] => [
   },
 ]
 
-const stages = (reached: Partial<Record<DonorStage, Omit<DonorStageView, 'stage'>>>): DonorStageView[] =>
+const stages = (
+  reached: Partial<Record<DonorStage, Partial<Omit<DonorStageView, 'stage'>>>>,
+): DonorStageView[] =>
   DONOR_STAGES.map(
     (stage) =>
       ({
@@ -1175,6 +1180,7 @@ const stages = (reached: Partial<Record<DonorStage, Omit<DonorStageView, 'stage'
         txHash: null,
         attestationUID: null,
         pending: null,
+        notApplicable: false,
         ...reached[stage],
       }) satisfies DonorStageView,
   )

@@ -2,11 +2,13 @@
 pragma solidity ^0.8.24;
 
 import {RoleAware} from "../access/RoleAware.sol";
+import {IAidVault} from "../interfaces/IAidVault.sol";
 import {IConversionRouter} from "../interfaces/IConversionRouter.sol";
 import {IDonationForwarder} from "../interfaces/IDonationForwarder.sol";
 import {IDonationForwarderFactory} from "../interfaces/IDonationForwarderFactory.sol";
 import {INeedsRegistry} from "../interfaces/INeedsRegistry.sol";
 import {IRoleRegistry} from "../interfaces/IRoleRegistry.sol";
+import {ITrancheLedger} from "../interfaces/ITrancheLedger.sol";
 import {Errors} from "../libraries/Errors.sol";
 import {DonationConversion} from "./DonationConversion.sol";
 import {DonationForwarder} from "./DonationForwarder.sol";
@@ -23,8 +25,11 @@ function rolesOf(INeedsRegistry registry) view returns (IRoleRegistry) {
 }
 
 /// @title DonationForwarderFactory
-/// @notice Two ways to give in a token the vault does not hold (USDC bought with a card, ETH, …):
-///         - `donate`: a wallet converts and donates in one transaction and gets the receipt.
+/// @notice Three ways to give that a vault's own `donate` does not cover:
+///         - `donate`: a wallet converts a token the vault does not hold (USDC bought with a card, ETH, …) and
+///           donates in one transaction and gets the receipt.
+///         - `donateEqually`: a wallet gives to a basket of needs — every open water need, say — and the factory splits
+///           the gift equally between them, each part a donation in the giver's name.
 ///         - deposit addresses: DonationForwarders at CREATE2 addresses derived from their intents, for money sent
 ///           from somewhere that cannot call a contract (an exchange withdrawal). Anyone can deploy one, and doing
 ///           so only ever fixes the intent its address committed to; the donor or a keeper sweeps it.
@@ -33,6 +38,8 @@ contract DonationForwarderFactory is IDonationForwarderFactory, RoleAware, Reent
     using SafeERC20 for IERC20;
 
     address public constant NATIVE = address(0);
+    /// @notice The most needs one basket gift may be split between.
+    uint256 public constant MAX_BASKET_NEEDS = 25;
 
     INeedsRegistry public immutable registry;
     IConversionRouter public immutable router;
@@ -113,7 +120,83 @@ contract DonationForwarderFactory is IDonationForwarderFactory, RoleAware, Reent
         if (r.received > r.deposited) token.safeTransfer(msg.sender, r.received - r.deposited);
     }
 
+    /// @inheritdoc IDonationForwarderFactory
+    /// @dev The split is the factory's, not the caller's, so "equally" is a property of the contract: the needs
+    ///      with the least room are served first, each part is what is left divided by the needs still waiting,
+    ///      and rounding dust goes to the need with the most room. The basket's membership is the caller's choice
+    ///      and is public in the event: a category's open needs is what the app offers.
+    function donateEqually(bytes32 basket, uint256[] calldata needIds, uint256 total)
+        external
+        nonReentrant
+        returns (uint256[] memory amounts, uint256 returned)
+    {
+        uint256 count = needIds.length;
+        if (total == 0) revert Errors.ZeroAmount();
+        if (count == 0 || count > MAX_BASKET_NEEDS) revert Errors.InvalidParameter();
+        for (uint256 i = 1; i < count; ++i) {
+            if (needIds[i] <= needIds[i - 1]) revert Errors.InvalidParameter();
+        }
+
+        uint256[] memory room = new uint256[](count);
+        uint256 open;
+        for (uint256 i; i < count; ++i) {
+            room[i] = _room(needIds[i]);
+            if (room[i] != 0) ++open;
+        }
+        if (open == 0) revert Errors.NotAccepting();
+
+        token.safeTransferFrom(msg.sender, address(this), total);
+        amounts = _equalShares(total, room, open);
+        uint256 given;
+        for (uint256 i; i < count; ++i) {
+            uint256 part = amounts[i];
+            if (part == 0) continue;
+            address vault = registry.vaultOf(needIds[i]);
+            token.forceApprove(vault, part);
+            IAidVault(vault).donateVia(part, 0, msg.sender);
+            given += part;
+        }
+        returned = total - given;
+        if (returned != 0) token.safeTransfer(msg.sender, returned);
+        emit BasketDonated(msg.sender, basket, needIds, amounts, returned);
+    }
+
     // ─── internal ──────────────────────────────────────────────────────────────
+
+    /// @dev What a need can still take right now: zero unless it is raising, before its deadlines, below its target
+    ///      and run by an active NGO (the vault refuses money for a suspended NGO, which would sink the whole gift).
+    function _room(uint256 needId) internal view returns (uint256) {
+        (address ngo, uint256 target,, bool open) = registry.fundingTermsOf(needId);
+        if (!open || !roles.isActiveNgo(ngo)) return 0;
+        uint256 donated = ITrancheLedger(registry.vaultOf(needId)).totalDonated();
+        return donated < target ? target - donated : 0;
+    }
+
+    /// @dev Equal parts, capped by each need's room ("water-filling"): serve the need with the least room first,
+    ///      give it the lesser of its room and an equal part of what is left, and repeat with one need fewer. At
+    ///      most 25 needs, so the quadratic pick of the next-smallest is cheap.
+    function _equalShares(uint256 total, uint256[] memory room, uint256 open)
+        internal
+        pure
+        returns (uint256[] memory shares)
+    {
+        uint256 count = room.length;
+        shares = new uint256[](count);
+        bool[] memory served = new bool[](count);
+        uint256 remaining = total;
+        for (uint256 left = open; left > 0; --left) {
+            uint256 next = type(uint256).max;
+            for (uint256 i; i < count; ++i) {
+                if (served[i] || room[i] == 0) continue;
+                if (next == type(uint256).max || room[i] < room[next]) next = i;
+            }
+            served[next] = true;
+            uint256 part = remaining / left;
+            if (part > room[next]) part = room[next];
+            shares[next] = part;
+            remaining -= part;
+        }
+    }
 
     function _deploy(IDonationForwarder.Intent memory intent) internal returns (address forwarder) {
         forwarder = _predict(intent);

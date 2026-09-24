@@ -8,6 +8,7 @@ const DOT = {
   done: 'border-emerald-600 bg-emerald-600 text-white',
   pending: 'border-amber-500 bg-amber-50 text-amber-900 dark:bg-amber-950 dark:text-amber-200',
   todo: 'border-slate-300 bg-white text-slate-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-400',
+  na: 'border-dashed border-slate-300 bg-slate-50 text-slate-400 dark:border-slate-600 dark:bg-slate-800',
 } as const
 
 const OUTCOME_TONE: Record<DonationTrack['outcome'], string> = {
@@ -65,7 +66,7 @@ export function TrackWidget({ track, fullPageHref }: { track: DonationTrack; ful
                 className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-xs font-bold ${DOT[state]}`}
                 aria-hidden="true"
               >
-                {state === 'done' ? '✓' : index + 1}
+                {state === 'done' ? '✓' : state === 'na' ? '–' : index + 1}
               </span>
               <div className="min-w-0 text-xs">
                 <p className="font-semibold">

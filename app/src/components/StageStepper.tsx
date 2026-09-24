@@ -4,16 +4,17 @@ import { ExplorerLink } from '@/components/ExplorerLink'
 import { timestamp } from '@/lib/format'
 import { isZeroUid } from '@/lib/links'
 
-type StepState = 'done' | 'pending' | 'todo'
+type StepState = 'done' | 'pending' | 'todo' | 'na'
 
 const DOT: Record<StepState, string> = {
   done: 'border-emerald-600 bg-emerald-600 text-white',
   pending: 'border-amber-500 bg-amber-50 text-amber-900',
   todo: 'border-slate-300 bg-white text-slate-500',
+  na: 'border-dashed border-slate-300 bg-slate-50 text-slate-400',
 }
 
 export const stepState = (view: DonorStageView | undefined): StepState =>
-  view?.reached ? 'done' : view?.pending ? 'pending' : 'todo'
+  view?.notApplicable ? 'na' : view?.reached ? 'done' : view?.pending ? 'pending' : 'todo'
 
 /**
  * Verified → Funded → Settled → Delivered → Impact confirmed. Each reached stage links to the transaction and
@@ -41,14 +42,16 @@ export function StageStepper({
               className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm font-bold ${DOT[state]}`}
               aria-hidden="true"
             >
-              {state === 'done' ? '✓' : index + 1}
+              {state === 'done' ? '✓' : state === 'na' ? '–' : index + 1}
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-slate-900">
                 {t(`stage_${stage}`)}
                 <span className="ml-2 text-xs font-normal text-slate-600">{t(`state_${state}`)}</span>
               </p>
-              <p className="text-xs text-slate-600">{t(`stageBody_${stage}`)}</p>
+              <p className="text-xs text-slate-600">
+                {state === 'na' ? t(`stageNa_${stage}`) : t(`stageBody_${stage}`)}
+              </p>
               {view?.reached && view.at ? (
                 <p className="mt-1 text-xs text-slate-800">{timestamp(view.at)}</p>
               ) : null}

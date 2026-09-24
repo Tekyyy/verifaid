@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto'
 import {
   aidVaultAbi,
+  basketId,
   beneficiaryRegistryAbi,
   buildManifest,
   categoryHash,
+  communityProofsAbi,
   certificationArgs,
   certificationTypedData,
   conversionRouterAbi,
@@ -11,6 +13,7 @@ import {
   donationForwarderAbi,
   donationForwarderFactoryAbi,
   encodeSchemaData,
+  equalSplit,
   formatAmount,
   mockEURCAbi,
   mockYieldVaultAbi,
@@ -63,18 +66,38 @@ import { attestation, fail, heading, info, note, step, tx } from './log.js'
  *   6. A certified beneficiary (v10): the NGO signs a certificate for a person's wallet off chain; that person posts a
  *      need of their own, a verifier attests it, donors fund it, and every tranche reaches the beneficiary's wallet
  *      once the donors approve how the last one was spent.
+ *   7. Giving baskets and reward credit (v10): a donor gives to the water basket and the contract splits the gift
+ *      equally between the water needs raising money, each part a donation in the donor's name. Someone outside the
+ *      NGO photographs a funded need and is rewarded, in credit they can only give away; they give it to the basket
+ *      too, and it lands with no vote attached.
  *   (review, opt-in: leaves evidence waiting on a need page for a live audience to vote on.)
  *
- *   pnpm demo:run anvil            all six
+ *   pnpm demo:run anvil            all seven
  *   pnpm demo:run base-sepolia onchain idle
  */
 
 const REGION = regionCode('ES-CM')
 const BPS = 10_000n
 
-type Scenario = 'onchain' | 'expiry' | 'conversion' | 'idle' | 'rejection' | 'beneficiary' | 'review'
+type Scenario =
+  | 'onchain'
+  | 'expiry'
+  | 'conversion'
+  | 'idle'
+  | 'rejection'
+  | 'beneficiary'
+  | 'baskets'
+  | 'review'
 /** What runs when no scenario is named. `review` is opt-in: it deliberately leaves evidence waiting. */
-const SCENARIOS: Scenario[] = ['onchain', 'expiry', 'conversion', 'idle', 'rejection', 'beneficiary']
+const SCENARIOS: Scenario[] = [
+  'onchain',
+  'expiry',
+  'conversion',
+  'idle',
+  'rejection',
+  'beneficiary',
+  'baskets',
+]
 const ALL_SCENARIOS: Scenario[] = [...SCENARIOS, 'review']
 
 interface NeedSpec {
@@ -149,6 +172,13 @@ const main = async (): Promise<void> => {
       note('skipping the beneficiary scenario: this deployment predates v10 (no BeneficiaryRegistry)')
     }
   }
+  if (selected.includes('baskets')) {
+    if (contracts.CommunityProofs && contracts.DonationForwarderFactory) {
+      links.push(...(await basketScenario(ctx, programId)))
+    } else {
+      note('skipping the basket scenario: this deployment predates v10 (no CommunityProofs)')
+    }
+  }
   if (selected.includes('review')) links.push(...(await reviewScenario(ctx, programId)))
 
   heading('Done')
@@ -199,6 +229,174 @@ const onChainScenario = async (ctx: DemoContext, programId: bigint): Promise<str
     `  wallet donor tracking:    ${ctx.dashboardUrl}/en/track/${receiptId}`,
     `  card donor tracking:      ${ctx.dashboardUrl}/en/track/${card}`,
     `  report:                   ${ctx.dashboardUrl}/api/reports/${needId}`,
+  ]
+}
+
+// ─── scenario 7: giving baskets and reward credit ─────────────────────────────
+
+/**
+ * v10. A basket is a category: one gift is split equally, by the factory, between the needs of it that are raising
+ * money, and each part is an ordinary donation in the giver's name. A proof filer's reward is credit held by
+ * CommunityProofs, which it can only give away — to a need or a basket — and which donates in its own name, so the
+ * NGO's reward buys no vote.
+ */
+const basketScenario = async (ctx: DemoContext, programId: bigint): Promise<string[]> => {
+  heading(
+    '7 · Giving baskets: one gift split equally across the water needs, and a reward that can only be given',
+  )
+  const factory = ctx.deployment.contracts.DonationForwarderFactory as Address
+  const proofs = ctx.deployment.contracts.CommunityProofs as Address
+  const water = (label: string, target: bigint): NeedSpec => ({
+    label,
+    category: 'WATER',
+    target,
+    trancheBps: [5000, 5000],
+    minFundingBps: 10_000,
+    thirdPartyCostBps: 0,
+    fundingWindowSeconds: 30 * 86_400,
+    executionWindowSeconds: 120 * 86_400,
+    outcome: `${label} in ES-CM`,
+  })
+  const needIds: bigint[] = []
+  const vaults: Address[] = []
+  for (const spec of [
+    water('a borehole pump for a village', 900_000_000n),
+    water('water tanks for a school', 400_000_000n),
+    water('filters for a clinic', 1_200_000_000n),
+  ]) {
+    const needId = await createNeed(ctx, programId, spec)
+    needIds.push(needId)
+    vaults.push(await verifyNeed(ctx, needId))
+  }
+  const rooms = await Promise.all(
+    needIds.map(async (needId) => {
+      const [, target] = (await ctx.publicClient.readContract({
+        address: ctx.deployment.contracts.NeedsRegistry,
+        abi: needsRegistryAbi,
+        functionName: 'fundingTermsOf',
+        args: [needId],
+      })) as readonly [Address, bigint, number, boolean]
+      return target
+    }),
+  )
+
+  step('A donor gives 1,500 to the water basket: the contract splits it equally, now')
+  const gift = 1_500_000_000n
+  const expected = equalSplit(gift, rooms)
+  await mintIfPossible(ctx, 'donor2', gift)
+  await send(ctx, 'donor2', {
+    address: ctx.deployment.external.Token,
+    abi: mockEURCAbi as Abi,
+    functionName: 'approve',
+    args: [factory, gift],
+  })
+  const given = await send(ctx, 'donor2', {
+    address: factory,
+    abi: donationForwarderFactoryAbi as Abi,
+    functionName: 'donateEqually',
+    args: [basketId('WATER'), needIds, gift],
+  })
+  const [split] = parseEventLogs({
+    abi: donationForwarderFactoryAbi,
+    eventName: 'BasketDonated',
+    logs: given.receipt.logs,
+  })
+  if (!split) return fail('the basket gift emitted no BasketDonated')
+  split.args.amounts.forEach((part, i) => {
+    info(`need ${needIds[i]}`, `${formatAmount(part)} units, in the donor's own name`)
+    if (part !== expected.amounts[i]) fail(`the split differs from the preview for need ${needIds[i]}`)
+  })
+  note('the tanks need only 400, so they take that; the pump and the filters share the rest equally')
+  note("each part is a donation with its own receipt and the donor's say on that need's evidence")
+  tx(ctx.network, 'tx', given.hash)
+
+  const funded = needIds[1] as bigint
+  await expectStatus(ctx, funded, 'Funded')
+
+  step('Someone outside the NGO photographs the funded tanks; the NGO pays for proof from its own pot')
+  const reward = 30_000_000n
+  await mintIfPossible(ctx, 'ngo', reward * 2n)
+  await send(ctx, 'ngo', {
+    address: ctx.deployment.external.Token,
+    abi: mockEURCAbi as Abi,
+    functionName: 'approve',
+    args: [proofs, reward * 2n],
+  })
+  const deadline = (await chainTime(ctx)) + 7n * 86_400n
+  await send(ctx, 'ngo', {
+    address: proofs,
+    abi: communityProofsAbi as Abi,
+    functionName: 'openBounty',
+    args: [funded, reward, 2, deadline],
+  })
+  const photo = Buffer.from(`demo photo of the tanks at need ${funded}, ${new Date().toISOString()}`)
+  const manifest = buildManifest('The water tanks arrived at the school (demo).', [
+    {
+      kind: 'photo',
+      name: `tanks-need-${funded}.jpg`,
+      type: 'image/jpeg',
+      size: photo.length,
+      sha256: createHash('sha256').update(photo).digest('hex'),
+      url: '',
+    },
+  ])
+  const filed = await send(ctx, 'donor1', {
+    address: proofs,
+    abi: communityProofsAbi as Abi,
+    functionName: 'submitProof',
+    args: [funded, manifest],
+  })
+  const proofId = eventArg<bigint>(filed.receipt, communityProofsAbi as Abi, 'ProofSubmitted', 'proofId')
+  info('proof', `#${proofId}, filed by a wallet that does not run the need`)
+  tx(ctx.network, 'tx', filed.hash)
+
+  const rewarded = await send(ctx, 'ngo', {
+    address: proofs,
+    abi: communityProofsAbi as Abi,
+    functionName: 'rewardProof',
+    args: [proofId],
+  })
+  const creditOf = async () =>
+    (await ctx.publicClient.readContract({
+      address: proofs,
+      abi: communityProofsAbi,
+      functionName: 'creditOf',
+      args: [ctx.accounts.donor1.address],
+    })) as bigint
+  const credit = await creditOf()
+  info('reward', `${formatAmount(credit)} units of credit — not cash: it can only be given to aid`)
+  tx(ctx.network, 'tx', rewarded.hash)
+
+  step('The filer gives the credit to the water basket: it goes to the needs still raising money')
+  const spent = await send(ctx, 'donor1', {
+    address: proofs,
+    abi: communityProofsAbi as Abi,
+    functionName: 'giveCredit',
+    args: [basketId('WATER'), needIds, credit],
+  })
+  const [credited] = parseEventLogs({
+    abi: communityProofsAbi,
+    eventName: 'CreditGiven',
+    logs: spent.receipt.logs,
+  })
+  credited?.args.amounts.forEach((part, i) => {
+    if (part > 0n) info(`need ${needIds[i]}`, `${formatAmount(part)} units of reward credit`)
+  })
+  const [voice] = (await ctx.publicClient.readContract({
+    address: ctx.deployment.contracts.DeliveryManager,
+    abi: deliveryManagerAbi,
+    functionName: 'voiceOf',
+    args: [needIds[0] as bigint, ctx.accounts.donor1.address],
+  })) as readonly [number, bigint]
+  info("the filer's say on those needs", voiceName(voice))
+  note("the donation is in the CommunityProofs contract's name, which never votes: a reward buys no say")
+  info('credit left', formatAmount(await creditOf()))
+  tx(ctx.network, 'tx', spent.hash)
+
+  return [
+    `water basket: ${ctx.dashboardUrl}/en/baskets/water`,
+    `  needs ${needIds.join(', ')}: ${ctx.dashboardUrl}/en/needs/${needIds[0]}`,
+    `  reward credit (as the filer): ${ctx.dashboardUrl}/en/earn`,
   ]
 }
 
@@ -1203,7 +1401,7 @@ const waitUntil = async (ctx: DemoContext, timestamp: bigint, label: string): Pr
 
 const mintIfPossible = async (
   ctx: DemoContext,
-  role: 'donor1' | 'donor2',
+  role: RoleName,
   amount: bigint,
   token: Address = ctx.deployment.external.Token,
 ): Promise<void> => {

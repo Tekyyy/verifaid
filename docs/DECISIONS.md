@@ -881,8 +881,11 @@ Everything the owner does moved from "the NGO" to "the owner": closing funding, 
 supplier, opting into idle capital, the Settlement attestation, receiving the yield. Independent verifiers still
 attest the need before it can raise a cent (two above the high-value threshold), the release policy still judges
 every tranche after the first, and rejections still cancel and refund. The need stays under its NGO: its programme,
-its standing — a suspended NGO freezes its beneficiaries' needs exactly as it freezes its own — and its impact
-report, which keeps the five-people floor and so is an NGO-level statement. `BeneficiaryRegistry` is a separate
+its standing — a suspended NGO freezes its beneficiaries' needs exactly as it freezes its own. It has no impact
+report: the resolver refuses one (`ImpactReportNotApplicable`). A report states how many people a need served, with
+a five-people floor so the count identifies no one; a need a person posted for themselves serves one household, so
+any honest count would identify it, and its donors have already approved the receipts for every tranche. A donor's
+tracker shows "Impact confirmed" as not applicable on such a need, and the need is done when its last tranche is paid. `BeneficiaryRegistry` is a separate
 contract, and the only caller of `createBeneficiaryNeed`, because `NeedsRegistry` had 3.3 KB left under EIP-170.
 
 **The whole tranche can be the beneficiary's.** An NGO keeps at most 25% of a need for itself and pays the rest to
@@ -913,7 +916,7 @@ accepts work photos and presentations from whoever runs the need, and filters `/
 
 **Not done.** The certificate says nothing about what the NGO checked (see above). The PII vault does not store
 wallets or certificates yet: the NGO keeps track of whom it certified itself. A beneficiary must pay gas for their
-own transactions unless the paymaster is configured. The live testnet deployment is still v9 until it is redeployed.
+own transactions unless the paymaster is configured.
 
 ## 24. The problem in the news (v10 app)
 
@@ -989,6 +992,69 @@ with a badge on the rewarded ones. A "Pay for proof" tool on the NGO's dashboard
 lists the proof it can still pay for — oldest first, one per wallet — and closes it. A public "Prove & earn" page
 lists the needs with a pot open. The timeline records each proof, reward, and pot opened or closed.
 
+**A cap per wallet.** One wallet may file three proofs about one need (`MAX_PROOFS_PER_WALLET`): enough to follow a
+delivery — the goods, the site, the handover — and a wallet that wants to flood a need's page has to fund a new wallet
+for every three. A cap per need would be worse: whoever filed first could fill it and shut everyone else out. The page
+lists rewarded proof first, then the newest, and folds everything after the first ten.
+
 **Not done.** No moderation: proof that is off topic, false or shows a person stays listed, and the NGO simply does
 not pay for it. Its photos are in the upload store, not on chain, so they can be taken down there; the manifest,
 note included, stays in the event log. Rewards are paid in the donation token only.
+
+Since §26 a reward is not paid out: it is credit its holder can only give to a need or a basket.
+
+## 26. Rewards that can only be given, and giving baskets (v10)
+
+Two changes that meet in one place: the money an NGO pays for proof (§25) no longer leaves the system as cash, and a
+donor can back a cause — water, food, shelter — instead of picking a single need.
+
+**Giving baskets.** A basket is a category. `DonationForwarderFactory.donateEqually(basket, needIds, total)` takes one
+gift and splits it equally, in the same transaction, between the needs it names, and each part is an ordinary
+donation through the vault's `donateVia` in the giver's name: a receipt per need, a say on that need's evidence, a
+refund if it fails. Nothing is pooled and nothing waits: a basket holds no money, so there is no fund to govern, no
+manager to trust and no second place for money to sit. A need takes what it can: one nearly full takes only what it
+still needs, and the others share the rest equally (the needs with the least room are served first, each gets the
+lesser of its room and an equal part of what is left, and the rounding dust goes to the need with the most room).
+Whatever no need can take — every need full, closed, past a deadline or run by a suspended NGO — goes straight back to
+the giver; if none can take anything the gift is refused. At most 25 needs share one gift, named in increasing order
+so none can be named twice.
+
+**Why "split now" and "equally".** Holding basket money until needs appear would make the basket a fund: it would need
+rules for who decides where it goes and when, and a donor's money would wait with no need, no receipt and no vote.
+Splitting at once keeps every euro attached to a need and a donor. Equal parts are the rule a donor can check by
+eye; weighting by gap or urgency would be a judgement the platform makes for them.
+
+**Which needs.** A need's category is committed only in its creation event (`category` is event-only in
+`NeedsRegistry`, which has no bytes left to store it), so the factory cannot check that a basket's needs are of its
+category. The app sends the ones the indexer lists: needs of the category raising money right now, run by an active
+NGO, oldest first. The indexer checks each part against the need's category, and a part that went to a need of another
+category is still a donation, just not the basket's: it counts for no basket.
+
+**Rewards as credit.** `rewardProof` no longer transfers anything. The reward stays in `CommunityProofs` as
+`creditOf[filer]`, and the filer's only use for it is `giveCredit(basket, needIds, amount)`: to one need (basket zero)
+or to a basket, through the same `donateEqually`. What no need could take stays credit. The donor of record is the
+`CommunityProofs` contract, never the filer, so the NGO's money buys no one a vote: the contract has no way to call
+`approve` or `reject` and implements no ERC-1271, so it cannot sign one either. The filer is named in the
+`CreditGiven` event and shown on the need as the source of a "reward credit" donation.
+
+**Credit counts for no threshold.** Money that can never vote would otherwise raise the bar for those who can: a need
+7 of whose raised 10 came from credit could never reach "donors who gave 30% approve". Worse, it would be a lever: an
+NGO could reward wallets it controls and pour the credit into another NGO's need to freeze it. So `ReleasePolicy`
+takes an immutable `rewardCredit` address and leaves what it gave out of the amount the donor thresholds are shares
+of. If a need's whole raise was credit, the donors' half of its rule is empty: under "donors and a verifier" the
+verifiers decide; under "donors decide" nobody can vote, the evidence waits, and the need expires at its deadline and
+refunds.
+
+**When a need fails.** Its refund comes back as credit, never as cash. The first `reclaimCredit(needId)` claims the
+contract's refund from the vault once; each filer then gets back their share of it, pro rata to what they gave to that
+need, so a need that had released a tranche before it failed returns everyone the same fraction.
+
+**Where it shows.** A "Baskets" page lists one per category — the needs raising money now, what they still need, what
+was given through the basket and what its category has completed — and each basket's page lists its needs, the gift
+form (approve and `donateEqually` in one batch where the wallet can bundle them, with the split previewed by the same
+rule) and its latest gifts. "Prove & earn" shows the filer's credit, where to give it, where it went and which failed
+needs can be reclaimed. A need's donations say "Basket gift" or "Reward credit", and its timeline says so too.
+
+**Not done.** No weighting or rebalancing, no recurring basket gifts, and no basket of needs across categories. A
+receipt NFT for a reward-credit donation is minted to `CommunityProofs`, where it stays. The receipt a wallet gets per
+need means a gift to five needs is five receipts, and five refunds to claim if they fail.

@@ -4,13 +4,14 @@ import {
   buildManifest,
   communityProofsAbi,
   MAX_MANIFEST_BYTES,
+  MAX_PROOFS_PER_WALLET,
   manifestBytes,
   type NeedStatus,
 } from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import { useEffect, useId, useState } from 'react'
 import { type Address, isAddressEqual } from 'viem'
-import { useAccount } from 'wagmi'
+import { useAccount, useReadContract } from 'wagmi'
 import { FormError } from '@/components/form'
 import { TxStatus } from '@/components/TxStatus'
 import { useRouter } from '@/i18n/navigation'
@@ -45,12 +46,22 @@ export function SubmitCommunityProof({
   const mounted = useMounted()
   const { address } = useAccount()
   const contract = deployment?.contracts.CommunityProofs
+  const filed = useReadContract({
+    address: contract,
+    abi: communityProofsAbi,
+    functionName: 'proofsFiled',
+    args: address ? [BigInt(needId), address] : undefined,
+    query: { enabled: Boolean(contract && address) },
+  })
 
   if (!contract) return null
   if (!acceptsProof(status)) return <p className="text-sm text-slate-600">{t('notYet')}</p>
   if (!mounted || !address) return <p className="text-sm text-slate-700">{t('connect')}</p>
   const runsIt = isAddressEqual(address, ngo) || Boolean(beneficiary && isAddressEqual(address, beneficiary))
   if (runsIt) return <p className="text-sm text-slate-700">{t('yours')}</p>
+  if ((filed.data ?? 0n) >= BigInt(MAX_PROOFS_PER_WALLET)) {
+    return <p className="text-sm text-slate-700">{t('limitReached', { max: MAX_PROOFS_PER_WALLET })}</p>
+  }
 
   // A form per wallet: one that switches wallets starts afresh instead of showing the last one's proof as filed.
   return <ProofForm key={address} needId={needId} contract={contract} rewardText={rewardText} />

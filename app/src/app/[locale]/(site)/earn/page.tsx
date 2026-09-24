@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
 import { EmptyState, IndexerNotice } from '@/components/Notice'
+import { RewardCreditPanel } from '@/components/RewardCreditPanel'
 import { NeedStatusBadge } from '@/components/StatusBadge'
 import { Link } from '@/i18n/navigation'
 import { acceptsProof, rewardsLeft } from '@/lib/community'
@@ -20,8 +21,9 @@ export async function generateMetadata({
 
 /**
  * Needs whose NGO is paying for proof right now: go and photograph the goods, the site or the delivery, file it on
- * the need's page, and the NGO may send a reward to the wallet that filed it. The pot is the NGO's own money, locked
- * in the CommunityProofs contract when it was opened, so what is listed here is what is really there to be paid.
+ * the need's page, and the NGO may reward the wallet that filed it. The pot is the NGO's own money, locked in the
+ * CommunityProofs contract when it was opened, so what is listed here is really there. A reward is credit, not cash:
+ * its holder gives it to a need or a basket from the panel below, and it counts for no vote.
  */
 export default async function EarnPage() {
   const t = await getTranslations('earn')
@@ -47,6 +49,8 @@ export default async function EarnPage() {
         ))}
       </ol>
       <p className="max-w-3xl text-xs text-slate-600">{t('rules')}</p>
+
+      <RewardCreditPanel />
 
       {!bounties.ok ? <IndexerNotice error={bounties.error} /> : null}
       {bounties.ok && bounties.data.length === 0 ? (

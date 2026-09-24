@@ -85,6 +85,7 @@ const stageView = (
   txHash: reached ? (evidence.txHash ?? null) : null,
   attestationUID: reached ? (evidence.attestationUID ?? null) : null,
   pending: null,
+  notApplicable: false,
 })
 
 /**
@@ -120,7 +121,13 @@ export const needProgress = (need: NeedDetail): Progress => {
         at: delivered?.decidedAt ?? undefined,
         txHash: delivered?.votes.filter((vote) => vote.approve).at(-1)?.txHash,
       }),
-      stageView('ImpactConfirmed', Boolean(impact), { at: impact?.timestamp, attestationUID: impact?.uid }),
+      // A person's own need publishes no impact report, so there is none to wait for.
+      need.beneficiary
+        ? { ...stageView('ImpactConfirmed', false), notApplicable: true }
+        : stageView('ImpactConfirmed', Boolean(impact), {
+            at: impact?.timestamp,
+            attestationUID: impact?.uid,
+          }),
     ],
     outcome,
   }

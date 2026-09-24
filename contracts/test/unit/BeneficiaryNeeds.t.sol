@@ -9,6 +9,10 @@ import {IReleasePolicy} from "../../src/interfaces/IReleasePolicy.sol";
 import {ITrancheLedger} from "../../src/interfaces/ITrancheLedger.sol";
 import {Errors} from "../../src/libraries/Errors.sol";
 import {PoATest} from "../utils/PoATest.sol";
+import {
+    AttestationRequest,
+    AttestationRequestData
+} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 /// @dev An NGO whose account is a smart wallet (ERC-1271) with one owner key, like a Safe with one signer.
@@ -504,6 +508,24 @@ contract BeneficiaryNeedsTest is PoATest {
         assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Completed);
         assertEq(token.balanceOf(ngoPayout), 0);
         assertVaultInvariant(vault);
+
+        // No impact report closes it: it served one household, and the donors approved every tranche's receipts.
+        bytes memory report = abi.encode(needId, uint32(10), KPI_HASH, REPORT_CID);
+        vm.prank(ngo);
+        vm.expectRevert(Errors.ImpactReportNotApplicable.selector);
+        eas.attest(
+            AttestationRequest({
+                schema: impactReportSchema,
+                data: AttestationRequestData({
+                    recipient: address(vault),
+                    expirationTime: 0,
+                    revocable: true,
+                    refUID: bytes32(0),
+                    data: report,
+                    value: 0
+                })
+            })
+        );
 
         // Over, so the beneficiary may post their next need.
         _postBeneficiaryNeed(beneficiary, programId, TARGET);

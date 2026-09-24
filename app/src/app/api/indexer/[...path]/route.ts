@@ -24,6 +24,9 @@ const ALLOWED = [
   /^suppliers$/,
   /^suppliers\/0x[a-fA-F0-9]{40}$/,
   /^deliveries$/,
+  /^baskets$/,
+  /^baskets\/[a-zA-Z]+$/,
+  /^credits\/0x[a-fA-F0-9]{40}$/,
 ]
 
 export async function GET(request: NextRequest, { params }: { params: { path: string[] } }) {

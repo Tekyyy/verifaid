@@ -1,6 +1,7 @@
 import type schema from 'ponder:schema'
 import {
   type CommunityProofView,
+  type BasketGiftView,
   type ConversionView,
   categoryLabel,
   type DeliveryStatus,
@@ -313,6 +314,22 @@ export const toDonationView = (row: DonationRow): DonationView => ({
   withdrawn: row.withdrawn.toString(),
   receiptId: row.receiptId?.toString() ?? null,
   conversion: toConversionView(row),
+  basket: (row.basket as Hex | null) ?? null,
+  basketLabel: row.basket ? categoryLabel(row.basket as Hex) : null,
+  rewardFrom: (row.rewardFrom as Address | null) ?? null,
+  txHash: row.txHash as Hex,
+  timestamp: row.timestamp,
+})
+
+export type BasketGiftRow = typeof schema.basketGift.$inferSelect
+
+export const toBasketGiftView = (row: BasketGiftRow): BasketGiftView => ({
+  id: row.id,
+  donor: row.donor as Address,
+  fromCredit: row.fromCredit,
+  total: row.total.toString(),
+  returned: row.returned.toString(),
+  needs: (row.parts as { needId: string; amount: string }[]).filter((part) => part.amount !== '0'),
   txHash: row.txHash as Hex,
   timestamp: row.timestamp,
 })

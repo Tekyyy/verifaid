@@ -197,7 +197,7 @@ export const donation = onchainTable(
   (t) => ({
     id: t.text().primaryKey(), // txHash-logIndex
     needId: t.bigint().notNull(),
-    kind: t.text().notNull(), // DIRECT | CONVERTED
+    kind: t.text().notNull(), // DIRECT | CONVERTED | BASKET | REWARD
     donor: t.hex(),
     /** Set when a deposit address holds the claim itself: its address, left-padded to 32 bytes. */
     donorRefHash: t.hex(),
@@ -217,6 +217,10 @@ export const donation = onchainTable(
     fairValue: t.bigint(),
     /** Fair value minus output, attributed to the donated part; the resolver counts it against the cost cap. */
     conversionFee: t.bigint(),
+    /** BASKET / REWARD through a basket: the basket's id (a category's hash). */
+    basket: t.hex(),
+    /** REWARD: the wallet whose reward credit this was; the donor of record is the CommunityProofs contract. */
+    rewardFrom: t.hex(),
     txHash: t.hex().notNull(),
     blockNumber: t.bigint().notNull(),
     timestamp: t.integer().notNull(),
@@ -227,6 +231,40 @@ export const donation = onchainTable(
     viaIdx: index().on(table.via),
     txIdx: index().on(table.txHash),
   }),
+)
+
+/** One gift to a giving basket, split equally across the needs it names (v10). */
+export const basketGift = onchainTable(
+  'basket_gift',
+  (t) => ({
+    id: t.text().primaryKey(), // txHash-logIndex
+    basket: t.hex().notNull(),
+    /** Who gave: the wallet, or — for reward credit — the proof's filer, whose credit it was. */
+    donor: t.hex().notNull(),
+    fromCredit: t.boolean().notNull(),
+    total: t.bigint().notNull(),
+    returned: t.bigint().notNull(),
+    /** [{ needId, amount }] with amounts as decimal strings. */
+    parts: t.json().notNull(),
+    txHash: t.hex().notNull(),
+    timestamp: t.integer().notNull(),
+  }),
+  (table) => ({ basketIdx: index().on(table.basket), donorIdx: index().on(table.donor) }),
+)
+
+/** Reward credit one wallet gave to one need, and what came back as credit when the need failed (v10). */
+export const creditGift = onchainTable(
+  'credit_gift',
+  (t) => ({
+    id: t.text().primaryKey(), // needId-wallet
+    needId: t.bigint().notNull(),
+    wallet: t.hex().notNull(),
+    /** Given and not yet reclaimed. */
+    given: t.bigint().notNull(),
+    reclaimed: t.bigint().notNull(),
+    updatedAt: t.integer().notNull(),
+  }),
+  (table) => ({ walletIdx: index().on(table.wallet), needIdx: index().on(table.needId) }),
 )
 
 /** Soulbound ERC-721 receipt, one per direct donation. */

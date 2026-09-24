@@ -29,6 +29,26 @@ interface IDonationForwarderFactory {
         uint256 deposited
     );
 
+    /// @notice A gift to a basket, split equally by the factory across the needs named; each part is an ordinary
+    ///         donation in the donor's name (see `DonatedVia` on each vault). `amounts` lines up with `needIds`; a
+    ///         need that was not taking money gets zero, and whatever could not be placed went back (`returned`).
+    /// @param basket What the gift was for, as the donor's app named it: a category's hash for a category basket.
+    event BasketDonated(
+        address indexed donor, bytes32 indexed basket, uint256[] needIds, uint256[] amounts, uint256 returned
+    );
+
+    /// @notice Gives `total` of the vault currency to `needIds` in equal parts, in one transaction, crediting the
+    ///         caller on every need (a receipt, a say on its evidence and a claim to its refund each, like any
+    ///         donation). A need that is closed, full or run by a suspended NGO is skipped; a need with less room
+    ///         than its equal part takes what it can, and the rest is shared among the others. What no need could
+    ///         take goes back to the caller.
+    /// @param needIds Strictly increasing, so no need is counted twice; at most `MAX_BASKET_NEEDS`.
+    /// @return amounts What each need received, aligned with `needIds`.
+    /// @return returned What went back to the caller.
+    function donateEqually(bytes32 basket, uint256[] calldata needIds, uint256 total)
+        external
+        returns (uint256[] memory amounts, uint256 returned);
+
     /// @notice The deposit address of `intent`, whether or not it has been deployed yet. Reverts for an intent that
     ///         could never be deployed, so nobody is ever shown an address that would trap money.
     function forwarderAddress(IDonationForwarder.Intent calldata intent) external view returns (address);

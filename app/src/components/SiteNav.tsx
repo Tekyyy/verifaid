@@ -10,6 +10,7 @@ import { Link, usePathname } from '@/i18n/navigation'
  */
 const PUBLIC_ROUTES = [
   { href: '/needs', key: 'needs' },
+  { href: '/baskets', key: 'baskets' },
   { href: '/impact', key: 'impact' },
   { href: '/suppliers', key: 'suppliers' },
   { href: '/track', key: 'track' },

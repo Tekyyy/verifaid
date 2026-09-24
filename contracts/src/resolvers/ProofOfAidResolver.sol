@@ -186,13 +186,16 @@ contract ProofOfAidResolver is SchemaResolver, IFeeRecorder {
     // ─── ImpactReport ──────────────────────────────────────────────────────────
 
     /// @dev Only once every tranche is paid, by the NGO, one live report per need; revoke to correct. `refUID` is
-    ///      left empty: there is no sign-off chain to point at since donors approve deliveries directly.
+    ///      left empty: there is no sign-off chain to point at since donors approve deliveries directly. A need a
+    ///      person posted for themselves (v10) has none: it serves one household, whose count would identify it, and
+    ///      the donors already approved the receipts for every tranche.
     function _onImpactReport(Attestation calldata a) internal {
         (uint256 needId, uint32 beneficiariesServed, bytes32 kpiHash, string memory reportCID) =
             abi.decode(a.data, (uint256, uint32, bytes32, string));
 
         (address ngo, address vault,, INeedsRegistry.NeedStatus status) = registry.coreOf(needId);
         if (a.attester != ngo) revert Errors.Unauthorized();
+        if (registry.beneficiaryOf(needId) != address(0)) revert Errors.ImpactReportNotApplicable();
         if (status != INeedsRegistry.NeedStatus.Completed) revert Errors.InvalidNeedStatus();
         if (a.recipient != vault) revert Errors.InvalidRecipient();
         if (kpiHash == bytes32(0) || bytes(reportCID).length == 0) revert Errors.InvalidParameter();

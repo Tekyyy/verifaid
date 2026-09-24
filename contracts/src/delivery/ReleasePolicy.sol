@@ -18,6 +18,10 @@ import {Errors} from "../libraries/Errors.sol";
 ///         A donor's say weighs what they gave, so splitting one gift across many wallets gains nothing. The NGO,
 ///         its payout address, the need's payees and the beneficiary who posted it have no say, however much they
 ///         gave: they would be judging their own accounts. A verifier counts as a verifier, never also as a donor.
+///
+///         Reward credit (v10) is given in the CommunityProofs contract's name, which never votes: an NGO's reward buys
+///         no say. It is also left out of the amount the donor thresholds are shares of, so it cannot stand in the way
+///         of the donors who do have one — money that can never vote would otherwise make "30% approve" unreachable.
 contract ReleasePolicy is IReleasePolicy {
     uint16 public constant BPS_DENOMINATOR = 10_000;
 
@@ -32,6 +36,9 @@ contract ReleasePolicy is IReleasePolicy {
     bool public immutable verifiers;
     /// @notice Fresh starts the NGO gets on rejected or contested evidence before a rejection cancels the need.
     uint8 public immutable retries;
+    /// @notice The donor of record of reward credit (CommunityProofs), whose donations count for no threshold; zero
+    ///         when the deployment has none.
+    address public immutable rewardCredit;
 
     string private _name;
 
@@ -42,7 +49,10 @@ contract ReleasePolicy is IReleasePolicy {
         uint16 donorApprovalBps_,
         uint16 donorRejectionBps_,
         bool verifiers_,
-        uint8 retries_
+        uint8 retries_,
+        // Zero is allowed on purpose: a deployment without reward credit has nothing to leave out.
+        // forge-lint: disable-next-line(missing-zero-check)
+        address rewardCredit_
     ) {
         if (address(roles_) == address(0) || address(registry_) == address(0)) {
             revert Errors.ZeroAddress();
@@ -61,6 +71,7 @@ contract ReleasePolicy is IReleasePolicy {
         donorRejectionBps = donorRejectionBps_;
         verifiers = verifiers_;
         retries = retries_;
+        rewardCredit = rewardCredit_;
     }
 
     /// @inheritdoc IReleasePolicy
@@ -70,13 +81,14 @@ contract ReleasePolicy is IReleasePolicy {
 
     /// @inheritdoc IReleasePolicy
     /// @dev Donor thresholds are shares of what was raised, which is fixed once funding closes, rounded up so "30%"
-    ///      never means a hair less. Verifier thresholds follow the need's own verification requirement, so a
+    ///      never means a hair less. What was raised as reward credit is left out: it has no voice to count. Verifier thresholds follow the need's own verification requirement, so a
     ///      high-value need that took two verifiers to open also takes two to release.
     function rulesOf(uint256 needId) external view returns (Rules memory r) {
         r.retries = retries;
         if (donorApprovalBps != 0) {
             address vault = registry.vaultOf(needId);
             uint256 raised = vault == address(0) ? 0 : ITrancheLedger(vault).totalDonated();
+            if (raised != 0 && rewardCredit != address(0)) raised -= IAidVault(vault).donatedBy(rewardCredit);
             r.donorApproval = _share(raised, donorApprovalBps);
             r.donorRejection = _share(raised, donorRejectionBps);
         }

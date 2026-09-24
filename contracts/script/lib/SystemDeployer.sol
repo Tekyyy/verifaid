@@ -147,13 +147,19 @@ abstract contract SystemDeployer is CommonBase {
         s.beneficiaries =
             new BeneficiaryRegistry(roles, INeedsRegistry(address(s.registry)), IProgramRegistry(address(s.programs)));
         s.deliveryManager = new DeliveryManager(roles, INeedsRegistry(address(s.registry)));
-        s.communityProofs = new CommunityProofs(roles, INeedsRegistry(address(s.registry)), IERC20(s.token));
         s.resolver =
             new ProofOfAidResolver(IEAS(p.eas), roles, INeedsRegistry(address(s.registry)), p.minBeneficiariesServed);
         s.factory = new AidVaultFactory(roles);
         s.receipt = new DonationReceipt(roles, IAidVaultFactory(address(s.factory)), p.dashboardBaseURI);
 
         _deployConversion(p, s);
+        // After the donation factory, which splits and donates the reward credit people give away.
+        s.communityProofs = new CommunityProofs(
+            roles,
+            INeedsRegistry(address(s.registry)),
+            IERC20(s.token),
+            IDonationForwarderFactory(address(s.forwarderFactory))
+        );
 
         s.vaultImplementation = new AidVault(
             roles,
@@ -188,10 +194,12 @@ abstract contract SystemDeployer is CommonBase {
         uint16 approval = p.donorApprovalBps == 0 ? 3000 : p.donorApprovalBps;
         uint16 rejection = p.donorRejectionBps == 0 ? 5000 : p.donorRejectionBps;
         uint8 retries = p.rejectionRetries;
-        s.donorPolicy = new ReleasePolicy(roles, registry, "Donors decide", approval, rejection, false, retries);
-        s.verifierPolicy = new ReleasePolicy(roles, registry, "A verifier checks", 0, 0, true, retries);
+        // Reward credit is donated in this contract's name and never votes, so no threshold counts it.
+        address credit = address(s.communityProofs);
+        s.donorPolicy = new ReleasePolicy(roles, registry, "Donors decide", approval, rejection, false, retries, credit);
+        s.verifierPolicy = new ReleasePolicy(roles, registry, "A verifier checks", 0, 0, true, retries, credit);
         s.donorAndVerifierPolicy =
-            new ReleasePolicy(roles, registry, "Donors and a verifier", approval, rejection, true, retries);
+            new ReleasePolicy(roles, registry, "Donors and a verifier", approval, rejection, true, retries, credit);
         s.registry.setReleasePolicy(address(s.donorPolicy), true);
         s.registry.setReleasePolicy(address(s.verifierPolicy), true);
         s.registry.setReleasePolicy(address(s.donorAndVerifierPolicy), true);
