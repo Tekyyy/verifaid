@@ -40,8 +40,8 @@ export const dynamic = 'force-dynamic'
 
 const MAX_DEADLINE_AHEAD_SECONDS = 24 * 3600
 
-const perAddress = createRateLimiter({ windowMs: 10 * 60_000, max: 6 })
-const perIp = createRateLimiter({ windowMs: 10 * 60_000, max: 12 })
+const perAddress = createRateLimiter({ name: 'deposit-refund:perAddress', windowMs: 10 * 60_000, max: 6 })
+const perIp = createRateLimiter({ name: 'deposit-refund:perIp', windowMs: 10 * 60_000, max: 12 })
 
 async function handle(request: NextRequest, { params }: { params: { address: string } }) {
   const context = forwarderContext()
@@ -81,7 +81,7 @@ async function handle(request: NextRequest, { params }: { params: { address: str
     return badRequest('signature must be a 65-byte 0x hex string.')
   }
 
-  if (perAddress(address.toLowerCase()) || perIp(clientIp(request))) {
+  if ((await perAddress(address.toLowerCase())) || (await perIp(clientIp(request)))) {
     return NextResponse.json({ error: 'rate_limited', message: 'Too many refund attempts.' }, { status: 429 })
   }
   if (!(await isFactoryForwarder(context, address))) {

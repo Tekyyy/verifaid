@@ -17,8 +17,8 @@ import { getRelayer, relayWrite, revertOf, waitForReceipt, withChainErrors } fro
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const perIp = createRateLimiter({ windowMs: 10 * 60_000, max: 5 })
-const overall = createRateLimiter({ windowMs: 60 * 60_000, max: 120 })
+const perIp = createRateLimiter({ name: 'deposits:perIp', windowMs: 10 * 60_000, max: 5 })
+const overall = createRateLimiter({ name: 'deposits:overall', windowMs: 60 * 60_000, max: 120 })
 
 async function handle(request: NextRequest) {
   const context = forwarderContext()
@@ -42,7 +42,7 @@ async function handle(request: NextRequest) {
     )
   }
 
-  if (perIp(clientIp(request)) || overall('all')) {
+  if ((await perIp(clientIp(request))) || (await overall('all'))) {
     return NextResponse.json(
       { error: 'rate_limited', message: 'Too many deposit addresses created; try again later.' },
       { status: 429 },

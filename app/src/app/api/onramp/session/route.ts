@@ -28,8 +28,8 @@ const AMOUNT = /^\d{1,5}(\.\d{1,2})?$/
 const MIN_CENTS = 500
 const MAX_CENTS = 500_000
 
-const perIp = createRateLimiter({ windowMs: 10 * 60_000, max: 10 })
-const perAddress = createRateLimiter({ windowMs: 10 * 60_000, max: 5 })
+const perIp = createRateLimiter({ name: 'onramp-session:perIp', windowMs: 10 * 60_000, max: 10 })
+const perAddress = createRateLimiter({ name: 'onramp-session:perAddress', windowMs: 10 * 60_000, max: 5 })
 
 export async function POST(request: NextRequest) {
   if (onrampMode !== 'coinbase') {
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
   const lang = typeof locale === 'string' && isLocale(locale) ? locale : 'en'
 
   const ip = clientIp(request)
-  if (perIp(ip) || perAddress(address.toLowerCase())) {
+  if ((await perIp(ip)) || (await perAddress(address.toLowerCase()))) {
     return NextResponse.json(
       { error: 'rate_limited', message: 'Too many purchases started.' },
       { status: 429 },

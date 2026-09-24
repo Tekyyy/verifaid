@@ -24,7 +24,7 @@ import { uploadDir } from '@/lib/server/uploadDir'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const perIp = createRateLimiter({ windowMs: 10 * 60_000, max: 60 })
+const perIp = createRateLimiter({ name: 'uploads:perIp', windowMs: 10 * 60_000, max: 60 })
 
 export interface UploadedFile {
   name: string
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
   const files = form.getAll('files').filter((value): value is File => value instanceof File)
   if (files.length === 0) return badRequest('No files.')
   if (files.length > MAX_EVIDENCE_FILES) return badRequest(`At most ${MAX_EVIDENCE_FILES} files at once.`)
-  if (perIp(clientIp(request))) {
+  if (await perIp(clientIp(request))) {
     return NextResponse.json(
       { error: 'rate_limited', message: 'Too many uploads; try again later.' },
       { status: 429 },

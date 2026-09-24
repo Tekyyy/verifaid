@@ -25,8 +25,8 @@ const CARD_FEE_BPS = 150n
 /** Used when the feed is missing or unreadable: 1 EUR = 1.08 USD. */
 const FALLBACK_RATE = { answer: 108_000_000n, decimals: 8 }
 
-const perAddress = createRateLimiter({ windowMs: 10 * 60_000, max: 3 })
-const perIp = createRateLimiter({ windowMs: 10 * 60_000, max: 10 })
+const perAddress = createRateLimiter({ name: 'onramp-mock:perAddress', windowMs: 10 * 60_000, max: 3 })
+const perIp = createRateLimiter({ name: 'onramp-mock:perIp', windowMs: 10 * 60_000, max: 10 })
 
 const aggregatorAbi = parseAbi([
   'function decimals() view returns (uint8)',
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
   const cents = Math.round(Number(amountEur) * 100)
   if (cents < MIN_CENTS || cents > MAX_CENTS) return badRequest('amountEur must be between 1.00 and 5000.00.')
 
-  if (perAddress(address.toLowerCase()) || perIp(clientIp(request))) {
+  if ((await perAddress(address.toLowerCase())) || (await perIp(clientIp(request)))) {
     return NextResponse.json(
       { error: 'rate_limited', message: 'Too many sandbox purchases; try again in a few minutes.' },
       { status: 429 },

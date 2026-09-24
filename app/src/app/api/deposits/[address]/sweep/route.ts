@@ -27,8 +27,8 @@ import { getRelayer, relayWrite, revertOf, waitForReceipt, withChainErrors } fro
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const perAddress = createRateLimiter({ windowMs: 60_000, max: 4 })
-const perIp = createRateLimiter({ windowMs: 60_000, max: 12 })
+const perAddress = createRateLimiter({ name: 'deposit-sweep:perAddress', windowMs: 60_000, max: 4 })
+const perIp = createRateLimiter({ name: 'deposit-sweep:perIp', windowMs: 60_000, max: 12 })
 
 type Outcome = 'swept' | 'nothingToSweep' | 'notAccepting' | 'overCostCap' | 'notKeeper' | 'failed'
 
@@ -66,7 +66,7 @@ async function handle(request: NextRequest, { params }: { params: { address: str
 
   const address = parseDepositAddress(params.address)
   if (!address) return badRequest('address must be a 0x-prefixed 20-byte address.')
-  if (perAddress(address.toLowerCase()) || perIp(clientIp(request))) {
+  if ((await perAddress(address.toLowerCase())) || (await perIp(clientIp(request)))) {
     return NextResponse.json({ error: 'rate_limited', message: 'Sweeping too often.' }, { status: 429 })
   }
   const [forwarder, keeper] = await Promise.all([

@@ -18,7 +18,7 @@ import { createRateLimiter } from '@/lib/server/rateLimit'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const perRef = createRateLimiter({ windowMs: 60_000, max: 12 })
+const perRef = createRateLimiter({ name: 'onramp-status:perRef', windowMs: 60_000, max: 12 })
 
 export async function GET(request: NextRequest) {
   if (onrampMode !== 'coinbase') {
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 
   const ref = request.nextUrl.searchParams.get('ref') ?? ''
   if (!PARTNER_USER_REF.test(ref)) return badRequest('ref must be a partner reference issued by this app.')
-  if (perRef(ref)) {
+  if (await perRef(ref)) {
     return NextResponse.json({ error: 'rate_limited', message: 'Polling too fast.' }, { status: 429 })
   }
 

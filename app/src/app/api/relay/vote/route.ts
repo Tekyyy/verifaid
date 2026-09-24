@@ -33,8 +33,10 @@ const EXPECTED_REVERTS = new Set([
 /** Smart-wallet signatures (WebAuthn, ERC-6492) run to a few kilobytes; nothing legitimate is longer. */
 const MAX_SIGNATURE_BYTES = 4096
 
-const perVoter = createRateLimiter({ windowMs: 10 * 60_000, max: 10 })
-const perIp = createRateLimiter({ windowMs: 10 * 60_000, max: 30 })
+const perVoter = createRateLimiter({ name: 'relay-vote:perVoter', windowMs: 10 * 60_000, max: 10 })
+const perIp = createRateLimiter({ name: 'relay-vote:perIp', windowMs: 10 * 60_000, max: 30 })
+/** A ceiling on what the relayer spends in a day, whoever asks: at Base mainnet prices, a few dollars. */
+const overall = createRateLimiter({ name: 'relay-vote:overall', windowMs: 24 * 60 * 60_000, max: 2_000 })
 
 async function handle(request: NextRequest) {
   const manager = deployment?.contracts.DeliveryManager as Address | undefined
@@ -68,7 +70,7 @@ async function handle(request: NextRequest) {
   }
 
   const account = getAddress(voter)
-  if (perVoter(account.toLowerCase()) || perIp(clientIp(request))) {
+  if ((await perVoter(account.toLowerCase())) || (await perIp(clientIp(request))) || (await overall('all'))) {
     return NextResponse.json(
       { error: 'rate_limited', message: 'Too many votes; try again later.' },
       { status: 429 },
