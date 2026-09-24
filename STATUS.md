@@ -3,7 +3,7 @@
 A snapshot of everything this machine and the working session hold: what is live, what is running, where the
 keys are (names only, never values), how to operate it, and what is still open.
 
-*Last updated: 2026-09-24 · code at `500c673` on `main` (pushed to GitHub, nothing uncommitted)*
+*Last updated: 2026-09-24 · v10 live from branch `feature/beneficiary-needs` (pushed to GitHub; not merged into `main` yet)*
 
 ---
 
@@ -11,13 +11,14 @@ keys are (names only, never values), how to operate it, and what is still open.
 
 | | |
 |---|---|
-| Release | **v9**, live on **Base Sepolia** (chain 84532), indexed from block 47,217,423 |
-| Source | every contract source-verified on Basescan (18 system contracts + the timelock) |
-| Admin | a **TimelockController** (10-minute delay), proposed by a **2-of-3 Safe**; the deployer is only the guardian (pause) |
-| Tests | 320 Foundry, 19 shared, 63 notifier, 42 app — all passing; typecheck and Biome lint clean |
-| Demo | all 5 scenarios passed on anvil and on Base Sepolia |
-| Your wallets | `0xa087…42Da` registered as an NGO; 1,000,000 test USDC each in `0xa087…42Da`, `0x4C2d…3636`, `0x28EA…F708` |
-| Open | threshold counts money that cannot vote (item #1, deliberately not done); Pinata key; paymaster URL |
+| Release | **v10**, live on **Base Sepolia** (chain 84532), indexed from block 47,256,760 |
+| Source | every contract source-verified on Basescan (20 system contracts + the timelock) |
+| Admin | a **TimelockController** (10-minute delay), proposed by your existing **2-of-3 Safe**; the deployer is only the guardian (pause) |
+| Tests | 391 Foundry, 26 shared, 64 notifier, 91 app — all passing; typecheck and Biome lint clean |
+| Demo | all 7 scenarios passed on anvil and on Base Sepolia |
+| Your wallets | `0xa087…42Da` and `0x4C2d…3636` registered as NGOs; 1,000,000 test USDC each in `0xa087…42Da`, `0x4C2d…3636`, `0x28EA…F708` |
+| Branch | `feature/beneficiary-needs` holds v10; `main` is still v9 code |
+| Open | threshold counts other money that cannot vote (item #1, reward credit already excluded); Pinata key; paymaster URL |
 
 ---
 
@@ -37,47 +38,51 @@ Design record: `docs/DECISIONS.md` §22. Threats: `docs/THREAT_MODEL.md` §3.4, 
 
 ---
 
-## 2b. On branch `feature/beneficiary-needs` (v10, not deployed, not committed yet)
+## 2b. What v10 changed
 
-Your v10 work (beneficiary needs, news, community proofs) plus, from this machine:
+Your v10 work (needs a certified person posts for themselves, news on a need's page, community proof and reward
+pots) plus, from this machine:
 
-- **Rewards are credit, not cash.** `CommunityProofs.rewardProof` now credits `creditOf[filer]`; the filer can only
+- **Rewards are credit, not cash.** `CommunityProofs.rewardProof` credits `creditOf[filer]`; the filer can only
   spend it with `giveCredit` on a need or a basket. The donor of record is the CommunityProofs contract, so a reward
   buys no vote, and `ReleasePolicy` leaves that money out of the 30%/50% thresholds. A failed need's refund comes
   back as credit (`reclaimCredit`), pro rata.
 - **Giving baskets.** `DonationForwarderFactory.donateEqually` splits one gift equally, now, across up to 25 needs of a
   category; each part is a normal donation in the giver's name (receipt, vote, refund). Leftover goes back.
-- Indexer: `/baskets`, `/baskets/:category`, `/credits/:address`; donation kinds BASKET and REWARD; timeline
-  DonatedBasket / DonatedReward / CreditReclaimed. App: `/baskets`, `/baskets/[category]`, credit panel on `/earn`.
-- Demo scenario 7 (`pnpm demo:run anvil baskets`). Docs: DECISIONS §26, THREAT_MODEL §3.26.
-- Checked: 390 contract tests, shared 26, app 91, notifier 63; typecheck and lint clean; all seven demo scenarios
-  on a fresh anvil with the indexer.
+- **Proof cap.** One wallet may file 3 proofs per need; the need page folds proof after the first ten.
+- **No impact report on a person's own need.** The resolver refuses one; trackers show "Impact confirmed" as not
+  applicable, and the need is done when its last tranche is paid.
+- Indexer: `/baskets`, `/baskets/:category`, `/credits/:address`; donation kinds BASKET and REWARD. App: `/baskets`,
+  `/baskets/[category]`, credit panel on `/earn`. Demo scenario 7 (`baskets`).
+- Design record: DECISIONS §23, §25, §26. Threats: THREAT_MODEL §3.23, §3.25, §3.26.
 
 ## 3. Live contracts (Base Sepolia)
 
 | Contract | Address |
 |---|---|
-| RoleRegistry | `0xf42EBd86a3decDD5466540F41D9B9dEeAdCFE8b5` |
-| NeedsRegistry | `0xDDf49b52728edc38eB662Fdb934CB19Ec037997a` |
-| DeliveryManager | `0xF8FD93f388A45df337f077C36E04E8fDD8844fCC` |
-| ReleasePolicy — Donors decide (default) | `0x81123F83CAB4651F1b830E83376cC0Ec8fc8A816` |
-| ReleasePolicy — A verifier checks | `0xFA616eAD54Edff5d541eeb1c99888d7F1C5BEB14` |
-| ReleasePolicy — Donors and a verifier | `0x5c9A0C7A35EAEf076b7c62f7d2638c394F3E03a7` |
-| ProgramRegistry | `0x9e23d1Cc7281c95FA83765517cF770438668d48A` |
-| AidVaultFactory | `0x05bcf934DcB1462AA234C854Fd514325895CA161` |
-| AidVault implementation | `0x521156892BC1Bc40b1EeabeD4e5F9194bBD976F5` |
-| DonationReceipt | `0x191232C46D30923a36cFa2Ff94b47C90203039fB` |
-| ProofOfAidResolver | `0xD2771615B63D967Ff2f7D704dE0fdaca985ba181` |
-| ConversionRouter | `0x25391Cab52DECb9e451cC247B74FAF5768393A02` |
-| DonationForwarderFactory | `0x0a364893BF2686e3982dA7481A4A3aDbF0F38Dc1` |
-| DonationForwarder implementation | `0xE9066c7e6E0e8C59a3D399b74B533824a42D0676` |
+| RoleRegistry | `0x22FCd2D3fC053A22e815bCD038310df6B1517391` |
+| NeedsRegistry | `0x84Aca78cEa47830ee59Ee112B084B7d5e5DAA503` |
+| BeneficiaryRegistry | `0x50827EE08bB9FcdC0a6563a340ca5694135f2A84` |
+| DeliveryManager | `0x1d05bB87E7Fe78951a5a5458D09bb5cC032286AA` |
+| ReleasePolicy — Donors decide (default) | `0xDcb7c3562f7A912c714b1b3318Af6EF9ad81B50F` |
+| ReleasePolicy — A verifier checks | `0x087BE4fCfafa8530421Cc6817C33F2e6c01357D2` |
+| ReleasePolicy — Donors and a verifier | `0x0999eBEf1cA78cAa433Dc67da0A479b0f97F8dF0` |
+| CommunityProofs (proof, reward pots, reward credit) | `0xE0821CCA3CB9cDb0B258546e1d093c39260c74f1` |
+| ProgramRegistry | `0x4DBb8e4e1db01e8962141DcBb5D17C4161A0a945` |
+| AidVaultFactory | `0x4652C505C49f24A80349a4042Dee7d717Cd5D0b2` |
+| AidVault implementation | `0xe4847d8d656494C4A32dFF3eC61AaFdF3F158557` |
+| DonationReceipt | `0xaab42e8c0181d7E3dfBaBC3a23e0B3aB76A6D18d` |
+| ProofOfAidResolver | `0xdCDD41c89749Ab2A9e78bbfb0717bA14C9FE568C` |
+| ConversionRouter | `0x75d1546809A5B5d53aB8b2f97f1d5952317aac21` |
+| DonationForwarderFactory (also giving baskets) | `0xAe7ce346412b9EdF8E8b331dF7a880F681Ca4dd4` |
+| DonationForwarder implementation | `0x68e09558c1A09Be0330e35f914Af763827827553` |
 
 **Governance**
 
 | | Address |
 |---|---|
-| TimelockController (the admin, 600 s delay) | `0xf5DD48f4aB8232F32eB527c15d56D39F3314580A` |
-| Safe (the only proposer, 2-of-3) | `0xd9575509cE883456185C458b5dD778aD2341b898` |
+| TimelockController (the admin, 600 s delay) | `0xbB8AD7b251CD4e37B75eac300b571618a1a38368` |
+| Safe (the only proposer, 2-of-3, kept from v9) | `0xd9575509cE883456185C458b5dD778aD2341b898` |
 | Safe owner — you | `0xa08747Ef92c817C7c9cF7170d22CeD148b7742Da` |
 | Safe owner — deployer (also the guardian) | `0x7642C9178a738Dd623Aac1F943bAFB81589E9050` |
 | Safe owner — "council", demo mnemonic index 6 | `0x95DE870810E8c362571D2098423464d841f20adE` |
@@ -86,10 +91,10 @@ Your v10 work (beneficiary needs, news, community proofs) plus, from this machin
 
 | | Address |
 |---|---|
-| Vault currency: test USDC (mUSDC, freely mintable) | `0x32e8765f9aCF760f4c353e118A6C1a22367a23ff` |
-| Test EURC (converted on the way in) | `0xA0523ee77ca7219eD0E4a0FdBc7699C3E1F6eDE5` |
-| Idle-capital venue (mock ERC-4626) | `0x1fcc22EfB1e3eD6484d9E944F5eeDD084e29789E` |
-| EUR/USD feed (mock) | `0xB192c080451494f90aafDc63155660F611ADcba1` |
+| Vault currency: test USDC (mUSDC, freely mintable) | `0xa7e8cDD8ADc49653DaAD626282F484c79Af6F984` |
+| Test EURC (converted on the way in) | `0xCAd6670bFe37a5283933569e83820fa1484D24A5` |
+| Idle-capital venue (mock ERC-4626) | `0x3a8Cef9Ba1d847638F5DA14422F10fFd40b86613` |
+| EUR/USD feed (mock) | `0x8b26Ba0340D92ecBd624c951906eC91182BCa697` |
 | USDC/USD, ETH/USD (Chainlink) | `0xd30e2101…E67A35165`, `0x4aDC6769…c7cb1` |
 | Uniswap v3 SwapRouter02 / WETH | `0x94cC0AaC…12bc4` / `0x4200…0006` |
 | EAS / SchemaRegistry | `0x4200…0021` / `0x4200…0020` |
@@ -97,7 +102,7 @@ Your v10 work (beneficiary needs, news, community proofs) plus, from this machin
 **Parameters**: approve 30% of the money, reject 50%, 1 retry, high-value threshold 10,000 USDC (two verifiers),
 impact reports need ≥ 5 people served, stablecoin slippage 1%, ETH 1.5% (ETH donations off on testnet).
 
-Everything above is also in `deployments/base-sepolia.json`. Earlier releases: `deployments/base-sepolia.v1–v8.json`.
+Everything above is also in `deployments/base-sepolia.json`. Earlier releases: `deployments/base-sepolia.v1–v9.json`.
 
 ---
 
@@ -112,7 +117,10 @@ Everything above is also in `deployments/base-sepolia.json`. Earlier releases: `
 | #5 | Demo: deadline passed below the minimum | Expired, refunded | Donors decide |
 | #6 | Demo: conversions (card USDC, EURC, deposit address) | Funded | Donors decide |
 | #7 | Demo: idle capital earning in the venue | Completed | Donors decide |
-| #8 | Demo: evidence rejected twice → cancelled, donor refunded 700 | Cancelled | Donors and a verifier |
+| #8 | Demo: evidence rejected twice → cancelled, donor refunded | Cancelled | Donors and a verifier |
+| #9 | Demo: a certified person's own need, every tranche to their wallet | Completed (no impact report) | Donors decide |
+| #10, #12 | Demo: water basket (550 each) + 15 each of reward credit | Funding | Donors decide |
+| #11 | Demo: water basket filled it (400); a proof on it was rewarded with 30 of credit | Funded | Donors decide |
 
 To leave evidence waiting for a live vote: `pnpm demo:run base-sepolia review`.
 
@@ -123,8 +131,8 @@ To leave evidence waiting for a live vote: `pnpm demo:run base-sepolia review`.
 | Service | Where | Notes |
 |---|---|---|
 | Dashboard (Next.js) | http://localhost:3000 | preview server "app"; reads `app/.env.local` (Base Sepolia) |
-| Indexer (Ponder) | http://localhost:42069 | preview server "indexer"; state in `indexer/.ponder/pglite` |
-| anvil | stopped | local chain; `pnpm chain` to start |
+| Indexer (Ponder) | http://localhost:42069 | preview server "indexer" (Base Sepolia, v10); state in `indexer/.ponder/pglite` |
+| Local test stack | anvil :8545, indexer :42070, app :3001 | `app-anvil` / `indexer-anvil`; a throwaway chain for checks |
 
 Start/stop from the Claude app's preview panel (`.claude/launch.json`: `app`, `indexer`, `app-anvil` on port 3001
 for a local chain). After any redeploy: delete `indexer/.ponder/pglite` and `app/.next/cache/fetch-cache`.
@@ -161,7 +169,7 @@ pnpm --filter @poa/app test
 # local chain end to end
 pnpm chain                            # terminal 1
 pnpm deploy:local --handover          # deploys, seeds, hands over (proposer = anvil #6, 60 s delay)
-pnpm demo:run anvil                   # the five scenarios
+pnpm demo:run anvil                   # the seven scenarios
 
 # redeploy the testnet (wipes its needs; your wallets must be re-set, see §9)
 pnpm deploy:sepolia
@@ -199,8 +207,10 @@ A 2-of-3 Safe action can also be co-signed by you in the Safe web app (app.safe.
   deployer transactions race on the nonce — send them one at a time.
 - **`DEMO_MNEMONIC` is quoted** in `.env`: strip the quotes before deriving accounts (a helper that did not produced
   a wrong Safe owner once; fixed with a `swapOwner`).
-- **After every redeploy**: register `0xa087…42Da` as an NGO (the deploy does it through `EXTRA_NGOS` before the
-  handover) and mint 1M mUSDC each to `0xa087…42Da`, `0x4C2d7cD2669B46f49889fFe97B48E15467F03636`,
+- **After every redeploy**: register `0xa087…42Da` and `0x4C2d…3636` as NGOs (the deploy does it through
+  `EXTRA_NGOS` before the handover; `.env` lists only `0x4C2d…`, so pass both, as the v10 deploy did) and reuse the
+  Safe with `ADMIN_SAFE_ADDRESS=0xd9575509cE883456185C458b5dD778aD2341b898` (otherwise a new Safe is created); then
+  mint 1M mUSDC each to `0xa087…42Da`, `0x4C2d7cD2669B46f49889fFe97B48E15467F03636`,
   `0x28EAb867F1570f00145DC7c65430b7Cd59c3F708` (mUSDC `mint(address,uint256)` is open to anyone).
 - The app keeps uploaded evidence in `app/.uploads/`; the PII vault's tests need a private Postgres on port 5434.
 
@@ -218,4 +228,4 @@ A 2-of-3 Safe action can also be co-signed by you in the Safe web app (app.safe.
 | v7 | Money only arrives on chain (cash paths retired) |
 | v8 | Donors approve each tranche (weighted by what they gave) |
 | v9 | Release policies per need, rejection with one retry, free signed votes, Safe + timelock admin, IPFS evidence, deposit check, Semaphore removed |
-| v10 (branch) | Beneficiary-posted needs, news, community proof; rewards as give-only credit; giving baskets |
+| v10 | Needs a certified person posts, news, community proof (3 per wallet per need); rewards as give-only credit; giving baskets; no impact report on a person's own need |

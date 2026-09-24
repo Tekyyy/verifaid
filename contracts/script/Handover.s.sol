@@ -7,6 +7,10 @@ import {TimelockController} from "@openzeppelin/contracts/governance/TimelockCon
 import {Script} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
 
+interface ISafe {
+    function getThreshold() external view returns (uint256);
+}
+
 interface ISafeProxyFactory {
     function createProxyWithNonce(address singleton, bytes memory initializer, uint256 saltNonce)
         external
@@ -51,6 +55,9 @@ contract Handover is Script, DeploymentIO {
             threshold = vm.envOr("ADMIN_SAFE_THRESHOLD", uint256(2));
             require(threshold >= 1 && threshold <= owners.length, "Handover: bad Safe threshold");
             safe = _createSafe(owners, threshold);
+        } else {
+            // An existing Safe keeps its own threshold; an account standing in for one (a local chain) is one key.
+            threshold = safe.code.length == 0 ? 1 : ISafe(safe).getThreshold();
         }
 
         address[] memory proposers = new address[](1);
