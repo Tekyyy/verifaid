@@ -58,6 +58,29 @@ pots) plus, from this machine:
   `/baskets/[category]`, credit panel on `/earn`. Demo scenario 7 (`baskets`).
 - Design record: DECISIONS §23, §25, §26. Threats: THREAT_MODEL §3.23, §3.25, §3.26.
 
+## 2c. Branch `mainnet-prep` (getting ready for Base mainnet; not deployed anywhere)
+
+Kept apart from `main`, so the live testnet site is untouched. The full checklist and procedure: `docs/MAINNET.md`.
+
+- **Contract fixes.**
+  - Money that can never vote counts for no donor threshold.
+  - A beneficiary's need raises at most the high-value threshold, and one NGO has at most 20 open at a time.
+  - Wallets that delegated their code (EIP-7702) still sign votes, certificates and refunds with their key.
+- **Secrets out of git.** `.env` and `app/.env.local` are untracked here; they stay on disk.
+  **Pulling this branch on another machine deletes that machine's copies**: save them first, or restore them with
+  `git show 3f28c6d:.env > .env` and `git show 3f28c6d:app/.env.local > app/.env.local`.
+- **Shared rate limits.** Upstash Redis, plus a daily ceiling of 2,000 relayed votes.
+- **`pnpm deploy:mainnet`** checks and prints the plan; with `--yes` it deploys. It refuses:
+  - a key that was ever in git
+  - Safe owners that include the deployer
+  - a timelock under two days
+  - no separate guardian
+- **`pnpm rehearse:mainnet`** runs the whole deployment on a local fork of Base mainnet, with the real USDC, EURC,
+  Uniswap, Chainlink, EAS and Safe. It covers the governance checks, admin work through the Safe and the 2-day
+  timelock, all six demo scenarios, and the guardian pause. **It passes.**
+- **`pnpm admin base prepare …`** writes Safe Transaction Builder files, so the mainnet owners sign in the Safe app.
+- Checked: 395 contract, 26 shared, 97 app and 64 notifier tests; typecheck and lint are clean.
+
 ## 3. Live contracts (Base Sepolia)
 
 | Contract | Address |

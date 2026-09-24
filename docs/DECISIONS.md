@@ -850,6 +850,7 @@ and a description, and needs still point to one. Enrolment lives only in the NGO
 **Not done, on purpose.** The 30% threshold is still a share of everything raised, including money that has no vote
 (the NGO's own gifts, a deposit address that credited itself); a need where most of the money cannot vote can
 therefore stall until its deadline. It was left out of this release by choice and is the next thing to change.
+(Closed in §27.)
 
 ## 23. People who post their own needs (v10)
 
@@ -1058,3 +1059,89 @@ needs can be reclaimed. A need's donations say "Basket gift" or "Reward credit",
 **Not done.** No weighting or rebalancing, no recurring basket gifts, and no basket of needs across categories. A
 receipt NFT for a reward-credit donation is minted to `CommunityProofs`, where it stays. The receipt a wallet gets per
 need means a gift to five needs is five receipts, and five refunds to claim if they fail.
+
+## 27. Getting ready for mainnet (branch `mainnet-prep`)
+
+What had to change before the contracts could hold real money, and how the release reaches Base mainnet. None of it
+is deployed on the testnet; it is the code an auditor would be given. The checklist and the procedure are in
+`MAINNET.md`.
+
+**Money that can never vote counts for no threshold.** Until now the donor thresholds were shares of everything
+raised. Part of that can never vote:
+- what the NGO, its payout address and the need's payees gave
+- what was given by whoever is paid the owner's share, and by the beneficiary who posted the need
+- reward credit (§26)
+- what deposit addresses credited to themselves
+
+Enough of it made "30% approve" unreachable. It was also a lever: anyone willing to lock money in a need until its
+deadline, through a deposit address that credits itself, could freeze it, and get the money back as a refund when
+the need expired. `ReleasePolicy` now takes the thresholds over the rest. `AidVault` keeps a running total of
+deposit-address money (`donatedByRefTotal`) so the policy can subtract it without enumerating addresses. Each address
+counts once, whatever roles it holds.
+
+The payee of the owner's share also loses its vote, as the rest of the owner's side already had. A verifier who
+also donated under a rule where verifiers vote is still counted; that is rare and would only raise the bar, never
+freeze it.
+
+**A person's need stays a person's size.** A beneficiary's need may be paid to the beneficiary in full, where an
+NGO's own need keeps at most 25% for the NGO and pays the rest to vetted suppliers. Nothing on chain can tell a real
+person's wallet from one the certifying NGO secretly controls; the independent verifiers who attest each need are
+the check. What `BeneficiaryRegistry` can do is bound the damage:
+- A beneficiary's need raises at most the high-value threshold, the most one verifier may attest. Anything bigger is
+  the NGO's own need, with suppliers.
+- One NGO's certificates have at most 20 needs open at a time. The list is pruned on every post, so it never grows
+  past the cap. The app's certificate check reports a full NGO before the form is filled in.
+
+**Keys that were never in git.** The testnet's `.env` and `app/.env.local` had been committed to the private repo so
+the testnet could be run from another machine. They are untracked on this branch, with every setting named in the
+`.example` templates. Their past versions stay in the history, so those keys are testnet-only for good. Mainnet
+settings live in `.env.mainnet`, which git ignores, and on the hosts.
+
+**Limits every server shares.** The rate limits on the routes that spend relayer gas were per process, which on a
+serverless host means per instance. With an Upstash-compatible Redis they are shared: a sliding window estimated
+from two fixed windows, one round trip per attempt. When Redis cannot be reached, each process falls back to its own
+count rather than to none. The vote relayer also gets a daily ceiling of 2,000 votes, which bounds what it can spend
+in a day, whoever asks.
+
+**A deploy script that refuses unsafe setups.** `scripts/deploy-mainnet.mjs` deploys the contracts, the schemas, the
+optional NGOs and the handover, with no seeding and no mocks. It refuses:
+- a deployer key that is the testnet's, or anvil's
+- Safe owners that include the deployer, or fewer than three owners, or a threshold under two
+- a timelock under two days
+- a missing guardian, or a guardian that is the deployer
+- missing source verification
+- a second deployment over an existing record
+
+Every Base mainnet dependency has a default that was checked on chain: Circle's USDC and EURC, WETH, Uniswap's
+SwapRouter02 and its factory, the three Chainlink feeds and their freshness, the sequencer uptime feed, the deepest
+EURC/USDC pool, and the EAS and Safe v1.4.1 predeploys. EAS on Base mainnet reports version 1.0.1, where Sepolia's
+reports 1.2.0; the rehearsal proves the resolver works with it.
+
+**A dress rehearsal on a fork.** `scripts/rehearse-mainnet.mjs` forks Base mainnet with anvil and runs the deploy
+script against the copy with throwaway keys. It then does the first admin work through the Safe and the two-day
+timelock, and confirms that executing early is refused. It mints real USDC and EURC on the copy the way Circle mints
+them, through their master minter; anvil cannot set those balances directly, because Circle packs each balance with
+a blacklist flag. Then it runs the demo scenarios through the real pools and feeds, and checks the guardian can
+pause. Conversions run first: a fork's clock moves, and the real Chainlink feeds do not follow it.
+
+Afterwards its deployment record and broadcast logs move to `deployments/rehearsal/`, which git ignores, and the
+shared bundle is rebuilt without them. Nothing of a rehearsal can be mistaken for a mainnet deployment, and it
+refuses to run where a real one is recorded.
+
+**Wallets that delegated their code still sign with their key.** Since EIP-7702 an ordinary wallet on Base can
+carry code, delegated to a contract. OpenZeppelin's `SignatureChecker` sends every account with code to ERC-1271
+alone, so a wallet delegated to a contract without it could no longer sign a vote, an NGO certificate or a
+deposit-address refund with the key it has always had. The rehearsal found this: on Base mainnet every one of
+anvil's well-known keys is delegated to a sweeper contract.
+
+`libraries/Signatures` checks the key first and ERC-1271 second. This is no looser for a contract account: no one
+holds a private key whose address is a contract's, and a delegated wallet's key can act for it anyway.
+
+**Admin with no owner key on any server.** On the testnet `scripts/admin.mjs` signs with two Safe owner keys it
+holds. On mainnet the owners are three people with their own wallets. `pnpm admin base prepare …` writes the
+timelock's schedule and execute calls as Safe Transaction Builder files. The owners import the first in the Safe app
+and sign it; two days later anyone executes the second, or the tool does from any funded key. The tool refuses to
+sign for the Safe on mainnet at all.
+
+**Not done.** The audit, the legal work and the keys themselves are people's work, not code: see `MAINNET.md`. No
+idle-capital venue is chosen for mainnet; the feature stays off until one is.

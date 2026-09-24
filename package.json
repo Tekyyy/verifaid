@@ -20,6 +20,8 @@
     "chain": "anvil --chain-id 31337 --block-time 1",
     "deploy:local": "node scripts/deploy-local.mjs",
     "deploy:sepolia": "node scripts/deploy-sepolia.mjs",
+    "deploy:mainnet": "node scripts/deploy-mainnet.mjs",
+    "rehearse:mainnet": "node scripts/rehearse-mainnet.mjs",
     "demo:run": "pnpm --filter @poa/demo start",
     "indexer:dev": "pnpm --filter @poa/indexer dev",
     "app:dev": "pnpm --filter @poa/app dev",

@@ -97,7 +97,8 @@ Stated plainly, because most of the security rests on them:
   the votes decide it.
 - **Signed votes.** A vote can be signed for free and relayed (`voteBySig`, EIP-712, ERC-1271 for smart wallets).
   The signature names the voter, the delivery, the direction and a deadline; a voter votes once per delivery, so a
-  signature cannot be replayed, and an old one expires. The relayer pays for a vote and can withhold it — the voter
+  signature cannot be replayed, and an old one expires. It is checked against the voter's own key first and ERC-1271
+  second (`mainnet-prep`), so a wallet that delegated its code (EIP-7702) keeps its vote. The relayer pays for a vote and can withhold it — the voter
   can always send it themselves — but can never forge or flip one.
 - **Residual risk.** Collusion between an NGO and a large "donor", or an NGO and one of its suppliers funding the
   voting wallets. Verifier vetting of suppliers and the 25% cap on the NGO's own share bound what such a scheme can
@@ -402,7 +403,8 @@ itself.*
 - **Residual risk.** *An NGO can certify wallets it controls.* A beneficiary's own share has no cap (an NGO's is
   25%), so an NGO inventing beneficiaries could route needs to itself; what stands in the way is the independent
   verification of each need and the approval of each tranche against evidence — the same defence as a fake need
-  (§3.1), without the supplier vetting of §3.15. At most half a beneficiary's need can leave before any evidence:
+  (§3.1), without the supplier vetting of §3.15. On `mainnet-prep` the damage is bounded: a beneficiary's need
+  raises at most the high-value threshold, and one NGO's certificates have at most 20 needs open at a time. At most half a beneficiary's need can leave before any evidence:
   such a need has two tranches or more and the first is capped at 50%. The "donors and a verifier" rule puts a verifier on every
   tranche. What the NGO must have checked before certifying someone is not yet specified (a certification scheme is
   planned). A certificate link, and a withdrawal on chain, both say that the NGO certified that wallet: the link is
@@ -472,6 +474,21 @@ or puts something false in front of donors.*
   unspent reward at risk (it holds pots and credit together, and is not audited). Credit sits unspent for as long as
   its holder leaves it; there is no expiry and no one else can give it.
 
+### 3.27 Freezing a need with money that cannot vote (`mainnet-prep`)
+
+*Someone locks money in a need that can never vote, so its donors can never reach the approval threshold.*
+
+- **Mitigation.** The donor thresholds are shares of the money that can vote. `ReleasePolicy` leaves out:
+  - what the need's NGO, payout address, payees, owner's-share payee and beneficiary gave
+  - reward credit
+  - deposit-address money that credited itself, tracked by the vault as `donatedByRefTotal`
+
+  Each address counts once. So a deposit address that fills 71% of a need leaves the other 29% needing 30% of
+  itself, not 30% of everything.
+- **Residual risk.** A verifier who donated, under a rule where verifiers vote, counts as a verifier and its money
+  still counts toward the donor base: that can only raise the bar a little, never freeze it. A need whose whole raise
+  cannot vote has no donor half: under "donors decide" its evidence waits for the deadline and the need refunds.
+
 ### 3.10 GDPR versus immutability
 
 - **Mitigation.** Personal data is only ever in the PII vault, encrypted with a per-record data key. Erasure is
@@ -519,7 +536,8 @@ faces and account numbers before uploading, and on the app stripping photo metad
 1. Contracts are **not upgradeable** and **not audited**. This is a hackathon MVP.
 2. On the testnet two of the three owner keys of the admin Safe (the deployer and a demo account) are held by the
    same operator, so the multisig demonstrates the mechanism rather than an independent quorum; the timelock is ten
-   minutes, not days.
+   minutes, not days. The mainnet deploy script (`mainnet-prep`) refuses both: the owners must not include the
+   deployer, and the delay must be at least two days.
 3. Delivery evidence is public by design (§3.3, §3.5); there is no private-evidence mode for verifiers any more.
 4. The relayer sees the votes it relays, and when — nothing the chain does not show once they are mined.
 5. Fee-on-transfer or rebasing tokens are not supported.

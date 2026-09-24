@@ -18,8 +18,18 @@
  *
  * `run` schedules, waits out the delay and executes. On anvil (`pnpm deploy:local --handover`) the proposer is an
  * ordinary account standing in for the Safe, and the script schedules from it directly.
+ *
+ * On Base mainnet no owner key is on this machine: each owner signs in the Safe app. `prepare` writes the two
+ * transactions as Safe Transaction Builder files — schedule now, execute once the delay is over — to import there:
+ *
+ *   pnpm admin base status
+ *   pnpm admin base prepare RoleRegistry "registerVerifier(address)" 0xVERIFIER
+ *   pnpm admin base execute RoleRegistry "registerVerifier(address)" 0xVERIFIER --salt 0x…   # any funded key
+ *
+ * Its settings (BASE_MAINNET_RPC_URL, and DEPLOYER_PRIVATE_KEY or GUARDIAN_PRIVATE_KEY for the steps that need a
+ * sender) come from .env.mainnet, never from the testnet .env.
  */
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -29,7 +39,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(join(root, 'demo', 'package.json'))
 const viem = require('viem')
 const { privateKeyToAccount, mnemonicToAccount } = require('viem/accounts')
-const { baseSepolia, foundry } = require('viem/chains')
+const { base, baseSepolia, foundry } = require('viem/chains')
 
 const ANVIL_MNEMONIC = 'test test test test test test test test test test test junk'
 const ANVIL_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
@@ -50,9 +60,12 @@ const fail = (message) => {
 }
 
 const [network = 'base-sepolia', command = 'status', ...rest] = process.argv.slice(2)
-if (network !== 'base-sepolia' && network !== 'anvil') fail(`unknown network "${network}" (base-sepolia or anvil)`)
+if (network !== 'base-sepolia' && network !== 'anvil' && network !== 'base') {
+  fail(`unknown network "${network}" (base, base-sepolia or anvil)`)
+}
 const local = network === 'anvil'
-const env = { ...parseEnvFile(join(root, '.env')), ...process.env }
+const mainnet = network === 'base'
+const env = { ...parseEnvFile(join(root, mainnet ? '.env.mainnet' : '.env')), ...process.env }
 const deploymentPath = join(root, 'deployments', `${network}.json`)
 if (!existsSync(deploymentPath)) fail(`no deployments/${network}.json`)
 const deployment = JSON.parse(readFileSync(deploymentPath, 'utf8'))
@@ -61,12 +74,26 @@ if (!governance.Timelock || /^0x0{40}$/i.test(governance.Timelock)) {
   fail('this deployment was never handed over: the deployer is still the admin (run Handover.s.sol).')
 }
 
-const chain = local ? foundry : baseSepolia
-const rpcUrl = local ? (env.ANVIL_RPC_URL ?? 'http://127.0.0.1:8545') : env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org'
+const chain = local ? foundry : mainnet ? base : baseSepolia
+const rpcUrl = local
+  ? (env.ANVIL_RPC_URL ?? 'http://127.0.0.1:8545')
+  : mainnet
+    ? env.BASE_MAINNET_RPC_URL || 'https://mainnet.base.org'
+    : env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org'
 const transport = viem.http(rpcUrl)
 const client = viem.createPublicClient({ chain, transport })
-const deployer = privateKeyToAccount(local ? ANVIL_KEY : env.DEPLOYER_PRIVATE_KEY)
-const council = mnemonicToAccount(local ? ANVIL_MNEMONIC : env.DEMO_MNEMONIC, { addressIndex: 6 })
+const keyOf = (value) =>
+  value && /^0x[0-9a-fA-F]{64}$/.test(value.trim()) ? privateKeyToAccount(value.trim()) : null
+/** Pays for the steps anyone may take (execute). On mainnet it owns nothing: it is only a sender. */
+const deployer = local ? privateKeyToAccount(ANVIL_KEY) : keyOf(env.DEPLOYER_PRIVATE_KEY)
+/** The testnet's second Safe owner; mainnet owners sign in the Safe app instead. */
+const council = mainnet
+  ? null
+  : mnemonicToAccount(local ? ANVIL_MNEMONIC : env.DEMO_MNEMONIC, { addressIndex: 6 })
+const guardianKey = mainnet ? keyOf(env.GUARDIAN_PRIVATE_KEY) : deployer
+const requireSender = (account, what) =>
+  account ??
+  fail(`${what} needs a funded key: set it in ${mainnet ? '.env.mainnet' : '.env'} (it is never printed).`)
 const walletOf = (account) => viem.createWalletClient({ account, chain, transport })
 
 const timelockAbi = viem.parseAbi([
@@ -89,7 +116,8 @@ const rolesAbi = viem.parseAbi(['function pause()', 'function paused() view retu
 
 const ZERO = viem.zeroAddress
 const ZERO_HASH = viem.zeroHash
-const explorer = (hash) => (local ? hash : `https://sepolia.basescan.org/tx/${hash}`)
+const explorer = (hash) =>
+  local ? hash : mainnet ? `https://basescan.org/tx/${hash}` : `https://sepolia.basescan.org/tx/${hash}`
 
 const waitFor = async (hash) => {
   const receipt = await client.waitForTransactionReceipt({ hash })
@@ -114,6 +142,8 @@ const encodeCall = (contract, signature, args) => {
 
 /** Has the Safe send `data` to `to`, signed by the two owner keys this script holds. */
 const safeSend = async (to, data) => {
+  if (mainnet)
+    fail('on mainnet the Safe owners sign in the Safe app: use `prepare`, then import its files there.')
   const safe = governance.Safe
   if ((await client.getCode({ address: safe })) === undefined) {
     // Local: the proposer is a plain account standing in for the Safe.
@@ -124,8 +154,8 @@ const safeSend = async (to, data) => {
     client.readContract({ address: safe, abi: safeAbi, functionName: 'getThreshold' }),
     client.readContract({ address: safe, abi: safeAbi, functionName: 'getOwners' }),
   ])
-  const signers = [deployer, council].filter((account) =>
-    owners.some((owner) => owner.toLowerCase() === account.address.toLowerCase()),
+  const signers = [deployer, council].filter(
+    (account) => account && owners.some((owner) => owner.toLowerCase() === account.address.toLowerCase()),
   )
   if (BigInt(signers.length) < threshold) {
     fail(`the Safe needs ${threshold} signatures and this script holds ${signers.length} owner key(s)`)
@@ -140,7 +170,7 @@ const safeSend = async (to, data) => {
   // Safe wants the signatures ordered by owner address, each a plain ECDSA signature over the Safe tx hash.
   const ordered = [...signers].sort((a, b) => (BigInt(a.address) < BigInt(b.address) ? -1 : 1))
   const signatures = viem.concat(await Promise.all(ordered.map((account) => account.sign({ hash }))))
-  const sent = await walletOf(deployer).writeContract({
+  const sent = await walletOf(requireSender(deployer, 'Sending the Safe transaction')).writeContract({
     address: safe,
     abi: safeAbi,
     functionName: 'execTransaction',
@@ -150,7 +180,11 @@ const safeSend = async (to, data) => {
 }
 
 const schedule = async (target, data, salt) => {
-  const delay = await client.readContract({ address: governance.Timelock, abi: timelockAbi, functionName: 'getMinDelay' })
+  const delay = await client.readContract({
+    address: governance.Timelock,
+    abi: timelockAbi,
+    functionName: 'getMinDelay',
+  })
   const call = viem.encodeFunctionData({
     abi: timelockAbi,
     functionName: 'schedule',
@@ -183,7 +217,7 @@ const schedule = async (target, data, salt) => {
 }
 
 const execute = async (target, data, salt) => {
-  const hash = await walletOf(deployer).writeContract({
+  const hash = await walletOf(requireSender(deployer, 'Executing')).writeContract({
     address: governance.Timelock,
     abi: timelockAbi,
     functionName: 'execute',
@@ -191,6 +225,68 @@ const execute = async (target, data, salt) => {
   })
   await waitFor(hash)
   console.log(`  executed      ${explorer(hash)}`)
+}
+
+/** One Safe Transaction Builder batch (Safe app → Apps → Transaction Builder → drag the file in). */
+const builderFile = (name, description, to, data) => ({
+  version: '1.0',
+  chainId: String(chain.id),
+  createdAt: Date.now(),
+  meta: { name, description, txBuilderVersion: '1.17.1', createdFromSafeAddress: governance.Safe },
+  transactions: [{ to, value: '0', data, contractMethod: null, contractInputsValues: null }],
+})
+
+const prepare = async (contract, signature, target, data, salt) => {
+  const delay = await client.readContract({
+    address: governance.Timelock,
+    abi: timelockAbi,
+    functionName: 'getMinDelay',
+  })
+  const operation = await client.readContract({
+    address: governance.Timelock,
+    abi: timelockAbi,
+    functionName: 'hashOperation',
+    args: [target, 0n, data, ZERO_HASH, salt],
+  })
+  const scheduleData = viem.encodeFunctionData({
+    abi: timelockAbi,
+    functionName: 'schedule',
+    args: [target, 0n, data, ZERO_HASH, salt, delay],
+  })
+  const executeData = viem.encodeFunctionData({
+    abi: timelockAbi,
+    functionName: 'execute',
+    args: [target, 0n, data, ZERO_HASH, salt],
+  })
+  const dir = join(root, 'admin-proposals')
+  mkdirSync(dir, { recursive: true })
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const fn = signature.split('(')[0]
+  const what = `${contract}.${signature}`
+  const first = join(dir, `${stamp}-${fn}-1-schedule.json`)
+  const second = join(dir, `${stamp}-${fn}-2-execute.json`)
+  writeFileSync(
+    first,
+    `${JSON.stringify(builderFile(`Schedule ${fn}`, `Timelock: schedule ${what}`, governance.Timelock, scheduleData), null, 2)}\n`,
+  )
+  writeFileSync(
+    second,
+    `${JSON.stringify(builderFile(`Execute ${fn}`, `Timelock: execute ${what}`, governance.Timelock, executeData), null, 2)}\n`,
+  )
+  console.log(`  operation     ${operation}`)
+  console.log(`  salt          ${salt}`)
+  console.log(`  delay         ${delay}s once scheduled`)
+  console.log(`\n  1. Safe app (${governance.Safe}) → Apps → Transaction Builder → drag in`)
+  console.log(`       ${first}`)
+  console.log(
+    '     Create the batch; the owners sign; the last signer executes it. That only schedules the call.',
+  )
+  console.log(`  2. After ${Number(delay) / 3600} hours, the same with`)
+  console.log(`       ${second}`)
+  console.log(
+    `     or from any funded key: pnpm admin ${network} execute ${contract} "${signature}" … --salt ${salt}`,
+  )
+  console.log('  Until step 2 the Safe can still cancel it: nobody is surprised by an admin change.')
 }
 
 const saltArg = () => {
@@ -231,7 +327,11 @@ switch (command) {
   case 'status': {
     const [delay, paused] = await Promise.all([
       client.readContract({ address: governance.Timelock, abi: timelockAbi, functionName: 'getMinDelay' }),
-      client.readContract({ address: deployment.contracts.RoleRegistry, abi: rolesAbi, functionName: 'paused' }),
+      client.readContract({
+        address: deployment.contracts.RoleRegistry,
+        abi: rolesAbi,
+        functionName: 'paused',
+      }),
     ])
     console.log(`network       ${network}`)
     console.log(`admin         ${governance.Timelock} (TimelockController, ${delay}s delay)`)
@@ -247,6 +347,21 @@ switch (command) {
     console.log(`paused        ${paused}`)
     break
   }
+  case 'prepare': {
+    const salt = saltArg()
+    const [contract, signature, ...args] = rest
+    if (!contract || !signature) fail('usage: prepare <Contract|0xaddress> "<fn(types)>" [args…]')
+    const { target, data } = encodeCall(contract, signature, args)
+    console.log(`▸ prepare ${contract}.${signature}`)
+    await prepare(
+      contract,
+      signature,
+      target,
+      data,
+      salt ?? viem.keccak256(viem.toHex(`${data}:${Date.now()}`)),
+    )
+    break
+  }
   case 'schedule':
   case 'execute':
   case 'run': {
@@ -255,7 +370,8 @@ switch (command) {
     if (!contract || !signature) fail(`usage: ${command} <Contract|0xaddress> "<fn(types)>" [args…]`)
     const { target, data } = encodeCall(contract, signature, args)
     console.log(`▸ ${command} ${contract}.${signature}`)
-    if (command === 'schedule') await schedule(target, data, salt ?? viem.keccak256(viem.toHex(`${data}:${Date.now()}`)))
+    if (command === 'schedule')
+      await schedule(target, data, salt ?? viem.keccak256(viem.toHex(`${data}:${Date.now()}`)))
     else if (command === 'execute') {
       if (!salt) fail('execute needs the --salt printed when the call was scheduled')
       await execute(target, data, salt)
@@ -277,7 +393,12 @@ switch (command) {
   }
   case 'pause': {
     // The guardian acts alone and at once: stopping must never wait for signatures or a delay.
-    const hash = await walletOf(deployer).writeContract({
+    if (!guardianKey) {
+      fail(
+        `pause is the guardian's: call pause() on RoleRegistry ${deployment.contracts.RoleRegistry} from the guardian wallet (Basescan → Write contract), or set GUARDIAN_PRIVATE_KEY.`,
+      )
+    }
+    const hash = await walletOf(guardianKey).writeContract({
       address: deployment.contracts.RoleRegistry,
       abi: rolesAbi,
       functionName: 'pause',
@@ -287,5 +408,5 @@ switch (command) {
     break
   }
   default:
-    fail(`unknown command "${command}" (status, schedule, execute, run, register-ngo, pause)`)
+    fail(`unknown command "${command}" (status, prepare, schedule, execute, run, register-ngo, pause)`)
 }

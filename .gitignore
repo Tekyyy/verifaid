@@ -46,3 +46,9 @@ deployments/anvil.json
 Thumbs.db
 gemini.md
 .gemini/
+
+# mainnet rehearsals on a local fork (scripts/rehearse-mainnet.mjs): never a real deployment
+deployments/rehearsal/
+
+# Safe Transaction Builder files written by `pnpm admin base prepare`
+admin-proposals/
