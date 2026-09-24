@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {SystemDeployer} from "../../script/lib/SystemDeployer.sol";
 import {RoleRegistry} from "../../src/access/RoleRegistry.sol";
 import {BeneficiaryRegistry} from "../../src/beneficiaries/BeneficiaryRegistry.sol";
+import {CommunityProofs} from "../../src/community/CommunityProofs.sol";
 import {ConversionRouter} from "../../src/conversion/ConversionRouter.sol";
 import {DeliveryManager} from "../../src/delivery/DeliveryManager.sol";
 import {ReleasePolicy} from "../../src/delivery/ReleasePolicy.sol";
@@ -95,6 +96,7 @@ abstract contract PoATest is Test, SystemDeployer {
     DonationReceipt internal receipt;
     ProgramRegistry internal programs;
     BeneficiaryRegistry internal beneficiaries;
+    CommunityProofs internal communityProofs;
     DeliveryManager internal deliveryManager;
     /// @dev The built-in release policies; needs use `donorPolicy` unless a test picks another.
     ReleasePolicy internal donorPolicy;
@@ -194,6 +196,7 @@ abstract contract PoATest is Test, SystemDeployer {
         receipt = sys.receipt;
         programs = sys.programs;
         beneficiaries = sys.beneficiaries;
+        communityProofs = sys.communityProofs;
         deliveryManager = sys.deliveryManager;
         donorPolicy = sys.donorPolicy;
         verifierPolicy = sys.verifierPolicy;

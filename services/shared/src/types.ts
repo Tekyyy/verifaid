@@ -22,6 +22,8 @@ export interface Deployment {
     ProgramRegistry: Address
     /** v10: where a beneficiary an NGO certified posts a need of their own. */
     BeneficiaryRegistry?: Address
+    /** v10: proof of delivery from anyone, and the reward pots NGOs fund for it. */
+    CommunityProofs?: Address
     DeliveryManager: Address
     /** v9: the built-in release policies a need chooses from when it is created. */
     ReleasePolicyDonors: Address

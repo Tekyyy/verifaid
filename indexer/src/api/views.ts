@@ -1,5 +1,6 @@
 import type schema from 'ponder:schema'
 import {
+  type CommunityProofView,
   type ConversionView,
   categoryLabel,
   type DeliveryStatus,
@@ -19,6 +20,7 @@ import {
   type PayeeChangeView,
   type PayeePaymentView,
   type PayeeView,
+  type ProofBountyView,
   parseManifest,
   type ReleasePolicyKind,
   type ReleasePolicyView,
@@ -58,6 +60,8 @@ export type PayeeChangeRow = typeof schema.payeeChange.$inferSelect
 export type SupplierRow = typeof schema.supplier.$inferSelect
 export type DepositRefundRow = typeof schema.depositRefund.$inferSelect
 export type WorkPhotosRow = typeof schema.workPhotos.$inferSelect
+export type CommunityProofRow = typeof schema.communityProof.$inferSelect
+export type ProofBountyRow = typeof schema.proofBounty.$inferSelect
 export type NeedPresentationRow = typeof schema.needPresentation.$inferSelect
 export type OrgTaxStatusRow = typeof schema.orgTaxStatus.$inferSelect
 export type AcknowledgmentRow = typeof schema.donationAcknowledgment.$inferSelect
@@ -176,6 +180,42 @@ export const toWorkPhotoView = (row: WorkPhotosRow): WorkPhotoView => ({
   photos: (row.photos as string[]) ?? [],
   note: row.note,
   timestamp: row.timestamp,
+  txHash: row.txHash as Hex,
+})
+
+export const toCommunityProofView = (row: CommunityProofRow): CommunityProofView => ({
+  id: row.id.toString(),
+  needId: row.needId.toString(),
+  submitter: row.submitter as Address,
+  manifestHash: row.manifestHash as Hex,
+  manifest: parseManifest(row.manifest),
+  manifestText: row.manifest,
+  submittedAt: row.submittedAt,
+  txHash: row.txHash as Hex,
+  reward:
+    row.rewardBountyId !== null && row.rewardAmount !== null && row.rewardedAt !== null && row.rewardTxHash
+      ? {
+          bountyId: row.rewardBountyId.toString(),
+          amount: row.rewardAmount.toString(),
+          timestamp: row.rewardedAt,
+          txHash: row.rewardTxHash as Hex,
+        }
+      : null,
+})
+
+export const toProofBountyView = (row: ProofBountyRow): ProofBountyView => ({
+  id: row.id.toString(),
+  needId: row.needId.toString(),
+  ngo: row.ngo as Address,
+  reward: row.reward.toString(),
+  maxRewards: row.maxRewards,
+  rewardsPaid: row.rewardsPaid,
+  balance: row.balance.toString(),
+  deadline: row.deadline,
+  openedAt: row.openedAt,
+  closed: row.closed,
+  closedAt: row.closedAt,
+  refunded: row.refunded === null ? null : row.refunded.toString(),
   txHash: row.txHash as Hex,
 })
 

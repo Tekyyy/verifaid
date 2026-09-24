@@ -182,8 +182,11 @@ export function DeliveryReviewPanel({
           {confirmReject ? (
             <div className="space-y-2 rounded-md border border-red-200 bg-red-50 p-3">
               <p className="text-sm text-red-900">
-                {t('reviewRejectWarning')}{' '}
-                {tPolicy('retries', { retries: Math.max(0, policy.retries - strikes) })}
+                {t('reviewRejectWarning', { owner: ownerIsBeneficiary ? 'beneficiary' : 'ngo' })}{' '}
+                {tPolicy('retries', {
+                  retries: Math.max(0, policy.retries - strikes),
+                  owner: ownerIsBeneficiary ? 'beneficiary' : 'ngo',
+                })}
               </p>
               <div className="flex flex-wrap gap-2">
                 <button

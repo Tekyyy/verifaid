@@ -13,6 +13,7 @@ const PUBLIC_ROUTES = [
   { href: '/impact', key: 'impact' },
   { href: '/suppliers', key: 'suppliers' },
   { href: '/track', key: 'track' },
+  { href: '/earn', key: 'earn' },
 ] as const
 
 const ROLE_ROUTES = [

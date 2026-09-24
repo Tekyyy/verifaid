@@ -37,6 +37,7 @@
     "ngo": "ONG",
     "verifier": "Verificador",
     "track": "Seguir una donación",
+    "earn": "Demuestra y gana",
     "suppliers": "Proveedores",
     "beneficiary": "Mi necesidad"
   },
@@ -128,7 +129,11 @@
     "DeliveryApproved": "Justificación aprobada: siguiente tramo desbloqueado",
     "DeliveryVoteCast": "Un voto sobre la justificación",
     "DeliveryRejected": "Justificación rechazada",
-    "BeneficiaryNeedPosted": "Publicada por una beneficiaria que la ONG certificó"
+    "BeneficiaryNeedPosted": "Publicada por una persona beneficiaria que la ONG certificó",
+    "CommunityProofSubmitted": "Prueba de la comunidad subida",
+    "CommunityProofRewarded": "La ONG recompensó una prueba de la comunidad",
+    "ProofBountyOpened": "La ONG abrió un bote de recompensas por pruebas",
+    "ProofBountyClosed": "Bote cerrado, saldo devuelto a la ONG"
   },
   "home": {
     "title": "Ayuda auditable, personas no identificables",
@@ -287,7 +292,7 @@
     "evidenceRejectedFinal": "Rechazada por segunda vez: la necesidad se canceló y quienes donaron pueden reclamar lo que no se liberó.",
     "evidenceIpfs": "en IPFS",
     "postedByBeneficiary": "Publicada por una persona que la ONG certificó. Ella gestiona esta necesidad: presenta sus pruebas y recibe sus tramos en su propia cartera.",
-    "runBy": "Gestionada por (beneficiaria certificada)",
+    "runBy": "Gestionada por (persona beneficiaria certificada)",
     "backToNeeds": "Todas las necesidades",
     "postedByBeneficiaryShort": "La gestiona una persona certificada",
     "ofTargetPercent": "de {target} {unit} · {percent}%",
@@ -308,6 +313,7 @@
     "navAbout": "Sobre la necesidad",
     "navTranches": "Tramos",
     "navEvidence": "Entregas",
+    "navCommunity": "Comunidad",
     "navTerms": "Condiciones",
     "navPlan": "Quién cobra",
     "navTimeline": "Cronología",
@@ -412,7 +418,7 @@
     "settlementFxHint": "Fuente del tipo de cambio e id de la cotización, si el pago se convirtió. Se cifra con hash en tu navegador.",
     "settlementSubmit": "Atestar liquidación",
     "errorKpiHash": "El hash de KPI debe ser un hash de 32 bytes distinto de cero.",
-    "errorServed": "Indica al menos {minimum} beneficiarios: cifras menores podrían identificar a personas.",
+    "errorServed": "Indica al menos {minimum} personas beneficiarias: cifras menores podrían identificar a personas.",
     "errorRegion": "El código de región debe caber en 31 bytes.",
     "errorVerifications": "Las verificaciones deben ser un número entero entre 1 y 255.",
     "errorDossier": "Guarda la evaluación de necesidades (o pega su hash): el hash del expediente es obligatorio.",
@@ -577,7 +583,7 @@
     "tabsLabel": "Secciones de la consola",
     "tabOverview": "Resumen",
     "tabNewNeed": "Nueva necesidad",
-    "tabBeneficiaries": "Beneficiarios",
+    "tabBeneficiaries": "Personas beneficiarias",
     "tabProgrammes": "Programas",
     "tabOrganisation": "Organización",
     "quick": {
@@ -585,7 +591,7 @@
       "newNeedBody": "Cuatro pasos cortos: qué, cuándo, cuánto, revisar.",
       "manage": "Gestionar una necesidad",
       "manageBody": "Una necesidad cada vez: qué espera y qué acción tomar.",
-      "certify": "Certificar a un beneficiario",
+      "certify": "Certificar a una persona beneficiaria",
       "certifyBody": "Firma un certificado para que una persona publique su propia necesidad.",
       "programmes": "Programas",
       "programmesBody": "Abre un programa o consulta los que gestionas."
@@ -609,7 +615,8 @@
     "stepCounter": "Paso {current} de {total}",
     "stepBack": "Atrás",
     "stepNext": "Continuar",
-    "coverLater": "Podrás añadir una foto de portada y una historia desde su panel, una vez publicada la necesidad."
+    "coverLater": "Podrás añadir una foto de portada y una historia desde su panel, una vez publicada la necesidad.",
+    "errorBeneficiaryTranches": "Divide tu necesidad en al menos dos tramos, el primero de como mucho el {max} %: es el único dinero que se paga antes de que muestres cómo se gastó."
   },
   "verifier": {
     "title": "Cola del verificador",
@@ -926,8 +933,8 @@
     "paymentsTitle": "Pagos",
     "paymentPaid": "del tramo {index} a {payee}",
     "paymentHeld": "del tramo {index} retenidos para {payee}: el token los rechazó",
-    "beneficiaryShare": "La cartera de la propia beneficiaria",
-    "theBeneficiary": "la beneficiaria"
+    "beneficiaryShare": "La cartera de la propia persona beneficiaria",
+    "theBeneficiary": "la persona beneficiaria"
   },
   "suppliers": {
     "title": "Proveedores",
@@ -1143,7 +1150,7 @@
     "publicPage": "Página pública →",
     "notFound": "No existe la necesidad n.º {id}.",
     "notYoursTitle": "Esta necesidad es de otra organización",
-    "notYoursBody": "Puedes ver en qué punto está, pero cualquier acción de abajo sería rechazada: solo quien gestiona una necesidad —la ONG que la creó o la beneficiaria que la publicó— puede gestionarla.",
+    "notYoursBody": "Puedes ver en qué punto está, pero cualquier acción de abajo sería rechazada: solo quien gestiona una necesidad —la ONG que la creó o la persona beneficiaria que la publicó— puede gestionarla.",
     "needTitle": "Necesidad n.º {id} · {category} · {region}",
     "raised": "{raised} de {target} {unit} recaudados",
     "fundingCloses": "La recaudación cierra",
@@ -1166,15 +1173,17 @@
       "Done": "Completada e informada. No queda nada por hacer.",
       "Closed": "Esta necesidad está {status}: quienes donaron pueden recuperar lo que no se liberó.",
       "deliveryUnderwayVerifier": "Tu justificación del tramo {spent} espera a un verificador: han aprobado {approved} de {required}.",
-      "CompletedOwn": "Se han pagado todos los tramos. La ONG que te certificó publica el informe de impacto para cerrar la historia."
+      "CompletedOwn": "Se han pagado todos los tramos. La ONG que te certificó publica el informe de impacto para cerrar la historia.",
+      "releaseOwn": "El tramo {index} ({amount} {unit}) está listo: libéralo abajo y la bóveda lo ingresa en tu cartera, como dice tu plan de pagos.",
+      "releaseBeneficiary": "El tramo {index} ({amount} {unit}) está listo: libéralo abajo y la bóveda paga a la cartera de la persona beneficiaria, como dice el plan de pagos."
     },
     "actionsTitle": "Acciones sobre esta necesidad",
     "noActions": "No hay nada que hacer con esta necesidad en su estado actual.",
-    "sponsorTitle": "Gestionada por una beneficiaria que certificaste",
+    "sponsorTitle": "Gestionada por una persona beneficiaria que certificaste",
     "sponsorBody": "{beneficiary} publicó esta necesidad con tu certificado y la gestiona: presenta sus pruebas y recibe sus tramos. Puedes retirarla hasta que cierre la financiación, y publicar su informe de impacto.",
     "runBy": "Gestionada por",
     "cancelTitle": "Retirar esta necesidad",
-    "cancelBody": "Hasta que cierre la financiación, la necesidad se puede retirar: la ONG, o la beneficiaria que la publicó. Lo que ya se haya donado se puede reclamar entero. Después, solo la plataforma puede cancelarla.",
+    "cancelBody": "Hasta que cierre la financiación, la necesidad se puede retirar: la ONG, o la persona beneficiaria que la publicó. Lo que ya se haya donado se puede reclamar entero. Después, solo la plataforma puede cancelarla.",
     "cancel": "Retirar la necesidad",
     "needHeading": "Necesidad #{id}",
     "ofTarget": "de {target} {unit} · {percent}%",
@@ -1222,6 +1231,10 @@
         "title": "Presentación",
         "body": "Portada, galería y la historia que los donantes leen primero."
       },
+      "bounty": {
+        "title": "Pagar por pruebas",
+        "body": "Recompensa, desde tu propia cartera, a quien fotografíe esta necesidad sobre el terreno."
+      },
       "cancel": {
         "title": "Retirar esta necesidad",
         "body": "Solo antes de que cierre la recaudación. Los donantes recuperan su dinero."
@@ -1256,7 +1269,7 @@
     "errorUpload": "No se han podido subir los archivos: {detail}",
     "errorTooLong": "Demasiados archivos o una nota demasiado larga para caber en cadena: quita un archivo o acorta la nota.",
     "reviewTitle": "Valora en qué se gastó el tramo {spent}",
-    "reviewBody": "{owner, select, beneficiary {La beneficiaria} other {La ONG}} ha presentado su justificación. Apruébala si te convence; recházala si no. El tramo {next} solo se paga cuando se aprueba.",
+    "reviewBody": "{owner, select, beneficiary {La persona beneficiaria} other {La ONG}} ha presentado su justificación. Apruébala si te convence; recházala si no. El tramo {next} solo se paga cuando se aprueba.",
     "reviewSee": "{count, plural, =0 {Ver la justificación ↓} one {Ver la justificación (# archivo) ↓} other {Ver la justificación (# archivos) ↓}}",
     "reviewConnect": "Conecta la cartera con la que donaste, o tu cartera de verificador, para votar.",
     "reviewDone": "Ya has votado esta justificación.",
@@ -1268,7 +1281,7 @@
     "reviewReject": "Rechazar",
     "reviewWeight": "Tu voto pesa lo que donaste: {weight} {unit}.",
     "reviewWeightVerifier": "Votas como verificador independiente.",
-    "reviewRejectWarning": "Rechazar devuelve a la ONG a presentar una justificación mejor.",
+    "reviewRejectWarning": "Rechazar devuelve a {owner, select, beneficiary {la persona beneficiaria} other {la ONG}} a presentar una justificación mejor.",
     "reviewRejectConfirm": "Sí, rechazarla",
     "reviewRejectCancel": "Cancelar",
     "reviewFree": "Vota gratis: solo firmas, y VerifAid paga la comisión de la red.",
@@ -1285,18 +1298,18 @@
       "custom": "Regla propia"
     },
     "summary": {
-      "donors": "Cada tramo después del primero se paga cuando quienes aportaron el {approve} % del dinero aprueban la justificación {owner, select, beneficiary {de la beneficiaria} other {de la ONG}}. Quienes aportaron el {reject} % pueden rechazarla.",
-      "verifier": "Cada tramo después del primero se paga cuando {verifiers, plural, one {un verificador independiente aprueba} other {# verificadores independientes aprueban}} la justificación {owner, select, beneficiary {de la beneficiaria} other {de la ONG}}, y otros tantos pueden rechazarla. Quienes donan no votan.",
-      "both": "Cada tramo después del primero se paga cuando quienes aportaron el {approve} % del dinero y {verifiers, plural, one {un verificador independiente} other {# verificadores independientes}} aprueban la justificación {owner, select, beneficiary {de la beneficiaria} other {de la ONG}}. Quienes aportaron el {reject} %, o los verificadores, pueden rechazarla.",
+      "donors": "Cada tramo después del primero se paga cuando quienes aportaron el {approve} % del dinero aprueban la justificación {owner, select, beneficiary {de la persona beneficiaria} other {de la ONG}}. Quienes aportaron el {reject} % pueden rechazarla.",
+      "verifier": "Cada tramo después del primero se paga cuando {verifiers, plural, one {un verificador independiente aprueba} other {# verificadores independientes aprueban}} la justificación {owner, select, beneficiary {de la persona beneficiaria} other {de la ONG}}, y otros tantos pueden rechazarla. Quienes donan no votan.",
+      "both": "Cada tramo después del primero se paga cuando quienes aportaron el {approve} % del dinero y {verifiers, plural, one {un verificador independiente} other {# verificadores independientes}} aprueban la justificación {owner, select, beneficiary {de la persona beneficiaria} other {de la ONG}}. Quienes aportaron el {reject} %, o los verificadores, pueden rechazarla.",
       "custom": "Esta necesidad usa una regla que la plataforma aprobó después; su contrato decide quién aprueba."
     },
-    "retries": "{retries, plural, =0 {El próximo rechazo cancela la necesidad, y quienes donaron recuperan lo que no se liberó.} one {Tras un rechazo {owner, select, beneficiary {la beneficiaria} other {la ONG}} puede presentar una nueva justificación una vez; el siguiente rechazo cancela la necesidad, y quienes donaron recuperan lo que no se liberó.} other {Tras un rechazo {owner, select, beneficiary {la beneficiaria} other {la ONG}} puede presentar una nueva justificación # veces; el rechazo siguiente cancela la necesidad.}}",
+    "retries": "{retries, plural, =0 {El próximo rechazo cancela la necesidad, y quienes donaron recuperan lo que no se liberó.} one {Tras un rechazo {owner, select, beneficiary {la persona beneficiaria} other {la ONG}} puede presentar una nueva justificación una vez; el siguiente rechazo cancela la necesidad, y quienes donaron recuperan lo que no se liberó.} other {Tras un rechazo {owner, select, beneficiary {la persona beneficiaria} other {la ONG}} puede presentar una nueva justificación # veces; el rechazo siguiente cancela la necesidad.}}",
     "strikes": "{strikes, plural, one {Su justificación se ha rechazado una vez.} other {Su justificación se ha rechazado # veces.}}"
   },
   "certify": {
-    "title": "Certificar a una beneficiaria",
+    "title": "Certificar a una persona beneficiaria",
     "body": "Permite que alguien a quien tu ONG apoya publique su propia necesidad. Firmas un certificado para su cartera —sin gas, sin escribir nada en la cadena— y le envías el enlace. Su necesidad la siguen revisando verificadores independientes, se paga por tramos y se aprueba contra pruebas, y queda bajo tu ONG: si tu ONG queda suspendida, sus necesidades también se congelan.",
-    "wallet": "Cartera de la beneficiaria",
+    "wallet": "Cartera de la persona beneficiaria",
     "walletHint": "La cartera con la que publicará y recibirá el dinero. Solo esa cartera puede usar el certificado.",
     "days": "Válido durante (días)",
     "daysHint": "Como mucho {max}. Tiene que publicar su necesidad antes de que caduque; una necesidad ya publicada no se ve afectada.",
@@ -1305,7 +1318,7 @@
     "signing": "Esperando a tu cartera…",
     "errorWallet": "Introduce una dirección de cartera válida.",
     "errorDays": "El certificado puede durar entre 1 y {max} días.",
-    "errorRole": "Esta cartera es (o fue) una ONG, un verificador, un proveedor o una dirección de cobro. Nunca puede publicar como beneficiaria.",
+    "errorRole": "Esta cartera es (o fue) una ONG, un verificador, un proveedor o una dirección de cobro. Nunca puede publicar como persona beneficiaria.",
     "errorRefused": "El contrato no aceptaría este certificado. Comprueba que el programa está abierto y que firmaste con la cartera de esta ONG.",
     "issuedTitle": "Certificado listo",
     "issuedBody": "Envía este enlace a la persona dueña de {wallet}. Sirve hasta el {date}.",
@@ -1321,7 +1334,7 @@
     "title": "Publicar una necesidad",
     "subtitle": "Para personas certificadas por una ONG: abre el enlace que te envió tu ONG, conecta la cartera que nombra y describe lo que necesitas.",
     "unsupportedTitle": "No disponible en este despliegue",
-    "unsupportedBody": "Este despliegue es anterior a las necesidades de beneficiarias. Pide a tu ONG que publique la necesidad por ti.",
+    "unsupportedBody": "Este despliegue es anterior a las necesidades de personas beneficiarias. Pide a tu ONG que publique la necesidad por ti.",
     "pasteLabel": "Tu enlace de certificado",
     "pasteHint": "Pega el enlace que te envió tu ONG.",
     "badLink": "No se puede leer este enlace",
@@ -1346,7 +1359,7 @@
     "openNeedTitle": "Ya tienes abierta la necesidad n.º {id}",
     "openNeedBody": "Puedes tener una necesidad abierta a la vez. Cuando esta se complete, se cancele o caduque, podrás publicar la siguiente.",
     "openNeedLink": "Gestionarla",
-    "eyebrow": "Para beneficiarios certificados",
+    "eyebrow": "Para personas beneficiarias certificadas",
     "how": {
       "cert": {
         "title": "Abre el enlace de tu ONG",
@@ -1373,7 +1386,7 @@
     "noneLink": "Publicar una necesidad",
     "raised": "{raised} de {target} {unit} recaudados",
     "allNeeds": "Todas mis necesidades",
-    "eyebrow": "Beneficiario certificado"
+    "eyebrow": "Persona beneficiaria certificada"
   },
   "ui": {
     "coverPhoto": "Foto de portada",
@@ -1411,5 +1424,67 @@
       "EDUCATION": "la educación",
       "other": "necesidades como esta"
     }
+  },
+  "community": {
+    "title": "Pruebas de la comunidad",
+    "intro": "Cualquier persona con una cartera que no gestione esta necesidad puede subir fotos de lo que pasa sobre el terreno. Todas las pruebas quedan públicas aquí, las recompense la ONG o no, y ninguna libera dinero: eso solo lo hace la justificación que revisan quienes donaron.",
+    "empty": "Todavía no hay pruebas de la comunidad.",
+    "filedBy": "Subida por",
+    "rewarded": "Recompensada con {amount} {unit}",
+    "unreadable": "No se pudo leer el manifiesto de esta prueba.",
+    "bountyOpen": "La ONG paga {reward} {unit} por pruebas útiles: quedan {left} de {max} recompensas, hasta el {date}. Una recompensa por cartera.",
+    "notYet": "Se podrán subir pruebas cuando la necesidad esté financiada y la ayuda empiece a moverse.",
+    "connect": "Conecta una cartera para subir pruebas sobre esta necesidad.",
+    "yours": "Tu cartera gestiona o avala esta necesidad. Las pruebas de la comunidad vienen de fuera: publica tu justificación y tus fotos desde el panel.",
+    "done": "Prueba subida. Ya es pública en esta página.",
+    "doneReward": "La ONG puede recompensarla con {reward}. Lo decide ella, y hay una recompensa por cartera.",
+    "errorNoPhotos": "Añade al menos una foto.",
+    "errorNoNote": "Di en una línea qué muestran las fotos.",
+    "errorUpload": "No se pudieron subir las fotos: {detail}",
+    "errorTooLong": "Demasiadas fotos o una nota demasiado larga para guardarla en la cadena. Quita una foto o acorta la nota.",
+    "formTitle": "Subir una prueba",
+    "formBody": "Fotografía los bienes, el lugar o la entrega. Sin personas ni caras. A cada foto se le quitan los datos de ubicación y de la cámara antes de guardarla.",
+    "photosLabel": "Fotos",
+    "photosHint": "Hasta {max} imágenes (JPEG, PNG o WebP).",
+    "remove": "Quitar {name}",
+    "noteLabel": "¿Qué muestran las fotos?",
+    "notePlaceholder": "p. ej. Los depósitos de agua llegaron a la escuela de Tessaoua el 12 de marzo.",
+    "uploading": "Subiendo fotos…",
+    "submit": "Subir prueba",
+    "bountyTitle": "Pagar por pruebas de la comunidad",
+    "bountyBody": "Aparta un bote de recompensas de tu propia cartera (nunca dinero de quienes donaron) para pagar a quien fotografíe esta necesidad sobre el terreno. Tú eliges qué pruebas pagas, una recompensa por cartera. Todas las pruebas siguen siendo públicas igualmente, y lo que sobre vuelve a ti al cerrar el bote.",
+    "rewardLabel": "Recompensa por prueba ({unit})",
+    "countLabel": "Número de recompensas",
+    "daysLabel": "Abierto durante (días)",
+    "total": "Bloqueas {total} {unit} de tu cartera.",
+    "errorReward": "Introduce una recompensa mayor que cero.",
+    "errorCount": "Elige entre 1 y {max} recompensas.",
+    "errorDays": "Elige entre {min} y {max} días.",
+    "approve": "1. Autorizar la transferencia",
+    "approved": "1. Transferencia autorizada ✓",
+    "open": "2. Abrir el bote",
+    "status": "Pagas {reward} {unit} por prueba: {paid} de {max} pagadas, quedan {balance} {unit}, hasta el {date}.",
+    "pastDeadline": "El plazo ha terminado: aún puedes pagar las pruebas subidas antes y luego cerrar el bote.",
+    "waitingTitle": "Pruebas que puedes pagar",
+    "noneWaiting": "Aún no hay pruebas sin pagar de una cartera nueva.",
+    "paying": "Pagando…",
+    "pay": "Pagar {amount} {unit}",
+    "close": "Cerrar el bote y recuperar {amount} {unit}",
+    "closeHint": "Pasado el plazo, cualquiera puede cerrarlo, y el saldo vuelve igualmente a tu cartera."
+  },
+  "earn": {
+    "title": "Demuestra y gana",
+    "subtitle": "Estas ONG pagan por fotos que muestren su ayuda sobre el terreno. Sube la prueba desde tu cartera en la página de la necesidad, y la ONG puede enviar una recompensa directamente a esa cartera.",
+    "stepLabel": "Paso {n}",
+    "step1": "Elige una necesidad cerca de ti y ve a verla: los bienes, el lugar, la entrega.",
+    "step2": "Conecta tu cartera y, en la página de la necesidad, sube tus fotos con una línea sobre lo que muestran.",
+    "step3": "La ONG revisa la prueba y envía la recompensa a tu cartera. Todas las pruebas quedan públicas, pagadas o no.",
+    "rules": "Una recompensa por cartera y necesidad, y solo por pruebas subidas antes del plazo del bote. Nada de fotos de personas. La ONG decide qué recompensa, pero el dinero ya está bloqueado en el contrato: cuando paga, el dinero está ahí.",
+    "empty": "Ahora mismo ninguna ONG paga por pruebas.",
+    "emptyBody": "Vuelve más tarde, o sube pruebas en cualquier necesidad financiada: son públicas aunque no haya recompensa.",
+    "reward": "{reward} {unit} por prueba",
+    "left": "Quedan {left} de {max} recompensas · hasta el {date}",
+    "cta": "Subir prueba →",
+    "ctaLater": "Ver la necesidad (las pruebas se abren cuando esté financiada) →"
   }
 }

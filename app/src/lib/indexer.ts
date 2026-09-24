@@ -7,6 +7,7 @@ import type {
   NeedDetail,
   NeedSort,
   NeedSummary,
+  OpenBountyView,
   ProgramView,
   SupplierApplicationView,
   SupplierDetail,
@@ -120,6 +121,10 @@ export const getNeeds = async (filters: NeedFilters = {}): Promise<Result<NeedSu
   useFixtures
     ? { ok: true, data: fixtures.filterNeeds(filters) }
     : get<NeedSummary[]>(`/needs${query(filters)}`)
+
+/** Open reward pots for community proof, with the needs they pay for. The sample data has none. */
+export const getOpenBounties = async (): Promise<Result<OpenBountyView[]>> =>
+  useFixtures ? { ok: true, data: [] } : get<OpenBountyView[]>('/bounties')
 
 export const getNeed = async (id: string): Promise<Result<NeedDetail>> =>
   useFixtures ? fixtures.needDetail(id) : get<NeedDetail>(`/needs/${encodeURIComponent(id)}`)

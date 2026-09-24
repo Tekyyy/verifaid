@@ -595,6 +595,50 @@ export const workPhotos = onchainTable(
 )
 
 /**
+ * Proof about a need filed by someone who does not run it (CommunityProofs). The manifest is the same format as
+ * delivery evidence; a reward, when the NGO paid one, is filled in by ProofRewarded.
+ */
+export const communityProof = onchainTable(
+  'community_proof',
+  (t) => ({
+    id: t.bigint().primaryKey(),
+    needId: t.bigint().notNull(),
+    submitter: t.hex().notNull(),
+    /** keccak256 of `manifest`, as the contract keeps it. */
+    manifestHash: t.hex().notNull(),
+    manifest: t.text().notNull(),
+    submittedAt: t.integer().notNull(),
+    txHash: t.hex().notNull(),
+    rewardBountyId: t.bigint(),
+    rewardAmount: t.bigint(),
+    rewardedAt: t.integer(),
+    rewardTxHash: t.hex(),
+  }),
+  (table) => ({ needIdx: index().on(table.needId), submitterIdx: index().on(table.submitter) }),
+)
+
+/** A reward pot an NGO funded from its own wallet for community proof on one of its needs (CommunityProofs). */
+export const proofBounty = onchainTable(
+  'proof_bounty',
+  (t) => ({
+    id: t.bigint().primaryKey(),
+    needId: t.bigint().notNull(),
+    ngo: t.hex().notNull(),
+    reward: t.bigint().notNull(),
+    maxRewards: t.integer().notNull(),
+    rewardsPaid: t.integer().notNull(),
+    balance: t.bigint().notNull(),
+    deadline: t.integer().notNull(),
+    openedAt: t.integer().notNull(),
+    closed: t.boolean().notNull(),
+    closedAt: t.integer(),
+    refunded: t.bigint(),
+    txHash: t.hex().notNull(),
+  }),
+  (table) => ({ needIdx: index().on(table.needId), closedIdx: index().on(table.closed) }),
+)
+
+/**
  * How an NGO presents a need to donors (resolver-less `NeedPresentation` schema): a cover image, a gallery, a
  * summary and tags. One row per need — publishing again replaces it, so a presentation can be corrected.
  */

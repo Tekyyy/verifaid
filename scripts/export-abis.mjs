@@ -24,6 +24,8 @@ const FORGE_ARTIFACTS = [
   'ProgramRegistry',
   // v10: a beneficiary posts a need of their own on the strength of their NGO's certificate.
   'BeneficiaryRegistry',
+  // Proof of delivery from anyone, and the reward pots NGOs fund for it.
+  'CommunityProofs',
   'DeliveryManager',
   'ReleasePolicy',
   'ProofOfAidResolver',

@@ -46,6 +46,8 @@ import { storeDossier } from '@/lib/services'
 
 /** Contract bounds (NeedsRegistry): at most 5 tranches, cost cap at most 20%. */
 const MAX_TRANCHES = 5
+/** Mirrors NeedsRegistry: a beneficiary's first tranche, paid before any evidence, is at most half the need. */
+const MAX_BENEFICIARY_FIRST_TRANCHE_BPS = 5_000
 const MAX_COST_BPS = 2000
 
 /**
@@ -189,18 +191,20 @@ export function CreateNeedPanel({ certificate }: { certificate?: SignedCertifica
    * they choose to have part of each tranche paid to one directly. The advanced editor replaces it with any plan the
    * contract accepts (up to five payees, per-tranche shares).
    */
-  const kept = Number(keepPercent || '0')
+  // "12,5" is how half the world writes 12.5; the rest of the plan works in basis points to stay exact.
+  const keptText = keepPercent.trim().replace(',', '.') || '0'
+  const kept = Number(keptText)
   const supplierRow: PlanRow = {
     account: supplier,
     label: t('planSupplierLabel'),
     ref: '',
-    shares: trancheBps.map(() => (100 - kept).toString()),
+    shares: trancheBps.map(() => ((10_000 - Math.round(kept * 100)) / 100).toString()),
   }
   const ownRow: PlanRow = {
     account: NGO_PAYEE,
     label: asBeneficiary ? t('planOwnLabel') : t('planNgoLabel'),
     ref: '',
-    shares: trancheBps.map(() => keepPercent.trim()),
+    shares: trancheBps.map(() => keptText),
   }
   const derivedPlan: PlanRow[] = [
     ...(!asBeneficiary || kept < 100 ? [supplierRow] : []),
@@ -258,6 +262,11 @@ export function CreateNeedPanel({ certificate }: { certificate?: SignedCertifica
       Math.round(sum * 100) !== 10_000
     ) {
       add(3, tErrors('invalidTranches'))
+    } else if (
+      asBeneficiary &&
+      (trancheBps.length < 2 || (trancheBps[0] ?? 0) > MAX_BENEFICIARY_FIRST_TRANCHE_BPS)
+    ) {
+      add(3, t('errorBeneficiaryTranches', { max: bpsPercent(MAX_BENEFICIARY_FIRST_TRANCHE_BPS) }))
     }
     if (minFundingBps === null) add(3, t('errorMinFunding'))
     if (costBps === null) add(3, t('errorCostCap', { max: bpsPercent(MAX_COST_BPS) }))
@@ -649,7 +658,7 @@ export function CreateNeedPanel({ certificate }: { certificate?: SignedCertifica
                   })
                 : t('summaryPlan', {
                     payee: supplier && !customPlan ? shorten(supplier) : t('summaryPlanCustom'),
-                    ngo: bpsPercent(keepBps ?? 0),
+                    ngo: customPlan ? bpsPercent(planCheck.ngoShareBps) : bpsPercent(keepBps ?? 0),
                   })}
             </li>
             <li>

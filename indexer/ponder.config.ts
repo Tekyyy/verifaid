@@ -3,6 +3,7 @@ import {
   aidVaultFactoryAbi,
   beneficiaryRegistryAbi,
   chainFor,
+  communityProofsAbi,
   deliveryManagerAbi,
   donationForwarderAbi,
   donationForwarderFactoryAbi,
@@ -38,6 +39,9 @@ const pgliteDirectory = process.env.PONDER_PGLITE_DIR
 
 /** v10: where beneficiaries post their own needs; a deployment without it indexes nothing at the zero address. */
 const beneficiaryRegistry = contracts.BeneficiaryRegistry ?? zeroAddress
+
+/** v10: community proof and the NGOs' reward pots; a deployment without it indexes nothing at the zero address. */
+const communityProofs = contracts.CommunityProofs ?? zeroAddress
 
 /** v3 conversion contracts; a deployment without them indexes nothing at the zero address. */
 const forwarderFactory = contracts.DonationForwarderFactory ?? zeroAddress
@@ -114,6 +118,13 @@ export default createConfig({
       abi: beneficiaryRegistryAbi,
       chain: network,
       address: beneficiaryRegistry,
+      startBlock,
+    },
+    // v10: proof of delivery from anyone, and the reward pots NGOs fund for it.
+    CommunityProofs: {
+      abi: communityProofsAbi,
+      chain: network,
+      address: communityProofs,
       startBlock,
     },
     DeliveryManager: {

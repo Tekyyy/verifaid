@@ -24,6 +24,9 @@ library Errors {
     // ─── needs ─────────────────────────────────────────────────────────────────
     error NeedNotFound();
     error InvalidTrancheSplit();
+    /// @notice A beneficiary's need must keep most of its money behind evidence: two tranches or more, the first at
+    ///         most `MAX_BENEFICIARY_FIRST_TRANCHE_BPS`.
+    error BeneficiaryPrefinancingTooLarge();
     error InsufficientVerifications();
     error InvalidNeedStatus();
     error InvalidTransition();
@@ -73,6 +76,17 @@ library Errors {
     error CertificationRevoked();
     /// @dev A beneficiary has one need open at a time; the last one must be over first.
     error OpenNeedExists();
+
+    // ─── community proofs ──────────────────────────────────────────────────────
+    error ProofNotFound();
+    error BountyNotFound();
+    /// @dev A need has one reward pot open at a time; the last one must be closed first.
+    error BountyAlreadyOpen();
+    error NoOpenBounty();
+    /// @dev A wallet is paid once per need, however many proofs it files.
+    error AlreadyRewarded();
+    /// @dev Filed after the pot's deadline, which is what the NGO promised to pay for.
+    error ProofAfterDeadline();
 
     // ─── deliveries ────────────────────────────────────────────────────────────
     error DeliveryNotFound();

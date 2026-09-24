@@ -112,6 +112,7 @@ contract Deploy is Script, SystemDeployer, DeploymentIO {
         contracts.serialize("DonationReceipt", address(s.receipt));
         contracts.serialize("ProgramRegistry", address(s.programs));
         contracts.serialize("BeneficiaryRegistry", address(s.beneficiaries));
+        contracts.serialize("CommunityProofs", address(s.communityProofs));
         contracts.serialize("DeliveryManager", address(s.deliveryManager));
         contracts.serialize("ReleasePolicyDonors", address(s.donorPolicy));
         contracts.serialize("ReleasePolicyVerifier", address(s.verifierPolicy));

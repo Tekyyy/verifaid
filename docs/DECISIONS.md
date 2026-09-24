@@ -889,7 +889,10 @@ contract, and the only caller of `createBeneficiaryNeed`, because `NeedsRegistry
 vetted suppliers. For a beneficiary the own share *is* the aid, so it has no cap; the plan may still name registered
 suppliers to be paid directly (a landlord, a pharmacy). The protection that replaces the cap is the tranche: only
 the pre-financing is paid before any evidence exists, and each later tranche waits for the donors (or verifiers) to
-approve how the last was spent.
+approve how the last was spent. That only holds if the pre-financing is not the whole need, so a beneficiary's need
+has at least two tranches and the first is at most half (`MAX_BENEFICIARY_FIRST_TRANCHE_BPS`, reverting with
+`BeneficiaryPrefinancingTooLarge`) — enough up front for rent that is already due, with the rest behind evidence.
+Found in the final review: without it a single 100% tranche paid everything before any proof.
 
 **Nobody judges their own account.** A wallet that holds or ever held an operational role (NGO, verifier, supplier,
 payout Safe) can never post as a beneficiary (`RoleRegistry.holdsOperationalRole`). The reverse cannot be enforced
@@ -947,3 +950,45 @@ server fetches pages whose addresses a third party chose. `NEWS_SEARCH=off` turn
 **Not done.** Region names outside Spain's communities (the country is searched instead). Relevance is keywords, not
 understanding: expect the odd article that mentions both the problem and the place and is about neither. An NGO
 cannot pin or hide an article.
+
+## 25. Proof from anyone, and rewards an NGO pays for it (v10)
+
+Everything a donor sees about a need's delivery comes from the people who run it: the NGO's evidence, the NGO's
+photos, the beneficiary's own. Someone who watched the water tanks arrive at the school — a teacher, a neighbour, a
+passer-by — had no way to say so. Now any wallet that does not run a need can file proof on its page: photos and a
+line on what they show. And an NGO can set money aside, from its own wallet, to pay the people whose proof is useful.
+
+**A contract of its own.** `CommunityProofs` sits beside the registry and only reads it: a need's status, its NGO, its
+owner and their payout wallets. `NeedsRegistry` has about 2 KB left under the size limit, and nothing here needs to
+change a need.
+
+**Who may file, and what.** Any wallet except the need's NGO, the NGO's payout wallet, the beneficiary who posted it
+and the beneficiary's payout wallet: their proof would only repeat their own evidence. Proof opens once the need is
+funded (Funded, In delivery, Completed); before that there is nothing on the ground to photograph. Photos go through
+the same upload as delivery evidence — location and camera data stripped, each file committed by hash — and are
+listed in the same manifest format, which the contract emits in full. No photos of people, as for work photos.
+
+**What it does not do.** Proof decides nothing. It releases no tranche, casts no vote and is not evidence: tranches
+still move only on the evidence the need's rule approves (§21, §22). It is context a donor can weigh, from someone
+the NGO does not control.
+
+**The pot.** An NGO opens one pot per need at a time: a reward per proof, how many rewards (1 to 1,000) and for how
+long (1 to 365 days). `reward × count` moves from the NGO's wallet into the contract when the pot opens, so what the
+page promises is there; donors' money is never touched. The NGO pays proof one at a time. The contract allows one
+reward per wallet per need, across pots, and only for proof filed before the deadline. Closing returns the balance to
+the NGO. After the deadline anyone can close a pot, and the balance still goes to the NGO, so none is left hanging.
+A pause stops new proof, new pots and payments, but not closing: an NGO can always take its money back.
+
+**Why the NGO chooses.** Paying automatically would pay for any photo from any wallet, and wallets are free: a
+hundred photos of nothing from a hundred wallets would empty a pot. Only the NGO knows what useful proof of its need
+looks like. The cost of that choice is that an NGO could reward only flattering proof, so every proof stays public
+whether or not it was paid, and the page shows which were. An NGO chooses what it rewards, never what donors see.
+
+**Where it shows.** A "Community proof" section on the need page: the open pot, the form, and every proof filed,
+with a badge on the rewarded ones. A "Pay for proof" tool on the NGO's dashboard opens a pot (approve, then open),
+lists the proof it can still pay for — oldest first, one per wallet — and closes it. A public "Prove & earn" page
+lists the needs with a pot open. The timeline records each proof, reward, and pot opened or closed.
+
+**Not done.** No moderation: proof that is off topic, false or shows a person stays listed, and the NGO simply does
+not pay for it. Its photos are in the upload store, not on chain, so they can be taken down there; the manifest,
+note included, stays in the event log. Rewards are paid in the donation token only.

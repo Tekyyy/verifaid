@@ -209,11 +209,19 @@ pnpm deploy:sepolia
 
 ## Privacy
 
+**Community proof.** Anyone with a wallet who does not run a need can file photos of it on the need's page: the goods,
+the site, the delivery. An NGO can pay for useful proof from its own wallet — a pot locked in `CommunityProofs`
+with a reward per proof, a number of rewards and a deadline, never donors' money — and chooses which proof to reward,
+one reward per wallet per need. Proof releases no money and every proof stays public, paid or not. Open pots are
+listed on the "Prove & earn" page.
+
 No name, ID number, phone number, exact location, photo, or unsalted hash of any of these ever reaches the
 chain. The people an NGO serves do not appear on chain at all: a programme is a label and a hash of its eligibility
 rules, and who an NGO has certified stays in its own records. A beneficiary who chooses to post a need of their own
 appears as one thing only — the wallet their NGO certified — and is told so before they post.
 The news a need's page shows about its problem is searched for by the need's category and region alone.
+Anyone may add photos of a need as community proof; they are stripped the same way, may not show people, and
+stay public whether or not the NGO pays for them.
 Delivery evidence is public, for donors to judge: photos are stripped of their location and camera metadata before
 they are stored, and the NGO is told
 to black out names, faces and account numbers first. Impact reports below five people served are refused so a

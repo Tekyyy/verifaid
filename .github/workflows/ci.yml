@@ -63,7 +63,8 @@ jobs:
             src/funds/DonationReceipt.sol \
             src/delivery/DeliveryManager.sol \
             src/programs/ProgramRegistry.sol \
-            src/beneficiaries/BeneficiaryRegistry.sol
+            src/beneficiaries/BeneficiaryRegistry.sol \
+            src/community/CommunityProofs.sol
 
   typescript:
     name: TypeScript (lint / typecheck / build / test)

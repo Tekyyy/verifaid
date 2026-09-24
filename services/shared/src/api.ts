@@ -218,6 +218,10 @@ export interface NeedDetail extends NeedSummary {
   payeeChanges: PayeeChangeView[]
   /** Photos of the work, published by this need's NGO, newest first. */
   photos: WorkPhotoView[]
+  /** Proof filed by people who do not run the need, newest first. Context for donors, never a vote. */
+  communityProofs: CommunityProofView[]
+  /** The NGO's reward pots for community proof on this need, newest first; at most one is open. */
+  bounties: ProofBountyView[]
 }
 
 // ─── payment plans (v4) ───────────────────────────────────────────────────────
@@ -324,6 +328,51 @@ export interface WorkPhotoView {
   note: string
   timestamp: number
   txHash: Hex
+}
+
+/**
+ * Photos and a note about a need, filed by someone who does not run it — a neighbour, a volunteer, a passer-by —
+ * in the same manifest format as delivery evidence. Context for donors: it releases and blocks nothing.
+ */
+export interface CommunityProofView {
+  id: string
+  needId: string
+  submitter: Address
+  /** keccak256 of `manifestText`, as stored on chain. */
+  manifestHash: Hex
+  manifest: EvidenceManifest | null
+  manifestText: string
+  submittedAt: number
+  txHash: Hex
+  /** Set when the need's NGO paid for it from one of its reward pots. */
+  reward: { bountyId: string; amount: string; timestamp: number; txHash: Hex } | null
+}
+
+/** A reward pot an NGO funded from its own wallet, paying a fixed amount per useful community proof. */
+export interface ProofBountyView {
+  id: string
+  needId: string
+  ngo: Address
+  /** Paid per rewarded proof, in the vault token's base units. */
+  reward: string
+  maxRewards: number
+  rewardsPaid: number
+  /** Still in the pot. */
+  balance: string
+  /** Proof filed after this can no longer be paid for; after it, anyone can close the pot. */
+  deadline: number
+  openedAt: number
+  closed: boolean
+  closedAt: number | null
+  /** What went back to the NGO when the pot closed. */
+  refunded: string | null
+  txHash: Hex
+}
+
+/** An open reward pot, with the need it pays for: what the "prove and earn" list shows. */
+export interface OpenBountyView {
+  bounty: ProofBountyView
+  need: NeedSummary
 }
 
 /** A supplier that asked to be registered. An admin still has to grant the role. */
@@ -450,6 +499,10 @@ export type TimelineEventType =
   | 'NeedPresentationPublished'
   | 'DonationAcknowledged'
   | 'DonationWithdrawn'
+  | 'CommunityProofSubmitted'
+  | 'CommunityProofRewarded'
+  | 'ProofBountyOpened'
+  | 'ProofBountyClosed'
 
 export interface TimelineEvent {
   id: string

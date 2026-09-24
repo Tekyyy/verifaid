@@ -672,6 +672,8 @@ const detail = (index: number, rest: Partial<NeedDetail>): NeedDetail => ({
   payments: [],
   payeeChanges: [],
   photos: [],
+  communityProofs: [],
+  bounties: [],
   tranches: [],
   deliveries: [],
   donations: [],

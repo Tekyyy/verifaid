@@ -21,6 +21,7 @@ import { CloseFunding, PublishImpactReport } from '@/components/NgoConsole'
 import { IndexerNotice, Notice } from '@/components/Notice'
 import { ProposePayeeChangePanel } from '@/components/PayeeChangePanel'
 import { ProgressBar } from '@/components/ProgressBar'
+import { ProofBountyPanel } from '@/components/ProofBountyPanel'
 import { PublishPhotosPanel } from '@/components/PublishPhotosPanel'
 import { ReleaseTranchePanel } from '@/components/ReleaseTranchePanel'
 import { SettlementPanel } from '@/components/SettlementPanel'
@@ -29,6 +30,8 @@ import { NeedStatusBadge } from '@/components/StatusBadge'
 import { SubmitEvidencePanel } from '@/components/SubmitEvidencePanel'
 import { TrancheBar } from '@/components/TrancheBar'
 import { Link, useRouter } from '@/i18n/navigation'
+import { acceptsBounty, openBountyOf } from '@/lib/community'
+import { deployment } from '@/lib/config'
 import { amount, categoryIcon, percent, timestamp } from '@/lib/format'
 import { useMounted } from '@/lib/hooks'
 import { getNeed, getNeeds } from '@/lib/indexer'
@@ -359,6 +362,12 @@ function useNextStep(need: NeedDetail, viewer: Viewer): string {
   const minimum = (BigInt(need.targetAmount) * BigInt(need.minFundingBps) + 9_999n) / 10_000n
   // The impact report stays the NGO's voice: a beneficiary who ran the need is told the NGO writes it.
   const completed = need.beneficiary && viewer !== 'sponsor' ? 'next.CompletedOwn' : 'next.Completed'
+  // A tranche goes where the payment plan says: to suppliers on an NGO's need, to the person on a beneficiary's own.
+  const release = !need.beneficiary
+    ? 'next.release'
+    : viewer === 'owner'
+      ? 'next.releaseOwn'
+      : 'next.releaseBeneficiary'
 
   return (() => {
     switch (need.status) {
@@ -370,7 +379,7 @@ function useNextStep(need: NeedDetail, viewer: Viewer): string {
         return t('next.Funding', { date: timestamp(need.fundingDeadline), minimum: amount(minimum), unit })
       case 'Funded':
       case 'InDelivery':
-        if (ready) return t('next.release', { index: ready.index, amount: amount(ready.amount), unit })
+        if (ready) return t(release, { index: ready.index, amount: amount(ready.amount), unit })
         if (underReview) {
           // A rule where only verifiers decide has no donor threshold to count towards.
           return underReview.requiredAmount === '0'
@@ -408,6 +417,7 @@ type ToolKey =
   | 'ack'
   | 'impact'
   | 'presentation'
+  | 'bounty'
   | 'cancel'
 
 const TOOL_ICONS: Record<ToolKey, string> = {
@@ -421,6 +431,7 @@ const TOOL_ICONS: Record<ToolKey, string> = {
   ack: '🧾',
   impact: '📊',
   presentation: '✏️',
+  bounty: '🎁',
   cancel: '⛔',
 }
 
@@ -478,6 +489,16 @@ function NeedActions({ need, viewer }: { need: NeedDetail; viewer: Viewer }) {
       panel: <PublishImpactReport needId={need.id} />,
     },
     { key: 'presentation', show: runs && !closed, panel: <NeedPresentationPanel needId={need.id} /> },
+    {
+      key: 'bounty',
+      // The NGO's own money, paid to people who document the need; a pot left open on a need that has since closed
+      // can still be closed and its balance taken back.
+      show:
+        ngoVoice &&
+        Boolean(deployment?.contracts.CommunityProofs) &&
+        (acceptsBounty(s) || openBountyOf(need.bounties) !== null),
+      panel: <ProofBountyPanel need={need} />,
+    },
     { key: 'cancel', show: beforeClose, panel: <CancelNeedPanel needId={need.id} /> },
   ]
   const shown = actions.filter((action) => action.show)

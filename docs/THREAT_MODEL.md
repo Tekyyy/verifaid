@@ -400,9 +400,10 @@ itself.*
   attested by independent verifiers before it can take money, and one beneficiary has one open need at a time. The
   certifying NGO answers for it: suspending the NGO freezes its beneficiaries' needs.
 - **Residual risk.** *An NGO can certify wallets it controls.* A beneficiary's own share has no cap (an NGO's is
-  25%), so an NGO inventing beneficiaries could route whole needs to itself; what stands in the way is the
-  independent verification of each need and the approval of each tranche against evidence — the same defence as a
-  fake need (§3.1), without the supplier vetting of §3.15. The "donors and a verifier" rule puts a verifier on every
+  25%), so an NGO inventing beneficiaries could route needs to itself; what stands in the way is the independent
+  verification of each need and the approval of each tranche against evidence — the same defence as a fake need
+  (§3.1), without the supplier vetting of §3.15. At most half a beneficiary's need can leave before any evidence:
+  such a need has two tranches or more and the first is capped at 50%. The "donors and a verifier" rule puts a verifier on every
   tranche. What the NGO must have checked before certifying someone is not yet specified (a certification scheme is
   planned). A certificate link, and a withdrawal on chain, both say that the NGO certified that wallet: the link is
   for the beneficiary alone, and a withdrawal publishes the wallet, which is why short certificates that expire are
@@ -430,6 +431,25 @@ or puts something false in front of donors.*
   its title or snippet, which removes most noise but checks no facts. Preview images load from the news sites, which
   see the reader's IP address (not which need they were reading). The Bing and Google feeds allow personal,
   non-commercial use only; a production deployment needs a licensed news API. `NEWS_SEARCH=off` turns the search off.
+
+### 3.25 Proof from anyone, and the pots that pay for it (v10)
+
+*Someone farms an NGO's rewards, an NGO uses rewards to buy only good news, or a proof exposes a person.*
+
+- **Mitigation.** Proof decides nothing: no tranche, vote or rule reads it, so filing it cannot move a donor's money.
+  A pot is the NGO's own money, locked in `CommunityProofs` when it opens; the vault is never touched. Only the NGO
+  that answers for the need can open, pay from or close its pot early, and the contract pays only proof filed before
+  the deadline, once per wallet per need, from wallets that do not run the need (the NGO, the beneficiary and their
+  payout wallets are refused). Nothing is paid automatically, so a flood of wallets filing photos of nothing costs the
+  NGO nothing. After the deadline anyone can close a pot, and the balance goes back to the NGO only. Every proof stays
+  public whether or not it was rewarded, and the page shows which were, so an NGO that rewards only flattering proof
+  does it in the open. Photos go through the evidence upload: location and camera data stripped, size and type
+  checked, rate-limited, and committed by hash.
+- **Residual risk.** An NGO can pay wallets it controls, so its own money comes back to it; that fakes a proof's
+  reward badge, never a tranche. The NGO can ignore unwelcome proof, but not hide it. There is no moderation: proof
+  that is false, hostile or shows a person stays listed. Its photos can be removed from the upload store, but the
+  manifest (the note and the files' hashes and addresses) stays in the event log, and pinned copies cannot be recalled
+  (§3.10). A proof filer's wallet is public and linked to the place they photographed.
 
 ### 3.10 GDPR versus immutability
 

@@ -18,7 +18,13 @@ export function NeedPresentation({
 }) {
   const t = useTranslations('need')
 
-  if (!presentation || (!presentation.coverImage && !presentation.summary)) return null
+  // A gallery on its own is a presentation too: the page makes room for it, so this must draw it.
+  if (
+    !presentation ||
+    (!presentation.coverImage && !presentation.summary && presentation.gallery.length === 0)
+  ) {
+    return null
+  }
 
   return (
     <section className="card overflow-hidden p-0" aria-labelledby="presentation">

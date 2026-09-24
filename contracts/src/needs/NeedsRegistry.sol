@@ -38,6 +38,8 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     /// @notice The most of an on-chain need the NGO may pay to itself (operations, staff, logistics); the rest goes
     ///         straight from the vault to the suppliers named in the plan.
     uint16 public constant MAX_NGO_SHARE_BPS = 2500;
+    /// @notice The most a beneficiary's need pays out before any evidence: its first tranche, at most half.
+    uint16 public constant MAX_BENEFICIARY_FIRST_TRANCHE_BPS = 5000;
     /// @notice Replacing a supplier always needs at least this many independent verifiers, even on a need that
     ///         one verifier was enough to verify: moving an escrow is a heavier decision than approving it.
     uint8 public constant MIN_PAYEE_CHANGE_APPROVALS = 2;
@@ -232,9 +234,13 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         address policy = p.releasePolicy == address(0) ? defaultReleasePolicy : p.releasePolicy;
         if (!isReleasePolicy[policy]) revert Errors.InvalidReleasePolicy();
         // An NGO keeps at most a quarter for itself and pays the rest to vetted suppliers. A beneficiary's own share
-        // is the aid itself, so it has no cap; each tranche after the first still waits for evidence of how the
-        // previous one was spent.
+        // is the aid itself, so it has no cap — which is why their first tranche, the only money paid before any
+        // evidence, cannot be the whole need: two tranches or more, the first at most half.
         _validateTerms(p, beneficiary == address(0) ? MAX_NGO_SHARE_BPS : BPS_DENOMINATOR);
+        if (
+            beneficiary != address(0)
+                && (p.trancheBps.length < 2 || p.trancheBps[0] > MAX_BENEFICIARY_FIRST_TRANCHE_BPS)
+        ) revert Errors.BeneficiaryPrefinancingTooLarge();
         if (p.verificationsRequired == 0 || (p.targetAmount > HIGH_VALUE_THRESHOLD && p.verificationsRequired < 2)) {
             revert Errors.InsufficientVerifications();
         }

@@ -50,8 +50,7 @@ deploy-local:
 
 # Los escenarios de demo contra la cadena local, con el enlace de cada transacción
 [group('local')]
-demo:
-    pnpm demo:run
+demo: _demo
 
 # Stack local: indexador (:42070) + web (:3001) contra anvil; puede ir a la vez que `just stack`
 [group('local')]
@@ -66,6 +65,10 @@ services:
 [group('servicios')]
 services-down:
     pnpm services:down
+
+# Sin DEMO_NETWORK, pnpm demo:run va contra Base Sepolia: aquí se fija la cadena local.
+_demo $DEMO_NETWORK="anvil":
+    pnpm demo:run
 
 _front $NEXT_PUBLIC_USE_FIXTURES="1":
     pnpm --filter @poa/app dev --port 3000

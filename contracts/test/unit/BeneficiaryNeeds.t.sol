@@ -281,6 +281,45 @@ contract BeneficiaryNeedsTest is PoATest {
         assertEq(plan[0].account, address(0), "the owner's own share");
     }
 
+    function test_paymentPlan_aBeneficiaryCannotTakeTheWholeNeedBeforeEvidence() public {
+        IBeneficiaryRegistry.Certification memory c = _certified();
+        bytes memory signature = _signCertification(c, _keyOf(ngo));
+        INeedsRegistry.CreateNeedParams memory p = _beneficiaryNeedParams(programId, TARGET);
+
+        // One tranche would pay everything into their wallet before any evidence.
+        uint16[] memory single = new uint16[](1);
+        single[0] = 10_000;
+        p.trancheBps = single;
+        p.payees = _singlePayee(address(0), 1);
+        vm.expectRevert(Errors.BeneficiaryPrefinancingTooLarge.selector);
+        _post(beneficiary, p, c, signature);
+
+        // Two tranches, but more than half up front.
+        uint16[] memory frontLoaded = new uint16[](2);
+        frontLoaded[0] = 5001;
+        frontLoaded[1] = 4999;
+        p.trancheBps = frontLoaded;
+        p.payees = _singlePayee(address(0), 2);
+        vm.expectRevert(Errors.BeneficiaryPrefinancingTooLarge.selector);
+        _post(beneficiary, p, c, signature);
+
+        // Half up front, half after evidence: allowed, and the same certificate still works.
+        frontLoaded[0] = 5000;
+        frontLoaded[1] = 5000;
+        uint256 needId = _post(beneficiary, p, c, signature);
+        assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Pending);
+        assertEq(registry.MAX_BENEFICIARY_FIRST_TRANCHE_BPS(), 5000);
+    }
+
+    function test_paymentPlan_theCapIsABeneficiarys_anNgoMayPrefinanceItsSuppliersInFull() public {
+        // An NGO's single tranche goes to the vetted suppliers in its plan, not to itself.
+        uint16[] memory single = new uint16[](1);
+        single[0] = 10_000;
+        vm.prank(ngo);
+        uint256 needId = registry.createNeed(_needParams(programId, TARGET, 1, single));
+        assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Pending);
+    }
+
     function test_paymentPlan_aBeneficiaryMayStillPaySuppliersDirectly() public {
         INeedsRegistry.CreateNeedParams memory p = _beneficiaryNeedParams(programId, TARGET);
         p.payees = new INeedsRegistry.Payee[](2);

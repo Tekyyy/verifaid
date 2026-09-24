@@ -20,8 +20,6 @@ export function DeliveryCard({ delivery }: { delivery: DeliveryView }) {
   const tCommon = useTranslations('common')
   const unit = tCommon('amountUnit')
   const files = delivery.manifest?.files ?? []
-  const photos = files.filter(isImage)
-  const documents = files.filter((file) => !isImage(file))
 
   return (
     <article id={`delivery-${delivery.id}`} className="rounded-md border border-slate-200 bg-white p-4">
@@ -42,44 +40,7 @@ export function DeliveryCard({ delivery }: { delivery: DeliveryView }) {
             <p className="mt-3 whitespace-pre-line text-sm text-slate-800">{delivery.manifest.note}</p>
           ) : null}
 
-          {photos.length > 0 ? (
-            <ul className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
-              {photos.map((file) => (
-                <li key={file.sha256}>
-                  <a href={file.url || undefined} target="_blank" rel="noreferrer noopener" title={file.name}>
-                    {/* biome-ignore lint/performance/noImgElement: user evidence served by hash; no optimisation wanted */}
-                    <img
-                      src={file.url || (file.cid ? `${ipfsGateway}${file.cid}` : '')}
-                      alt={t(`evidenceKind.${file.kind}`)}
-                      loading="lazy"
-                      className="aspect-square w-full rounded border border-slate-200 object-cover"
-                    />
-                  </a>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-
-          {documents.length > 0 ? (
-            <ul className="mt-3 space-y-1 text-sm">
-              {documents.map((file) => (
-                <li key={file.sha256} className="flex flex-wrap items-baseline gap-x-2">
-                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700">
-                    {t(`evidenceKind.${file.kind}`)}
-                  </span>
-                  {file.url ? (
-                    <a className="link break-all" href={file.url} target="_blank" rel="noreferrer noopener">
-                      {file.name || file.sha256.slice(0, 12)}
-                    </a>
-                  ) : (
-                    <span className="break-all">{file.name}</span>
-                  )}
-                  <span className="text-xs text-slate-500">{kb(file.size)}</span>
-                  {file.cid ? <IpfsLink cid={file.cid} /> : null}
-                </li>
-              ))}
-            </ul>
-          ) : null}
+          <EvidenceFiles files={files} />
         </>
       ) : (
         <div className="mt-3">
@@ -122,6 +83,55 @@ export function DeliveryCard({ delivery }: { delivery: DeliveryView }) {
         </div>
       </dl>
     </article>
+  )
+}
+
+/** The files of an evidence manifest: photos as thumbnails, documents as links, each by the hash the chain keeps. */
+export function EvidenceFiles({ files }: { files: readonly EvidenceFile[] }) {
+  const t = useTranslations('need')
+  const photos = files.filter(isImage)
+  const documents = files.filter((file) => !isImage(file))
+  return (
+    <>
+      {photos.length > 0 ? (
+        <ul className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {photos.map((file) => (
+            <li key={file.sha256}>
+              <a href={file.url || undefined} target="_blank" rel="noreferrer noopener" title={file.name}>
+                {/* biome-ignore lint/performance/noImgElement: user evidence served by hash; no optimisation wanted */}
+                <img
+                  src={file.url || (file.cid ? `${ipfsGateway}${file.cid}` : '')}
+                  alt={t(`evidenceKind.${file.kind}`)}
+                  loading="lazy"
+                  className="aspect-square w-full rounded border border-slate-200 object-cover"
+                />
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {documents.length > 0 ? (
+        <ul className="mt-3 space-y-1 text-sm">
+          {documents.map((file) => (
+            <li key={file.sha256} className="flex flex-wrap items-baseline gap-x-2">
+              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700">
+                {t(`evidenceKind.${file.kind}`)}
+              </span>
+              {file.url ? (
+                <a className="link break-all" href={file.url} target="_blank" rel="noreferrer noopener">
+                  {file.name || file.sha256.slice(0, 12)}
+                </a>
+              ) : (
+                <span className="break-all">{file.name}</span>
+              )}
+              <span className="text-xs text-slate-500">{kb(file.size)}</span>
+              {file.cid ? <IpfsLink cid={file.cid} /> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </>
   )
 }
 

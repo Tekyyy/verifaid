@@ -9,12 +9,12 @@ import {
   type OrgTaxStatusView,
 } from '@poa/shared'
 import { useTranslations } from 'next-intl'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { type Address, type Log, parseEventLogs } from 'viem'
 import { useAccount, useBalance, useReadContract } from 'wagmi'
 import { DeductibleLine } from '@/components/TaxDeductionNotice'
 import { TxStatus } from '@/components/TxStatus'
-import { Link } from '@/i18n/navigation'
+import { Link, useRouter } from '@/i18n/navigation'
 import { conversionsEnabled, deployment } from '@/lib/config'
 import { useConversionQuote, useDonationPreflight, useRevertMessage } from '@/lib/conversionHooks'
 import { bpsPercent, amount as formatAmountValue, parseTokenAmount, tokenAmount } from '@/lib/format'
@@ -197,6 +197,15 @@ export function DonatePanel({
 
   const busy = (state: { phase: string }) => state.phase === 'signing' || state.phase === 'pending'
   const succeeded = converted ? convert.phase === 'success' : donate.phase === 'success'
+
+  // The page around this panel is rendered on the server: ask for it again once the indexer has the donation, so the
+  // amount raised, the donor count and — when this gift reached the target — the need's status all move.
+  const pageRouter = useRouter()
+  useEffect(() => {
+    if (!succeeded) return
+    const timer = setTimeout(() => pageRouter.refresh(), 2_000)
+    return () => clearTimeout(timer)
+  }, [succeeded, pageRouter])
 
   return (
     <section className="card" aria-labelledby="donate">

@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {RoleRegistry} from "../../src/access/RoleRegistry.sol";
 import {BeneficiaryRegistry} from "../../src/beneficiaries/BeneficiaryRegistry.sol";
+import {CommunityProofs} from "../../src/community/CommunityProofs.sol";
 import {ConversionRouter} from "../../src/conversion/ConversionRouter.sol";
 import {DeliveryManager} from "../../src/delivery/DeliveryManager.sol";
 import {ReleasePolicy} from "../../src/delivery/ReleasePolicy.sol";
@@ -100,6 +101,8 @@ abstract contract SystemDeployer is CommonBase {
         ProgramRegistry programs;
         /// @notice Where a beneficiary an NGO certified posts a need of their own.
         BeneficiaryRegistry beneficiaries;
+        /// @notice Proof of delivery from anyone, and the reward pots NGOs fund for it.
+        CommunityProofs communityProofs;
         DeliveryManager deliveryManager;
         /// @notice The built-in release policies: donors decide (the default), a verifier checks, or both.
         ReleasePolicy donorPolicy;
@@ -144,6 +147,7 @@ abstract contract SystemDeployer is CommonBase {
         s.beneficiaries =
             new BeneficiaryRegistry(roles, INeedsRegistry(address(s.registry)), IProgramRegistry(address(s.programs)));
         s.deliveryManager = new DeliveryManager(roles, INeedsRegistry(address(s.registry)));
+        s.communityProofs = new CommunityProofs(roles, INeedsRegistry(address(s.registry)), IERC20(s.token));
         s.resolver =
             new ProofOfAidResolver(IEAS(p.eas), roles, INeedsRegistry(address(s.registry)), p.minBeneficiariesServed);
         s.factory = new AidVaultFactory(roles);

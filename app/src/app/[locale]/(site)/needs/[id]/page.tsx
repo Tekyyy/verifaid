@@ -2,6 +2,7 @@ import type { NeedStatus } from '@poa/shared'
 import type { Metadata } from 'next'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { CardOnrampPanel } from '@/components/CardOnrampPanel'
+import { CommunityProofs } from '@/components/CommunityProofs'
 import { Deadline } from '@/components/Deadline'
 import { DeliveryCard } from '@/components/DeliveryCard'
 import { DeliveryReviewPanel } from '@/components/DeliveryReviewPanel'
@@ -32,7 +33,7 @@ import { WithdrawDonationPanel } from '@/components/WithdrawDonationPanel'
 import { WorkPhotos } from '@/components/WorkPhotos'
 import { YourDonationsNote } from '@/components/YourDonationsNote'
 import { Link } from '@/i18n/navigation'
-import { conversionsEnabled } from '@/lib/config'
+import { conversionsEnabled, deployment } from '@/lib/config'
 import { amount, categoryIcon, flagEmoji, percent, timestamp } from '@/lib/format'
 import { getNeed, getTimeline, needFeedPath } from '@/lib/indexer'
 import { newsTopic } from '@/lib/server/news'
@@ -107,6 +108,7 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
     ...(news ? ([['news', t('navNews')]] as const) : []),
     ['tranches', t('navTranches')],
     ['deliveries', t('navEvidence')],
+    ...(deployment?.contracts.CommunityProofs ? ([['community', t('navCommunity')]] as const) : []),
     ['terms', t('navTerms')],
     ['plan', t('navPlan')],
     ['timeline', t('navTimeline')],
@@ -346,6 +348,8 @@ export default async function NeedPage({ params }: { params: { id: string } }) {
               </div>
             </section>
           ) : null}
+
+          <CommunityProofs need={data} />
 
           {/* ── the terms and who is paid ───────────────────────────────────────── */}
           <TermsPanel need={data} />

@@ -37,6 +37,7 @@
     "ngo": "NGO",
     "verifier": "Verifier",
     "track": "Track a donation",
+    "earn": "Prove & earn",
     "suppliers": "Suppliers",
     "beneficiary": "My need"
   },
@@ -128,7 +129,11 @@
     "DeliveryApproved": "Evidence approved: next tranche unlocked",
     "DeliveryVoteCast": "A vote on the evidence",
     "DeliveryRejected": "Evidence rejected",
-    "BeneficiaryNeedPosted": "Posted by a beneficiary the NGO certified"
+    "BeneficiaryNeedPosted": "Posted by a beneficiary the NGO certified",
+    "CommunityProofSubmitted": "Community proof filed",
+    "CommunityProofRewarded": "Community proof rewarded by the NGO",
+    "ProofBountyOpened": "The NGO opened a reward pot for proof",
+    "ProofBountyClosed": "Reward pot closed, balance returned to the NGO"
   },
   "home": {
     "title": "Aid you can audit, beneficiaries you cannot identify",
@@ -308,6 +313,7 @@
     "navAbout": "About",
     "navTranches": "Tranches",
     "navEvidence": "Deliveries",
+    "navCommunity": "Community",
     "navTerms": "Terms",
     "navPlan": "Who gets paid",
     "navTimeline": "Timeline",
@@ -609,7 +615,8 @@
     "stepCounter": "Step {current} of {total}",
     "stepBack": "Back",
     "stepNext": "Continue",
-    "coverLater": "You can add a cover photo and a story once the need is posted, from its dashboard."
+    "coverLater": "You can add a cover photo and a story once the need is posted, from its dashboard.",
+    "errorBeneficiaryTranches": "Split your need into at least two tranches, the first at most {max}%: it is the only money paid before you show how it was spent."
   },
   "verifier": {
     "title": "Verifier queue",
@@ -1166,7 +1173,9 @@
       "Done": "Completed and reported. Nothing left to do.",
       "Closed": "This need was {status}: donors can reclaim what was not released.",
       "deliveryUnderwayVerifier": "Your evidence for tranche {spent} is waiting for a verifier: {approved} of {required} have approved.",
-      "CompletedOwn": "Every tranche has been paid. The NGO that certified you publishes the impact report to close the story."
+      "CompletedOwn": "Every tranche has been paid. The NGO that certified you publishes the impact report to close the story.",
+      "releaseOwn": "Tranche {index} ({amount} {unit}) is ready: release it below and the vault pays it into your wallet, as your payment plan says.",
+      "releaseBeneficiary": "Tranche {index} ({amount} {unit}) is ready: release it below and the vault pays the beneficiary’s wallet, as the payment plan says."
     },
     "actionsTitle": "Actions on this need",
     "noActions": "Nothing to do on this need in its current state.",
@@ -1222,6 +1231,10 @@
         "title": "Presentation",
         "body": "Cover photo, gallery and the story donors read first."
       },
+      "bounty": {
+        "title": "Pay for proof",
+        "body": "Reward people who photograph this need on the ground, from your own wallet."
+      },
       "cancel": {
         "title": "Withdraw this need",
         "body": "Before funding closes only. Donors get their money back."
@@ -1256,7 +1269,7 @@
     "errorUpload": "The files could not be uploaded: {detail}",
     "errorTooLong": "Too many files or too long a note to fit on chain: remove a file or shorten the note.",
     "reviewTitle": "Judge how tranche {spent} was spent",
-    "reviewBody": "{owner, select, beneficiary {The beneficiary} other {The NGO}} filed its evidence. Approve it if it convinces you; reject it if it does not. Tranche {next} is paid only once it is approved.",
+    "reviewBody": "{owner, select, beneficiary {The beneficiary filed their evidence} other {The NGO filed its evidence}}. Approve it if it convinces you; reject it if it does not. Tranche {next} is paid only once it is approved.",
     "reviewSee": "{count, plural, =0 {See the evidence ↓} one {See the evidence (# file) ↓} other {See the evidence (# files) ↓}}",
     "reviewConnect": "Connect the wallet you donated with, or your verifier wallet, to vote.",
     "reviewDone": "You voted on this evidence.",
@@ -1268,7 +1281,7 @@
     "reviewReject": "Reject",
     "reviewWeight": "Your vote weighs what you gave: {weight} {unit}.",
     "reviewWeightVerifier": "You vote as an independent verifier.",
-    "reviewRejectWarning": "Rejecting sends the NGO back to file better evidence.",
+    "reviewRejectWarning": "Rejecting sends {owner, select, beneficiary {the beneficiary} other {the NGO}} back to file better evidence.",
     "reviewRejectConfirm": "Yes, reject it",
     "reviewRejectCancel": "Cancel",
     "reviewFree": "Vote for free: you only sign, and VerifAid pays the network fee.",
@@ -1411,5 +1424,67 @@
       "EDUCATION": "education",
       "other": "needs like this one"
     }
+  },
+  "community": {
+    "title": "Community proof",
+    "intro": "Anyone with a wallet who doesn't run this need can post photos of what is happening on the ground. Every proof stays public here, whether or not the NGO rewards it, and none of it releases money: only the evidence donors review does that.",
+    "empty": "No community proof yet.",
+    "filedBy": "Filed by",
+    "rewarded": "Rewarded {amount} {unit}",
+    "unreadable": "This proof's manifest could not be read.",
+    "bountyOpen": "The NGO is paying {reward} {unit} for useful proof: {left} of {max} rewards left, until {date}. One reward per wallet.",
+    "notYet": "Proof can be filed once the need is funded and the aid starts to move.",
+    "connect": "Connect a wallet to file proof about this need.",
+    "yours": "Your wallet runs or sponsors this need. Community proof comes from people outside it: publish your own evidence and photos from the dashboard.",
+    "done": "Proof filed. It is now public on this page.",
+    "doneReward": "The NGO can reward it with {reward}. That is their decision, and there is one reward per wallet.",
+    "errorNoPhotos": "Add at least one photo.",
+    "errorNoNote": "Say in a line what the photos show.",
+    "errorUpload": "The photos could not be uploaded: {detail}",
+    "errorTooLong": "Too many photos or too long a note to store on chain. Remove a photo or shorten the note.",
+    "formTitle": "File proof",
+    "formBody": "Photograph the goods, the site or the delivery. No people and no faces. Location and camera data are removed from each photo before it is stored.",
+    "photosLabel": "Photos",
+    "photosHint": "Up to {max} images (JPEG, PNG or WebP).",
+    "remove": "Remove {name}",
+    "noteLabel": "What do the photos show?",
+    "notePlaceholder": "e.g. The water tanks arrived at the school in Tessaoua on 12 March.",
+    "uploading": "Uploading photos…",
+    "submit": "File proof",
+    "bountyTitle": "Pay for community proof",
+    "bountyBody": "Set aside a reward pot from your own wallet (never donors' money) to pay people who photograph this need on the ground. You choose which proof to pay for, one reward per wallet. All proof stays public either way, and whatever is left comes back to you when you close the pot.",
+    "rewardLabel": "Reward per proof ({unit})",
+    "countLabel": "Number of rewards",
+    "daysLabel": "Open for (days)",
+    "total": "You lock {total} {unit} from your wallet.",
+    "errorReward": "Enter a reward above zero.",
+    "errorCount": "Choose between 1 and {max} rewards.",
+    "errorDays": "Choose between {min} and {max} days.",
+    "approve": "1. Allow the transfer",
+    "approved": "1. Transfer allowed ✓",
+    "open": "2. Open the pot",
+    "status": "Paying {reward} {unit} per proof: {paid} of {max} paid, {balance} {unit} left, until {date}.",
+    "pastDeadline": "The deadline has passed: you can still pay for proof filed before it, then close the pot.",
+    "waitingTitle": "Proof you can pay for",
+    "noneWaiting": "No unpaid proof from a new wallet yet.",
+    "paying": "Paying…",
+    "pay": "Pay {amount} {unit}",
+    "close": "Close the pot and take back {amount} {unit}",
+    "closeHint": "Once the deadline passes anyone can close it, and the balance still comes back to your wallet."
+  },
+  "earn": {
+    "title": "Prove & earn",
+    "subtitle": "These NGOs are paying for photos that show their aid on the ground. File proof from your wallet on the need's page, and the NGO may send a reward straight to that wallet.",
+    "stepLabel": "Step {n}",
+    "step1": "Pick a need near you and go and see it: the goods, the site, the delivery.",
+    "step2": "Connect your wallet and, on the need's page, file your photos with a line on what they show.",
+    "step3": "The NGO reviews the proof and sends the reward to your wallet. Every proof stays public, paid or not.",
+    "rules": "One reward per wallet per need, and only for proof filed before the pot's deadline. No photos of people. The NGO decides what it rewards, but the money is already locked in the contract: when it pays, the money is there.",
+    "empty": "No NGO is paying for proof right now.",
+    "emptyBody": "Check again later, or file proof on any funded need: it is public even without a reward.",
+    "reward": "{reward} {unit} per proof",
+    "left": "{left} of {max} rewards left · until {date}",
+    "cta": "File proof →",
+    "ctaLater": "See the need (proof opens once it is funded) →"
   }
 }

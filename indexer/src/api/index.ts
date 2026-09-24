@@ -17,6 +17,7 @@ import {
   type NeedSort,
   type NeedStatus,
   type NeedSummary,
+  type OpenBountyView,
   type OrgTaxStatusView,
   type ProgramView,
   payeeChangeApprovalsRequired,
@@ -42,6 +43,7 @@ import {
   fundingGapOf,
   liveReport,
   type NeedRow,
+  toCommunityProofView,
   toDeliveryView,
   toDepositAddressView,
   toDonationView,
@@ -53,6 +55,7 @@ import {
   toPayeeChangeView,
   toPayeePaymentView,
   toPayeeView,
+  toProofBountyView,
   toReleasePolicyView,
   toSettlementView,
   toSupplierApplicationView,
@@ -158,10 +161,17 @@ app.get('/needs', async (c) => {
       ...toNeedSummary(row, policies),
       badges: badges.get(row.id) ?? EMPTY_BADGES,
       presentation: presentations.get(row.id) ?? null,
-      taxStatus: taxStatus.get(row.ngo.toLowerCase()) ?? null,
+      taxStatus: taxStatusOf(row, taxStatus),
     })) satisfies NeedSummary[],
   )
 })
+
+/**
+ * The tax standing that applies to a gift to this need: its NGO's, unless a certified beneficiary runs it. Then the money
+ * goes to a person, not to the organisation, and the NGO's deductibility says nothing about it.
+ */
+const taxStatusOf = (row: NeedRow, statuses: Map<string, OrgTaxStatusView>): OrgTaxStatusView | null =>
+  row.beneficiary ? null : (statuses.get(row.ngo.toLowerCase()) ?? null)
 
 /** The tax standing of every organisation behind these needs, keyed by its address. */
 const taxStatusFor = async (rows: NeedRow[]): Promise<Map<string, OrgTaxStatusView>> => {
@@ -261,6 +271,49 @@ const badgesFor = async (rows: NeedRow[]): Promise<Map<bigint, NeedBadges>> => {
   )
 }
 
+/**
+ * Open reward pots for community proof, newest first, each with the need it pays for: where someone looking to
+ * earn a little by photographing aid arriving finds the needs that pay for it. A pot past its deadline is left
+ * out — proof filed now could not be paid for.
+ */
+app.get('/bounties', async (c) => {
+  const now = Math.floor(Date.now() / 1000)
+  const pots = await db
+    .select()
+    .from(schema.proofBounty)
+    .where(and(eq(schema.proofBounty.closed, false), gt(schema.proofBounty.deadline, now)))
+    .orderBy(desc(schema.proofBounty.id))
+  if (pots.length === 0) return c.json([] satisfies OpenBountyView[])
+  const rows = await db
+    .select()
+    .from(schema.need)
+    .where(inArray(schema.need.id, [...new Set(pots.map((pot) => pot.needId))]))
+  const [badges, presentations, taxStatus, policies] = await Promise.all([
+    badgesFor(rows),
+    presentationsFor(rows),
+    taxStatusFor(rows),
+    policyIndex(),
+  ])
+  const needs = new Map(rows.map((row) => [row.id, row]))
+  return c.json(
+    pots.flatMap((pot) => {
+      const row = needs.get(pot.needId)
+      if (!row) return []
+      return [
+        {
+          bounty: toProofBountyView(pot),
+          need: {
+            ...toNeedSummary(row, policies),
+            badges: badges.get(row.id) ?? EMPTY_BADGES,
+            presentation: presentations.get(row.id) ?? null,
+            taxStatus: taxStatusOf(row, taxStatus),
+          },
+        },
+      ]
+    }) satisfies OpenBountyView[],
+  )
+})
+
 app.get('/needs/:id', async (c) => {
   const id = parseId(c.req.param('id'))
   if (id === null) return c.json({ error: 'invalid need id' }, 400)
@@ -312,6 +365,18 @@ app.get('/needs/:id', async (c) => {
     .from(schema.workPhotos)
     .where(and(eq(schema.workPhotos.needId, id), eq(schema.workPhotos.revoked, false)))
     .orderBy(desc(schema.workPhotos.timestamp))
+  const [proofs, bounties] = await Promise.all([
+    db
+      .select()
+      .from(schema.communityProof)
+      .where(eq(schema.communityProof.needId, id))
+      .orderBy(desc(schema.communityProof.id)),
+    db
+      .select()
+      .from(schema.proofBounty)
+      .where(eq(schema.proofBounty.needId, id))
+      .orderBy(desc(schema.proofBounty.id)),
+  ])
   const [badges, presentations, taxStatus, policies] = await Promise.all([
     badgesFor([row]),
     presentationsFor([row]),
@@ -323,7 +388,7 @@ app.get('/needs/:id', async (c) => {
     ...toNeedSummary(row, policies),
     badges: badges.get(row.id) ?? EMPTY_BADGES,
     presentation: presentations.get(row.id) ?? null,
-    taxStatus: taxStatus.get(row.ngo.toLowerCase()) ?? null,
+    taxStatus: taxStatusOf(row, taxStatus),
     tranches: tranches.map((tranche) => toTrancheView(tranche)),
     deliveries: deliveries.map((delivery) => toDeliveryView(delivery, votes)),
     donations: donations.map(toDonationView),
@@ -335,6 +400,8 @@ app.get('/needs/:id', async (c) => {
       toPayeeChangeView(change, payeeChangeApprovalsRequired(row.verificationsRequired)),
     ),
     photos: photos.map(toWorkPhotoView),
+    communityProofs: proofs.map(toCommunityProofView),
+    bounties: bounties.map(toProofBountyView),
   } satisfies NeedDetail)
 })
 
@@ -918,7 +985,7 @@ const loadTrack = async (ref: string): Promise<Loaded<DonationTrack>> => {
       payments,
       badges: (await badgesFor([need])).get(need.id) ?? EMPTY_BADGES,
       presentation: (await presentationsFor([need])).get(need.id) ?? null,
-      taxStatus: (await taxStatusFor([need])).get(need.ngo.toLowerCase()) ?? null,
+      taxStatus: taxStatusOf(need, await taxStatusFor([need])),
       acknowledgment: donation.receiptId
         ? ((await db
             .select()

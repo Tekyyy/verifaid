@@ -183,6 +183,8 @@ export const needFixture = (id: string, overrides: Partial<NeedDetail> = {}): Ne
   payments: [],
   payeeChanges: [],
   photos: [],
+  communityProofs: [],
+  bounties: [],
   presentation: null,
   taxStatus: null,
   badges: { workPhotos: 0, payoutAccuracyBps: null, needsCompleted: 0, needsTotal: 1 },

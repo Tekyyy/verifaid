@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Deploys the whole system to a local anvil chain and seeds the demo data:
- *   Deploy.s.sol → RegisterSchemas.s.sol → SeedDemo.s.sol → VerifyDemoNeeds.s.sol
+ *   Deploy.s.sol → RegisterSchemas.s.sol → RegisterCommunitySchemas.s.sol → SeedDemo.s.sol → VerifyDemoNeeds.s.sol
  *
  * Uses anvil's first well-known account as deployer/admin. Since nothing on a fresh anvil has code, the deploy
  * script also brings up its own EAS and SchemaRegistry instances.
@@ -70,6 +70,9 @@ const run = (script) => {
 
 run('Deploy.s.sol')
 run('RegisterSchemas.s.sol')
+// Presentations, work photos, tax status, acknowledgments and supplier applications: without these the app's
+// panels for them revert with InvalidSchema on a local chain, as they would on a public one.
+run('RegisterCommunitySchemas.s.sol')
 run('SeedDemo.s.sol')
 run('VerifyDemoNeeds.s.sol')
 if (handover) run('Handover.s.sol')
