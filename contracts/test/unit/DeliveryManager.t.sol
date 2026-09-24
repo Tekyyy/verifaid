@@ -480,6 +480,32 @@ contract DeliveryManagerTest is PoATest {
         deliveryManager.voteBySig(deliveryId, signer, true, deadline, approval);
     }
 
+    /// @dev Since EIP-7702 an ordinary wallet can carry code, delegated to a contract that may not implement ERC-1271
+    ///      (on Base mainnet, anvil's well-known keys are all delegated to one that does not). Its own key still signs.
+    function test_voteBySig_acceptsTheKeyOfAWalletThatDelegatedItsCode() public {
+        (address signer, uint256 key) = makeAddrAndKey("delegatedDonor");
+        (uint256 id, AidVault v) = _needWithPolicy(address(0), TARGET);
+        _donate(signer, id, 400e6);
+        _donate(donor1, id, 600e6);
+        v.releaseTranche(0);
+        uint256 deliveryId = _submitEvidence(id);
+        // An EIP-7702 delegation designator: 0xef0100 followed by the delegate, here one with no ERC-1271 at all.
+        vm.etch(signer, abi.encodePacked(hex"ef0100", address(token)));
+        assertGt(signer.code.length, 0);
+
+        uint256 deadline = block.timestamp + 1 hours;
+        // A signature by another key is still refused, delegated code or not.
+        (, uint256 otherKey) = makeAddrAndKey("impostor");
+        bytes memory forged = _sign(otherKey, deliveryId, signer, true, deadline);
+        vm.expectRevert(Errors.InvalidSignature.selector);
+        deliveryManager.voteBySig(deliveryId, signer, true, deadline, forged);
+
+        bytes memory signature = _sign(key, deliveryId, signer, true, deadline);
+        vm.prank(relayer);
+        deliveryManager.voteBySig(deliveryId, signer, true, deadline, signature);
+        assertEq(_status(deliveryId), IDeliveryManager.DeliveryStatus.Approved);
+    }
+
     /// @dev Card donors hold a passkey smart wallet, which signs through ERC-1271 rather than with a raw key.
     function test_voteBySig_acceptsASmartWalletSignature() public {
         (address owner, uint256 key) = makeAddrAndKey("walletOwner");

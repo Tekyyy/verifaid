@@ -7,13 +7,13 @@ import {IDonationForwarder} from "../interfaces/IDonationForwarder.sol";
 import {IDonationForwarderFactory} from "../interfaces/IDonationForwarderFactory.sol";
 import {INeedsRegistry} from "../interfaces/INeedsRegistry.sol";
 import {Errors} from "../libraries/Errors.sol";
+import {Signatures} from "../libraries/Signatures.sol";
 import {DonationConversion} from "./DonationConversion.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
-import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 /// @title DonationForwarder
 /// @notice The deposit address of one donation intent. An exchange withdrawal (or any wallet) delivers USDC or ETH
@@ -164,7 +164,7 @@ contract DonationForwarder is IDonationForwarder, EIP712, ReentrancyGuardTransie
         address signer = intent().refundSigner;
         if (signer == address(0) || to == address(0)) revert Errors.Unauthorized();
         if (block.timestamp > deadline) revert Errors.SignatureExpired();
-        if (!SignatureChecker.isValidSignatureNow(signer, _hashTypedDataV4(structHash), signature)) {
+        if (!Signatures.isValidNow(signer, _hashTypedDataV4(structHash), signature)) {
             revert Errors.InvalidSignature();
         }
         ++nonce;

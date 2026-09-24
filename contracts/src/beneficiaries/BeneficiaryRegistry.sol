@@ -7,8 +7,8 @@ import {INeedsRegistry} from "../interfaces/INeedsRegistry.sol";
 import {IProgramRegistry} from "../interfaces/IProgramRegistry.sol";
 import {IRoleRegistry} from "../interfaces/IRoleRegistry.sol";
 import {Errors} from "../libraries/Errors.sol";
+import {Signatures} from "../libraries/Signatures.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
-import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 /// @title BeneficiaryRegistry
 /// @notice Lets a person an NGO has certified post a need of their own, and holds the NGOs' withdrawals of
@@ -145,7 +145,7 @@ contract BeneficiaryRegistry is IBeneficiaryRegistry, RoleAware, EIP712 {
         // post as a beneficiary would let it own a need its own role is meant to check or be paid by.
         if (roles.holdsOperationalRole(c.beneficiary)) return Errors.RoleConflict.selector;
         if (openNeedsOf(c.ngo) >= MAX_OPEN_NEEDS_PER_NGO) return Errors.TooManyOpenNeeds.selector;
-        if (!SignatureChecker.isValidSignatureNow(c.ngo, certificationDigest(c), signature)) {
+        if (!Signatures.isValidNow(c.ngo, certificationDigest(c), signature)) {
             return Errors.InvalidSignature.selector;
         }
         return bytes4(0);

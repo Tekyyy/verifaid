@@ -8,8 +8,8 @@ import {IReleasePolicy} from "../interfaces/IReleasePolicy.sol";
 import {IRoleRegistry} from "../interfaces/IRoleRegistry.sol";
 import {ITrancheLedger} from "../interfaces/ITrancheLedger.sol";
 import {Errors} from "../libraries/Errors.sol";
+import {Signatures} from "../libraries/Signatures.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
-import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 /// @title DeliveryManager
 /// @notice Unlocks tranches after the first once the NGO has accounted for the money it was already paid, and that
@@ -109,7 +109,7 @@ contract DeliveryManager is IDeliveryManager, RoleAware, EIP712 {
     {
         if (block.timestamp > deadline) revert Errors.SignatureExpired();
         bytes32 digest = voteDigest(deliveryId, voter, approve_, deadline);
-        if (!SignatureChecker.isValidSignatureNow(voter, digest, signature)) revert Errors.InvalidSignature();
+        if (!Signatures.isValidNow(voter, digest, signature)) revert Errors.InvalidSignature();
         _vote(deliveryId, voter, approve_);
     }
 
