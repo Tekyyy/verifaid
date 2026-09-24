@@ -1,6 +1,5 @@
 'use client'
 
-import { useSearchParams } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
 import { useTransition } from 'react'
 import { usePathname, useRouter } from '@/i18n/navigation'
@@ -13,12 +12,13 @@ export function LocaleSwitcher() {
   const t = useTranslations('common')
   const locale = useLocale()
   const pathname = usePathname()
-  const searchParams = useSearchParams()
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
+  // The query is read when the language changes rather than through useSearchParams: this sits in the header of
+  // every page, and that hook would need a Suspense boundary around it on every page Next renders statically.
   const change = (next: string) => {
-    const query = searchParams.toString()
+    const query = window.location.search.slice(1)
     startTransition(() => {
       router.replace(`${pathname}${query ? `?${query}` : ''}`, { locale: next as Locale })
     })

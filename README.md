@@ -168,23 +168,35 @@ pnpm services:up    # Postgres and the three services (Docker)
 
 ### Shortcuts with `just`
 
-With [`just`](https://github.com/casey/just) installed, the everyday workflows are a single command:
+With [`just`](https://github.com/casey/just) installed, the everyday workflows are a single command, and `just` on
+its own lists them. The recipes behave the same in Windows PowerShell and in a macOS or Linux shell.
 
 ```bash
-just up             # install, build everything, and start the full stack (Base Sepolia)
-just front          # dashboard only, on bundled sample data — no chain or indexer needed
-just stack          # indexer + dashboard together, against the live Base Sepolia deployment
+just up             # install, build everything, and start the Base Sepolia stack
+just front          # dashboard only, on bundled sample data — no chain or indexer needed (:3000)
+just stack          # indexer (:42069) + dashboard (:3000) against the live Base Sepolia deployment
 just install        # install dependencies only
-​```
+just check          # lint, typecheck, app tests and contract tests — needs nothing else running
+
+just chain          # a local anvil chain, which keeps its state in .data/
+just deploy-local   # deploy the system to it and seed the demo data
+just demo           # run the demo scenarios against it
+just local          # indexer (:42070) + dashboard (:3001) against it, side by side with `just stack`
+
+just services       # Postgres, the PII vault and the notifier, in Docker
+just services-down  # stop them (their data stays in the Docker volumes)
+```
 
 - `just up` is the one-shot "get it running": it installs, runs `pnpm build` (which compiles the contracts, so
   it needs Foundry) and then starts the stack.
-- `just front` renders the bundled fixtures (`NEXT_PUBLIC_USE_FIXTURES=1` in `app/.env.local`), so the UI runs
-  with no backend at all — handy for frontend and design work.
-- `just stack` shows real testnet data: it reads needs straight from the deployed contracts. It expects
-  `PONDER_NETWORK=base-sepolia` in `indexer/.env.local`, and `NEXT_PUBLIC_CHAIN_ID=84532` with fixtures off in
-  `app/.env.local`. `Ctrl+C` stops both processes. It uses the contracts already deployed on Base Sepolia — it
-  does not redeploy anything.
+- `just front` sets `NEXT_PUBLIC_USE_FIXTURES=1` itself, so the UI runs with no backend at all — handy for
+  frontend and design work.
+- `just stack` shows real testnet data, read from the contracts already deployed on Base Sepolia; it does not
+  redeploy anything. `Ctrl+C` stops both processes.
+- The local chain takes two terminals: `just chain` in one; `just deploy-local` once in the other (then `just demo`
+  if you want the scenarios), and `just local`. The chain keeps its state, so after a restart `just chain` and
+  `just local` are enough. The local stack has its own ports and build folders, so it runs next to `just stack`,
+  and its relayer uses a public anvil account rather than the testnet key in `app/.env.local`.
 
 Deploy to Base Sepolia (needs `DEPLOYER_PRIVATE_KEY` and `BASESCAN_API_KEY` in `.env`). The whole system costs
 well under 0.001 ETH, and the script reuses the EAS, Safe, Uniswap and Chainlink contracts already deployed there.
