@@ -1323,7 +1323,8 @@ const runDelivery = async (
 const signedVote = async (ctx: DemoContext, role: RoleName, deliveryId: bigint, approve: boolean) => {
   const account = ctx.accounts[role]
   if (!account.signTypedData) return fail(`${role}'s account cannot sign typed data`)
-  const deadline = BigInt(Math.floor(Date.now() / 1000) + VOTE_SIGNATURE_TTL_SECONDS)
+  // The contract judges the deadline by block time, which on a fork (or a drifting node) is not the wall clock.
+  const deadline = (await chainTime(ctx)) + BigInt(VOTE_SIGNATURE_TTL_SECONDS)
   const signature = await account.signTypedData(
     voteTypedData({
       chainId: ctx.chain.id,

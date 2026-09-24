@@ -69,9 +69,12 @@ export const createContext = (networkArg?: string): DemoContext => {
   const network = parseNetwork(networkArg ?? process.env.DEMO_NETWORK)
   const deployment = getDeployment(network)
   const chain = chainFor(network)
-  const isLocal = network === 'anvil'
+  // A local fork of a public network (the mainnet rehearsal) behaves like anvil: its clock can be moved, and
+  // anvil's public wallets play every part, whatever deployment it holds.
+  const isLocal = network === 'anvil' || process.env.DEMO_FORK === '1'
   const rpcUrl =
-    (isLocal ? process.env.ANVIL_RPC_URL : process.env.BASE_SEPOLIA_RPC_URL) ??
+    process.env.DEMO_RPC_URL ??
+    (network === 'anvil' ? process.env.ANVIL_RPC_URL : process.env.BASE_SEPOLIA_RPC_URL) ??
     chain.rpcUrls.default.http[0] ??
     'http://127.0.0.1:8545'
 
