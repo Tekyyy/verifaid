@@ -11,6 +11,8 @@ keys are (names only, never values), how to operate it, and what is still open.
 
 | | |
 |---|---|
+| Website | **https://www.verifaid.org** (Vercel; `verifaid.org` redirects to it), domain at name.com |
+| Indexer API | **https://hackathon-blockchainforgood-production.up.railway.app** (Railway, with Railway Postgres) |
 | Release | **v10**, live on **Base Sepolia** (chain 84532), indexed from block 47,256,760 |
 | Source | every contract source-verified on Basescan (20 system contracts + the timelock) |
 | Admin | a **TimelockController** (10-minute delay), proposed by your existing **2-of-3 Safe**; the deployer is only the guardian (pause) |
@@ -126,7 +128,17 @@ To leave evidence waiting for a live vote: `pnpm demo:run base-sepolia review`.
 
 ---
 
-## 5. What is running on this machine
+## 5. What is running, and where
+
+**Online** (see `docs/DEPLOY.md`):
+
+| Service | Where | Notes |
+|---|---|---|
+| Website | https://www.verifaid.org | Vercel project `hackathon-blockchainforgood`, builds `main` from `app/`; env: `NEXT_PUBLIC_INDEXER_URL`, `UPLOAD_DIR`, `RELAYER_PRIVATE_KEY` (`PINATA_JWT` still to add) |
+| Indexer | https://hackathon-blockchainforgood-production.up.railway.app | Railway service from `indexer/railway.json`; env: `DATABASE_URL`, `PONDER_RPC_URL`, `PORT=42069`, `APP_BASE_URL`; 30-day trial, then the $5 Hobby plan |
+| Database | Railway Postgres | one schema per indexer deployment |
+
+**On this machine:**
 
 | Service | Where | Notes |
 |---|---|---|

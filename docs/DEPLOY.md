@@ -1,5 +1,8 @@
 # Putting VerifAid online
 
+**Live now:** the site at https://www.verifaid.org (Vercel, domain at name.com) and the indexer at
+https://hackathon-blockchainforgood-production.up.railway.app (Railway). This guide is how they were set up.
+
 The contracts are already on Base Sepolia. What goes online is the rest:
 
 | Part | Host | Why there |
@@ -12,8 +15,8 @@ The contracts are already on Base Sepolia. What goes online is the rest:
 The repo is set up for both: `indexer/Dockerfile` and `indexer/railway.json` for Railway, `app/vercel.json` for
 Vercel. Nothing needs to be typed as a build command.
 
-**Which branch.** Both hosts deploy one branch. It must be the code that matches the live contracts (v10). Use
-`main` once v10 is merged into it; until then pick `feature/beneficiary-needs` in both.
+**Which branch.** Both hosts deploy `main`, which holds the code that matches the live contracts (v10). A branch
+without `indexer/railway.json` makes Railway fall back to guessing the build ("Railpack"), which fails.
 
 ---
 
@@ -34,10 +37,13 @@ Vercel. Nothing needs to be typed as a build command.
    |---|---|
    | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (type it exactly; Railway fills in the database's address) |
    | `PONDER_RPC_URL` | `https://sepolia.base.org` (or an Alchemy / QuickNode Base Sepolia URL, faster and not rate-limited) |
-   | `APP_BASE_URL` | leave for now; set it to the Vercel address in step 3 |
+   | `PORT` | `42069` (Railway sets its own `PORT` otherwise, and the domain below would reach nothing: a 502) |
+   | `RAILWAY_DOCKERFILE_PATH` | `indexer/Dockerfile` (a safety net in case the config file is not picked up) |
+   | `APP_BASE_URL` | leave for now; set it to the site's address in step 3 |
 
 6. **Settings → Networking → Generate Domain**, port **42069**. You get something like
-   `https://verifaid-indexer-production.up.railway.app`.
+   `https://verifaid-indexer-production.up.railway.app`. If Networking says "Could not load public networking",
+   deploy once first and reload the page.
 7. Railway redeploys. The deployment turns healthy once the indexer has caught up with the chain (a few minutes;
    the health check waits up to 10). Check it in a browser:
    - `https://<indexer-domain>/ready` → `200`
@@ -64,8 +70,7 @@ the same deployment resumes where it stopped.
 
    Chain, RPC and contract addresses need nothing: the app defaults to Base Sepolia and reads the addresses from
    `deployments/base-sepolia.json`.
-5. **Deploy.** If the first deployment was made from `main` while v10 is still on the branch, change
-   **Settings → Git → Production Branch** to the branch above and redeploy.
+5. **Deploy.**
 6. Open the site: the needs, `/baskets`, a need page and a donation's tracking page should all show live data.
 
 **Evidence files need Pinata.** The app keeps uploads on its own disk and pins them to IPFS when `PINATA_JWT` is
@@ -107,7 +112,8 @@ Once the Vercel address is known (e.g. `https://verifaid.vercel.app`):
 | Symptom | Likely cause |
 |---|---|
 | Railway deployment never turns healthy | `DATABASE_URL` not set to `${{Postgres.DATABASE_URL}}`, or the RPC is rate-limiting: use an Alchemy URL |
-| Railway builds the whole repo with Nixpacks | the config-as-code path is not `/indexer/railway.json` |
+| Railway says "Railpack failed to prepare the build" | the branch has no `indexer/railway.json`, or the config-as-code path is not `/indexer/railway.json`; `RAILWAY_DOCKERFILE_PATH=indexer/Dockerfile` also forces the Dockerfile |
+| The indexer domain answers 502 "Application failed to respond" | `PORT` is not `42069`, so the app listens on Railway's port while the domain points at 42069 |
 | The site says the indexer is unreachable | `NEXT_PUBLIC_INDEXER_URL` missing or has a trailing slash; redeploy after changing it (it is baked in at build time) |
 | The site shows old needs or errors on new ones | Vercel is building a branch with the v9 code |
 | Uploading evidence fails | `UPLOAD_DIR` not set to `/tmp/verifaid-uploads` |
