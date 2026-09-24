@@ -111,6 +111,7 @@ contract Deploy is Script, SystemDeployer, DeploymentIO {
         contracts.serialize("AidVaultFactory", address(s.factory));
         contracts.serialize("DonationReceipt", address(s.receipt));
         contracts.serialize("ProgramRegistry", address(s.programs));
+        contracts.serialize("BeneficiaryRegistry", address(s.beneficiaries));
         contracts.serialize("DeliveryManager", address(s.deliveryManager));
         contracts.serialize("ReleasePolicyDonors", address(s.donorPolicy));
         contracts.serialize("ReleasePolicyVerifier", address(s.verifierPolicy));
@@ -150,7 +151,7 @@ contract Deploy is Script, SystemDeployer, DeploymentIO {
 
         string memory root = "deployment";
         root.serialize("network", _networkName(block.chainid));
-        root.serialize("version", uint256(9));
+        root.serialize("version", uint256(10));
         root.serialize("chainId", block.chainid);
         root.serialize("startBlock", startBlock);
         root.serialize("deployer", deployer);

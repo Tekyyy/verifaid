@@ -94,6 +94,7 @@ export const toNeedSummary = (
   ngo: row.ngo as Address,
   // The NGO's display name lives in the off-chain profile JSON at metadataURI; only the URI is on-chain.
   ngoName: null,
+  beneficiary: (row.beneficiary as Address | null) ?? null,
   programId: row.programId.toString(),
   category: row.category,
   categoryLabel: categoryLabel(row.category as Hex),

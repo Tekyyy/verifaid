@@ -8,10 +8,17 @@ import { TextField } from '@/components/form'
 import { ZERO_BYTES32 } from '@/lib/format'
 import { getSuppliers } from '@/lib/indexer'
 
-/** Contract bounds (NeedsRegistry): at most 5 payees, and the NGO itself takes at most 25% of a need. */
+/**
+ * Contract bounds (NeedsRegistry): at most 5 payees, and an NGO takes at most 25% of a need for itself. A certified
+ * beneficiary's own share is the aid itself and has no cap.
+ */
 export const MAX_PAYEES = 5
 export const MAX_NGO_SHARE_BPS = 2500
-/** The NGO's own share is the zero address in the plan; the vault resolves it to the NGO's payout Safe. */
+export const NO_OWN_SHARE_CAP = 10_000
+/**
+ * The owner's own share is the zero address in the plan; the vault resolves it to the NGO's payout Safe, or to the
+ * wallet of the beneficiary who posted the need.
+ */
 export const NGO_PAYEE = 'ngo' as const
 
 export interface PlanRow {
@@ -62,7 +69,11 @@ export interface PlanCheck {
  * payees, a share for every tranche, each tranche summing to exactly 100%, no payee that never gets anything,
  * at most one NGO entry, no duplicates, and the NGO's own share capped at 25% of the need.
  */
-export const checkPlan = (rows: PlanRow[], trancheBps: number[]): PlanCheck => {
+export const checkPlan = (
+  rows: PlanRow[],
+  trancheBps: number[],
+  maxOwnShareBps: number = MAX_NGO_SHARE_BPS,
+): PlanCheck => {
   const trancheSums = trancheBps.map(() => 0)
   let ngoShareBps = 0
   let ngoEntries = 0
@@ -106,7 +117,7 @@ export const checkPlan = (rows: PlanRow[], trancheBps: number[]): PlanCheck => {
 
   if (ngoEntries > 1) problem ??= 'planNgoTwice'
   if (trancheSums.some((sum) => sum !== 10_000)) problem ??= 'planTrancheSum'
-  if (Math.round(ngoShareBps) > MAX_NGO_SHARE_BPS) problem ??= 'planNgoCap'
+  if (Math.round(ngoShareBps) > maxOwnShareBps) problem ??= 'planNgoCap'
 
   return { payees: problem ? null : payees, trancheSums, ngoShareBps: Math.round(ngoShareBps), problem }
 }
@@ -121,11 +132,14 @@ export function PaymentPlanEditor({
   onChange,
   trancheBps,
   check,
+  asBeneficiary = false,
 }: {
   rows: PlanRow[]
   onChange: (rows: PlanRow[]) => void
   trancheBps: number[]
   check: PlanCheck
+  /** The plan of a need a beneficiary posts: the own share is their wallet, not an NGO's payout Safe. */
+  asBeneficiary?: boolean
 }) {
   const t = useTranslations('ngo')
   const query = useQuery({ queryKey: ['suppliers'], queryFn: getSuppliers })
@@ -155,6 +169,7 @@ export function PaymentPlanEditor({
           onField={(patch) => update(index, patch)}
           onShare={(trancheIndex, value) => updateShare(index, trancheIndex, value)}
           onRemove={rows.length > 1 ? () => onChange(rows.filter((_, i) => i !== index)) : undefined}
+          asBeneficiary={asBeneficiary}
         />
       ))}
 
@@ -171,6 +186,7 @@ export function PaymentPlanEditor({
           {t('planTotals', {
             totals: check.trancheSums.map((sum) => `${(sum / 100).toFixed(0)}%`).join(' / '),
             ngo: (check.ngoShareBps / 100).toFixed(2),
+            owner: asBeneficiary ? 'beneficiary' : 'ngo',
           })}
         </span>
       </div>
@@ -186,6 +202,7 @@ function PlanRowFields({
   onField,
   onShare,
   onRemove,
+  asBeneficiary,
 }: {
   row: PlanRow
   index: number
@@ -194,6 +211,7 @@ function PlanRowFields({
   onField: (patch: Partial<PlanRow>) => void
   onShare: (trancheIndex: number, value: string) => void
   onRemove?: () => void
+  asBeneficiary: boolean
 }) {
   const t = useTranslations('ngo')
   const id = useId()
@@ -223,7 +241,7 @@ function PlanRowFields({
           onChange={(event) => onField({ account: event.target.value })}
         >
           <option value="">{t('planPick')}</option>
-          <option value={NGO_PAYEE}>{t('planNgoOption')}</option>
+          <option value={NGO_PAYEE}>{asBeneficiary ? t('planOwnOption') : t('planNgoOption')}</option>
           {suppliers.map((address) => (
             <option key={address} value={address}>
               {address}

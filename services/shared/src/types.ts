@@ -20,6 +20,8 @@ export interface Deployment {
     DonationReceipt: Address
     /** v9: the NGOs' programmes (Semaphore groups until v8). */
     ProgramRegistry: Address
+    /** v10: where a beneficiary an NGO certified posts a need of their own. */
+    BeneficiaryRegistry?: Address
     DeliveryManager: Address
     /** v9: the built-in release policies a need chooses from when it is created. */
     ReleasePolicyDonors: Address

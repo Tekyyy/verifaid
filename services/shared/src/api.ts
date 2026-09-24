@@ -9,8 +9,14 @@ import type { DeliveryStatus, NeedStatus, SchemaName, TrancheStatus, Voice } fro
 
 export interface NeedSummary {
   id: string
+  /** The NGO behind the need: it runs it, or — on a need a beneficiary posted — certified the beneficiary. */
   ngo: Address
   ngoName?: string | null
+  /**
+   * v10: the certified beneficiary who posted the need and runs it (files its evidence, receives its own share), or
+   * null for a need its NGO runs. Whoever runs a need is `beneficiary ?? ngo`.
+   */
+  beneficiary: Address | null
   programId: string
   category: string
   categoryLabel: string
@@ -406,6 +412,7 @@ export interface IdleCapitalView {
 
 export type TimelineEventType =
   | 'NeedCreated'
+  | 'BeneficiaryNeedPosted'
   | 'NeedVerificationRecorded'
   | 'NeedVerified'
   | 'NeedStatusChanged'

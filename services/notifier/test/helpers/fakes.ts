@@ -136,6 +136,7 @@ export const needFixture = (id: string, overrides: Partial<NeedDetail> = {}): Ne
   id,
   ngo: NGO,
   ngoName: 'Test NGO',
+  beneficiary: null,
   programId: '1',
   category: HASH,
   categoryLabel: 'FOOD',

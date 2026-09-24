@@ -99,6 +99,8 @@ export interface NeedFilters {
   /** Only needs that accept money right now. */
   open?: boolean
   sort?: NeedSort
+  /** v10: only the needs this beneficiary posted. */
+  beneficiary?: string
 }
 
 const query = (filters: NeedFilters): string => {
@@ -109,6 +111,7 @@ const query = (filters: NeedFilters): string => {
   if (filters.country) params.set('country', filters.country)
   if (filters.open) params.set('open', 'true')
   if (filters.sort) params.set('sort', filters.sort)
+  if (filters.beneficiary) params.set('beneficiary', filters.beneficiary)
   const serialized = params.toString()
   return serialized ? `?${serialized}` : ''
 }

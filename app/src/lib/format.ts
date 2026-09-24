@@ -66,6 +66,18 @@ export const bpsOf = (part: bigint | string, whole: bigint | string): number => 
   return bottom === 0n ? 0 : Number((BigInt(part) * 10_000n) / bottom)
 }
 
+const CATEGORY_ICONS: Record<string, string> = {
+  FOOD: '🥫',
+  SHELTER: '🏠',
+  MEDICAL: '🩺',
+  CASH: '💶',
+  WATER: '💧',
+  EDUCATION: '📚',
+}
+
+/** A small picture for a need category ("FOOD" → 🥫), so a list of needs can be scanned before it is read. */
+export const categoryIcon = (category: string): string => CATEGORY_ICONS[category.toUpperCase()] ?? '📦'
+
 /** ISO 3166-1 alpha-2 code → flag emoji ("ES" → 🇪🇸); empty for anything that is not two ASCII letters. */
 export const flagEmoji = (country: string): string =>
   /^[A-Za-z]{2}$/.test(country)

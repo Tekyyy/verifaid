@@ -1,6 +1,7 @@
 import {
   aidVaultAbi,
   aidVaultFactoryAbi,
+  beneficiaryRegistryAbi,
   chainFor,
   deliveryManagerAbi,
   donationForwarderAbi,
@@ -29,6 +30,15 @@ const { contracts, external, schemas, startBlock, chainId } = deployment
 
 const rpc = process.env.PONDER_RPC_URL ?? chainFor(network).rpcUrls.default.http[0]
 
+/**
+ * Where the tables live: Ponder's default (PGlite in `.ponder/pglite`, or Postgres when DATABASE_URL is set), or a
+ * PGlite folder of its own, so a second indexer — the local chain beside Base Sepolia — can run at the same time.
+ */
+const pgliteDirectory = process.env.PONDER_PGLITE_DIR
+
+/** v10: where beneficiaries post their own needs; a deployment without it indexes nothing at the zero address. */
+const beneficiaryRegistry = contracts.BeneficiaryRegistry ?? zeroAddress
+
 /** v3 conversion contracts; a deployment without them indexes nothing at the zero address. */
 const forwarderFactory = contracts.DonationForwarderFactory ?? zeroAddress
 
@@ -43,6 +53,7 @@ const schemaUIDs = [...Object.values(schemas), ...Object.values(deployment.commu
 const ledgerAbi = aidVaultAbi
 
 export default createConfig({
+  ...(pgliteDirectory ? { database: { kind: 'pglite' as const, directory: pgliteDirectory } } : {}),
   chains: { [network]: { id: chainId, rpc } },
   contracts: {
     RoleRegistry: { abi: roleRegistryAbi, chain: network, address: contracts.RoleRegistry, startBlock },
@@ -96,6 +107,13 @@ export default createConfig({
       abi: programRegistryAbi,
       chain: network,
       address: contracts.ProgramRegistry,
+      startBlock,
+    },
+    // v10: which needs a certified beneficiary posted, and which certifications their NGOs withdrew.
+    BeneficiaryRegistry: {
+      abi: beneficiaryRegistryAbi,
+      chain: network,
+      address: beneficiaryRegistry,
       startBlock,
     },
     DeliveryManager: {

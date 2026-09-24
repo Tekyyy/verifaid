@@ -16,8 +16,8 @@ import {Errors} from "../libraries/Errors.sol";
 ///         - both: the donors *and* the verifiers must approve, and either of them can reject.
 ///
 ///         A donor's say weighs what they gave, so splitting one gift across many wallets gains nothing. The NGO,
-///         its payout address and the need's payees have no say, however much they gave: they would be judging
-///         their own accounts. A verifier counts as a verifier, never also as a donor.
+///         its payout address, the need's payees and the beneficiary who posted it have no say, however much they
+///         gave: they would be judging their own accounts. A verifier counts as a verifier, never also as a donor.
 contract ReleasePolicy is IReleasePolicy {
     uint16 public constant BPS_DENOMINATOR = 10_000;
 
@@ -89,7 +89,8 @@ contract ReleasePolicy is IReleasePolicy {
 
     /// @inheritdoc IReleasePolicy
     function voiceOf(uint256 needId, address voter) external view returns (Voice, uint256) {
-        if (voter == address(0)) return (Voice.None, 0);
+        // The beneficiary who posted the need is judged here, whatever other role their wallet came to hold.
+        if (voter == address(0) || voter == registry.beneficiaryOf(needId)) return (Voice.None, 0);
         (address ngo, address vault,,) = registry.coreOf(needId);
         if (verifiers && roles.isIndependent(voter, ngo)) return (Voice.Verifier, 1);
         if (donorApprovalBps == 0 || vault == address(0)) return (Voice.None, 0);

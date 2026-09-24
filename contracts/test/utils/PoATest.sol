@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {SystemDeployer} from "../../script/lib/SystemDeployer.sol";
 import {RoleRegistry} from "../../src/access/RoleRegistry.sol";
+import {BeneficiaryRegistry} from "../../src/beneficiaries/BeneficiaryRegistry.sol";
 import {ConversionRouter} from "../../src/conversion/ConversionRouter.sol";
 import {DeliveryManager} from "../../src/delivery/DeliveryManager.sol";
 import {ReleasePolicy} from "../../src/delivery/ReleasePolicy.sol";
@@ -11,6 +12,7 @@ import {AidVaultFactory} from "../../src/funds/AidVaultFactory.sol";
 import {DonationForwarderFactory} from "../../src/funds/DonationForwarderFactory.sol";
 import {DonationReceipt} from "../../src/funds/DonationReceipt.sol";
 import {IAidVault} from "../../src/interfaces/IAidVault.sol";
+import {IBeneficiaryRegistry} from "../../src/interfaces/IBeneficiaryRegistry.sol";
 import {IDeliveryManager} from "../../src/interfaces/IDeliveryManager.sol";
 import {INeedsRegistry} from "../../src/interfaces/INeedsRegistry.sol";
 import {IReleasePolicy} from "../../src/interfaces/IReleasePolicy.sol";
@@ -79,6 +81,11 @@ abstract contract PoATest is Test, SystemDeployer {
     address internal donor2 = makeAddr("donor2");
     address internal relayer = makeAddr("relayer");
     address internal outsider = makeAddr("outsider");
+    /// @dev People an NGO certified; nothing on chain knows them until they post a need.
+    address internal beneficiary = makeAddr("beneficiary");
+    address internal beneficiary2 = makeAddr("beneficiary2");
+    /// @dev How long the fixture's certificates last.
+    uint256 internal constant CERTIFICATE_LIFETIME = 90 days;
 
     // ─── system under test ─────────────────────────────────────────────────────
     System internal sys;
@@ -87,6 +94,7 @@ abstract contract PoATest is Test, SystemDeployer {
     AidVaultFactory internal factory;
     DonationReceipt internal receipt;
     ProgramRegistry internal programs;
+    BeneficiaryRegistry internal beneficiaries;
     DeliveryManager internal deliveryManager;
     /// @dev The built-in release policies; needs use `donorPolicy` unless a test picks another.
     ReleasePolicy internal donorPolicy;
@@ -185,6 +193,7 @@ abstract contract PoATest is Test, SystemDeployer {
         factory = sys.factory;
         receipt = sys.receipt;
         programs = sys.programs;
+        beneficiaries = sys.beneficiaries;
         deliveryManager = sys.deliveryManager;
         donorPolicy = sys.donorPolicy;
         verifierPolicy = sys.verifierPolicy;
@@ -336,6 +345,72 @@ abstract contract PoATest is Test, SystemDeployer {
         _attestNeedVerified(verifier1, needId, true);
     }
 
+    // ─── beneficiaries ─────────────────────────────────────────────────────────
+
+    /// @dev The key a fixture NGO signs with: the one `makeAddr` derived its address from.
+    function _keyOf(address who) internal view returns (uint256) {
+        if (who == ngo) return uint256(keccak256(abi.encodePacked("ngo")));
+        if (who == ngo2) return uint256(keccak256(abi.encodePacked("ngo2")));
+        revert("PoATest: no key for this address");
+    }
+
+    /// @dev A certificate `certifier` would issue now for `who` in `programId`, valid for `CERTIFICATE_LIFETIME`.
+    function _certification(address who, address certifier, uint256 programId)
+        internal
+        view
+        returns (IBeneficiaryRegistry.Certification memory)
+    {
+        return IBeneficiaryRegistry.Certification({
+            beneficiary: who,
+            ngo: certifier,
+            programId: programId,
+            issuedAt: uint64(block.timestamp),
+            expiresAt: uint64(block.timestamp + CERTIFICATE_LIFETIME)
+        });
+    }
+
+    function _signCertification(IBeneficiaryRegistry.Certification memory c, uint256 key)
+        internal
+        view
+        returns (bytes memory)
+    {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, beneficiaries.certificationDigest(c));
+        return abi.encodePacked(r, s, v);
+    }
+
+    /// @dev A beneficiary's own need: the default terms, every tranche paid in full to their wallet.
+    function _beneficiaryNeedParams(uint256 programId, uint256 target)
+        internal
+        view
+        returns (INeedsRegistry.CreateNeedParams memory p)
+    {
+        uint16[] memory bps = _threeTrancheBps();
+        p = _needParams(programId, target, target > HIGH_VALUE_THRESHOLD ? 2 : 1, bps);
+        p.payees = _singlePayee(address(0), bps.length);
+    }
+
+    /// @dev `who` posts a need on a fresh certificate from the fixture NGO.
+    function _postBeneficiaryNeed(address who, uint256 programId, uint256 target) internal returns (uint256 needId) {
+        IBeneficiaryRegistry.Certification memory c = _certification(who, ngo, programId);
+        bytes memory signature = _signCertification(c, _keyOf(ngo));
+        vm.prank(who);
+        needId = beneficiaries.createNeed(_beneficiaryNeedParams(programId, target), c, signature);
+    }
+
+    /// @dev A beneficiary's need, verified and fully funded, with tranche 0 paid to them: ready for evidence.
+    function _beneficiaryNeedInDelivery(uint256 target)
+        internal
+        returns (uint256 needId, uint256 programId, AidVault vault)
+    {
+        programId = _createProgram(ngo);
+        needId = _postBeneficiaryNeed(beneficiary, programId, target);
+        _attestNeedVerified(verifier1, needId, true);
+        if (target > HIGH_VALUE_THRESHOLD) _attestNeedVerified(verifier2, needId, true);
+        vault = AidVault(registry.vaultOf(needId));
+        _donate(donor1, needId, target);
+        vault.releaseTranche(0);
+    }
+
     /// @dev Mock feeds go stale when a test warps time; this re-publishes the demo prices.
     function _refreshPrices() internal {
         eurUsdFeed.updateAnswer(MOCK_EUR_USD);
@@ -445,8 +520,9 @@ abstract contract PoATest is Test, SystemDeployer {
         _approveByDonors(deliveryId);
     }
 
+    /// @dev Filed by whoever runs the need: its NGO, or the beneficiary who posted it.
     function _submitEvidence(uint256 needId) internal returns (uint256 deliveryId) {
-        vm.prank(registry.ngoOf(needId));
+        vm.prank(registry.ownerOf(needId));
         deliveryId = deliveryManager.submitEvidence(needId, MANIFEST);
     }
 

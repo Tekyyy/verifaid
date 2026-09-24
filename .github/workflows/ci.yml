@@ -55,7 +55,6 @@ jobs:
             src/funds/AidVault.sol \
             src/funds/AidVaultFactory.sol \
             src/funds/TrancheLedger.sol \
-            src/funds/NonCustodialLedger.sol \
             src/resolvers/ProofOfAidResolver.sol \
             src/conversion/ConversionRouter.sol \
             src/funds/DonationForwarder.sol \
@@ -63,7 +62,8 @@ jobs:
             src/funds/DonationConversion.sol \
             src/funds/DonationReceipt.sol \
             src/delivery/DeliveryManager.sol \
-            src/identity/BeneficiaryGroups.sol
+            src/programs/ProgramRegistry.sol \
+            src/beneficiaries/BeneficiaryRegistry.sol
 
   typescript:
     name: TypeScript (lint / typecheck / build / test)

@@ -5,7 +5,8 @@ import { RPC_URL } from './env.js'
 
 /**
  * Demo role wallets. Anvil's default mnemonic is public by design and these keys exist only on a local chain.
- * Indices 0–8 are the seeded roles; 10/11 are a second NGO used to prove one NGO cannot read another's records.
+ * Indices 0–12 are the seeded roles (10–12 the suppliers, see demo/src/config.ts); 13/14 are a second NGO used to
+ * prove one NGO cannot read another's records. A supplier can never become an NGO, so they must not overlap.
  */
 /**
  * These suites run against the local anvil deployment, which pnpm deploy:local always seeds with anvil's
@@ -23,8 +24,8 @@ export const ROLE_INDEX = {
   verifier2: 5,
   donor1: 7,
   donor2: 8,
-  ngoB: 10,
-  ngoBPayout: 11,
+  ngoB: 13,
+  ngoBPayout: 14,
 } as const
 
 export type RoleName = keyof typeof ROLE_INDEX

@@ -20,7 +20,9 @@ contract NeedsRegistryTest is PoATest {
     function test_wire_revertsWhenAlreadyWired() public {
         vm.prank(admin);
         vm.expectRevert(Errors.AlreadyWired.selector);
-        registry.wire(address(factory), address(programs), address(deliveryManager), address(resolver));
+        registry.wire(
+            address(factory), address(programs), address(deliveryManager), address(resolver), address(sys.beneficiaries)
+        );
     }
 
     function test_wire_revertsForNonAdminAndZeroAddress() public {
@@ -28,14 +30,20 @@ contract NeedsRegistryTest is PoATest {
 
         vm.prank(outsider);
         vm.expectRevert(Errors.Unauthorized.selector);
-        fresh.wire(address(factory), address(programs), address(deliveryManager), address(resolver));
+        fresh.wire(
+            address(factory), address(programs), address(deliveryManager), address(resolver), address(sys.beneficiaries)
+        );
 
         vm.prank(admin);
         vm.expectRevert(Errors.ZeroAddress.selector);
-        fresh.wire(address(0), address(programs), address(deliveryManager), address(resolver));
+        fresh.wire(
+            address(0), address(programs), address(deliveryManager), address(resolver), address(sys.beneficiaries)
+        );
 
         vm.prank(admin);
-        fresh.wire(address(factory), address(programs), address(deliveryManager), address(resolver));
+        fresh.wire(
+            address(factory), address(programs), address(deliveryManager), address(resolver), address(sys.beneficiaries)
+        );
         assertTrue(fresh.wired());
     }
 

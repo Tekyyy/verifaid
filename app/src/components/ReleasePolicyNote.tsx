@@ -11,6 +11,7 @@ export function ReleasePolicyNote({
   verifiers,
   strikes,
   compact = false,
+  ownerIsBeneficiary = false,
 }: {
   policy: ReleasePolicyView
   /** Independent verifiers the need required to open, which is also how many must sign a release. */
@@ -18,12 +19,15 @@ export function ReleasePolicyNote({
   /** Rejections so far; omitted where the need has none yet (a form, say). */
   strikes?: number
   compact?: boolean
+  /** The evidence is the beneficiary's who posted the need, not an NGO's. */
+  ownerIsBeneficiary?: boolean
 }) {
   const t = useTranslations('policy')
   const values = {
     approve: bpsToPercent(policy.donorApprovalBps),
     reject: bpsToPercent(policy.donorRejectionBps),
     verifiers: Math.max(1, verifiers),
+    owner: ownerIsBeneficiary ? 'beneficiary' : 'ngo',
   }
 
   return (
@@ -32,7 +36,7 @@ export function ReleasePolicyNote({
         <span className="font-semibold text-slate-900">{t(`name.${policy.kind}`)}.</span>{' '}
         {t(`summary.${policy.kind}`, values)}
       </p>
-      <p>{t('retries', { retries: policy.retries })}</p>
+      <p>{t('retries', { retries: policy.retries, owner: values.owner })}</p>
       {strikes !== undefined && strikes > 0 ? (
         <p className="font-medium text-amber-800">{t('strikes', { strikes })}</p>
       ) : null}

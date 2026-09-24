@@ -12,7 +12,8 @@ frauds expensive.
 |---|---|---|
 | Donor funds | The obvious one: money in escrow that has not been spent yet | `AidVault` (stablecoin), or a payment provider for off-chain custody |
 | Beneficiary identity and personal data | People receiving aid are often at risk from the same actors that caused the crisis | PII vault (encrypted), never on-chain |
-| The link "this person received aid" | Even without a name, a linkable record can expose someone | Nowhere on chain since v9 |
+| The link "this person received aid" | Even without a name, a linkable record can expose someone | Nowhere on chain for the people an NGO serves; since v10 a beneficiary who posts a need of their own links their own wallet to it, by choice (§3.23) |
+| Who an NGO has certified | The NGO's list of beneficiaries is a list of people at risk | The NGO's own records; a certificate reaches the chain only when its wallet posts a need, or is revoked (§3.23) |
 | Evidence integrity | The claim "we delivered 120 kits" must be anchored in time | Manifest hash on chain; files by SHA-256, pinned to IPFS |
 | The verification record | Who said a need was real, who approved or rejected each account | EAS attestations, `DeliveryManager` votes |
 | The rules of a need | The release policy donors were shown must be the one their money is released under | Fixed per need in `NeedsRegistry` |
@@ -115,6 +116,11 @@ Stated plainly, because most of the security rests on them:
   text metadata (GPS, camera serials, timestamps) before they are hashed and stored, and the upload form tells the
   NGO to black out names, faces and account numbers first. Regions are coarse ISO 3166-2 subdivisions, and impact
   reports below five people served are refused so a count cannot point at one household.
+- **Since v10, one exception, taken by the person themselves.** A beneficiary who posts a need of their own puts
+  their wallet on chain, next to the NGO that certified them and the need's category, region and amounts. Nothing
+  else about them is published, and nobody an NGO certified appears unless they post (§3.23). Anything that wallet
+  did before, or does after, is linkable to that need — so the app tells them before they post, and a fresh wallet
+  for the purpose is the safer choice.
 - **Residual risk.** *The evidence is public by design.* An NGO that uploads an unredacted statement or a photo of
   identifiable people publishes it, and its hash on chain cannot be removed. The file itself can be taken down from
   this app's storage — but once it is pinned to IPFS (§3.22) other nodes may already hold a copy, so a mistake can
@@ -124,9 +130,14 @@ Stated plainly, because most of the security rests on them:
 
 *Someone forces a beneficiary to hand over aid.*
 
-- **Residual risk.** **Not solvable technically.** Since v9 no beneficiary signs or confirms anything on chain, so
-  there is nothing a coercer can extract from one either; what remains is a programme-design problem (distribution
-  points, staff presence), and we should not pretend otherwise.
+- **Residual risk.** **Not solvable technically.** On an NGO's need no beneficiary signs or confirms anything on
+  chain, so there is nothing a coercer can extract from one either; what remains is a programme-design problem
+  (distribution points, staff presence), and we should not pretend otherwise.
+- **Needs a beneficiary posts (v10) change this.** Their tranches land in a wallet they control, so a coercer can
+  demand the money, or demand that they post a need in the first place. What limits the damage: only the
+  pre-financing tranche is paid before any evidence, each later one waits for the donors or verifiers, and the plan
+  can pay a registered supplier (a landlord, a pharmacy) directly instead of the person. Where coercion is a known
+  risk, the NGO should not certify people to hold money themselves; that is a judgement the certificate leaves to it.
 
 ### 3.7 Fund theft and key compromise
 
@@ -377,11 +388,56 @@ itself.*
   the file can still disappear, leaving a hash with nothing behind it. Evidence uploaded without a key is on the
   app's server only.
 
+### 3.23 Needs a beneficiary posts, and the certificates behind them (v10)
+
+*Someone posts a need as a beneficiary without being one, or learns who an NGO serves.*
+
+- **Mitigation.** Only a wallet an NGO certified can post, and only with that NGO's EIP-712 signature, bound to the
+  chain and to the `BeneficiaryRegistry` it was signed for; the contract accepts it only from the wallet it names, so
+  a leaked link is useless to anyone else. Certificates expire (the app defaults to 30 days) and the NGO can withdraw
+  them. A wallet that holds or ever held an operational role cannot post as a beneficiary, the beneficiary is never
+  independent of their own need, and neither they nor their NGO has a say on its evidence. Every such need is still
+  attested by independent verifiers before it can take money, and one beneficiary has one open need at a time. The
+  certifying NGO answers for it: suspending the NGO freezes its beneficiaries' needs.
+- **Residual risk.** *An NGO can certify wallets it controls.* A beneficiary's own share has no cap (an NGO's is
+  25%), so an NGO inventing beneficiaries could route whole needs to itself; what stands in the way is the
+  independent verification of each need and the approval of each tranche against evidence — the same defence as a
+  fake need (§3.1), without the supplier vetting of §3.15. The "donors and a verifier" rule puts a verifier on every
+  tranche. What the NGO must have checked before certifying someone is not yet specified (a certification scheme is
+  planned). A certificate link, and a withdrawal on chain, both say that the NGO certified that wallet: the link is
+  for the beneficiary alone, and a withdrawal publishes the wallet, which is why short certificates that expire are
+  the quiet way to end one.
+
+### 3.24 News on a need's page (v10 app)
+
+*The news search gives away something about the people a need helps, turns the app's server against its own network,
+or puts something false in front of donors.*
+
+- **Mitigation.** The search is built from the need's category and coarse region only, both public on chain — never
+  from its description, its presentation or anyone's details — so a search engine learns nothing the chain does not
+  show. The server fetches article pages whose addresses come from the feeds, so each address, and every redirect hop,
+  is checked first: http(s) on the standard ports, no credentials, no `localhost`, `.local` or `.internal` names, and
+  every address the name resolves to must be public (no loopback, private, link-local, shared, multicast or metadata
+  ranges, IPv4 written inside IPv6 included). Only HTML is read, at most 512 KB and only as far as the end of its head,
+  within 4 seconds; feeds get 6 seconds and 1 MB. Text from feeds and pages is rendered as text, never as HTML; links
+  open in a new tab with `noopener noreferrer`; images must be https and load with no referrer. Results are cached for
+  three hours per region and category, so readers cannot make the server hammer a site. The section says the articles
+  were found automatically and are context, not evidence: nothing in it is signed, written on chain, or decides
+  anything.
+- **Residual risk.** A name that resolves to a public address when checked and a private one when fetched (DNS
+  rebinding) is not closed; what the server would read back is a page's Open Graph tags, and only those reach the
+  page. An article can still be off topic, wrong or hostile: the relevance filter requires the problem and the place in
+  its title or snippet, which removes most noise but checks no facts. Preview images load from the news sites, which
+  see the reader's IP address (not which need they were reading). The Bing and Google feeds allow personal,
+  non-commercial use only; a production deployment needs a licensed news API. `NEWS_SEARCH=off` turns the search off.
+
 ### 3.10 GDPR versus immutability
 
 - **Mitigation.** Personal data is only ever in the PII vault, encrypted with a per-record data key. Erasure is
-  crypto-shredding: destroy the wrapped data key and the ciphertext is unrecoverable. Since v9 nothing on chain
-  refers to a beneficiary at all, so erasure is complete once the key is gone.
+  crypto-shredding: destroy the wrapped data key and the ciphertext is unrecoverable. Nothing on chain refers to the
+  people an NGO serves, so erasure is complete once the key is gone. The exception (v10) is a beneficiary who posted a
+  need of their own: their wallet address stays on chain with it, as they were told before posting; it is not
+  personal data by itself, but it cannot be erased.
 - **Residual risk.** Evidence files are public and, once pinned, replicated (§3.5, §3.22): a photo that should not
   have been published cannot be recalled from every copy. A legal review is required before any production
   deployment; nothing here constitutes advice that the design is GDPR-compliant.
@@ -394,8 +450,12 @@ donation amount and the donor's address; when tranches were released and to whic
 evidence — its manifest, its files by hash and, where pinned, by CID — and every vote on it, with the voter's
 address and weight.
 
-They cannot learn: who any beneficiary is — since v9 no beneficiary is represented on chain in any form — or what
-the needs assessment says.
+Since v10 they also see the wallet of every beneficiary who posted a need of their own, the NGO that certified it,
+and every certification an NGO withdrew.
+
+They cannot learn: who any beneficiary is — the people an NGO serves are not on chain, and a beneficiary who posted
+a need appears only as a wallet — which wallets an NGO certified that never posted, or what the needs assessment
+says.
 
 **The evidence is the part that can leak.** It is public by design, so its safety rests on the NGO redacting names,
 faces and account numbers before uploading, and on the app stripping photo metadata; see §3.5.
@@ -408,7 +468,7 @@ faces and account numbers before uploading, and on the app stripping photo metad
 | An NGO re-filing to reset a losing vote | Replacing evidence someone already rejected costs the need's second chance; once it is spent, contested evidence cannot be replaced |
 | Donations blocking a need | Overfunding reverts, so a donor cannot push a need past its target to jam it |
 | Blocking expiry | A releasable tranche holds expiry off for at most 14 days after the execution deadline |
-| Spam needs | Only registered, active NGOs can create needs; the admin can deactivate an NGO |
+| Spam needs | Only registered, active NGOs can create needs, and people they certified — one open need at a time each; every need is verified before it can raise money, and the admin can deactivate an NGO |
 | Vote spam through the relayer | Signatures are checked and the call simulated before any gas is spent; rate limited per voter and per address. An operational cost, not a contract vulnerability |
 | Moving a pool to block conversions | Donations revert on the oracle bound instead of executing at a bad price; direct EURC and bank giving still work. On testnets the pool is rebalanced by re-running `SeedLiquidity` |
 | Spamming deposit addresses | Creating one through the app costs the relayer a clone deployment; the route is rate limited. Anyone can also deploy one at their own cost, which harms no one |

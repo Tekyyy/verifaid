@@ -3,8 +3,9 @@ pragma solidity ^0.8.24;
 
 /// @title IProgramRegistry
 /// @notice An NGO's programmes: who it serves and by which published rules it picks them. Every need belongs to one
-///         of its NGO's programmes. Beneficiaries themselves never appear on chain — their records stay in the
-///         NGO's encrypted, off-chain vault.
+///         of its NGO's programmes. Nobody is enrolled on chain — the NGO's records of the people it serves stay in
+///         its encrypted, off-chain vault. A beneficiary appears only by posting a need of their own, through the
+///         BeneficiaryRegistry, and then only as that need's owner.
 interface IProgramRegistry {
     struct Program {
         address ngo;

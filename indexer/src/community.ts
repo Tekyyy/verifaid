@@ -66,8 +66,8 @@ export const recordCommunityAttestation = async (
   if (name === 'WorkPhotos') {
     const [needId, photos, note] = decodeCommunityData<WorkPhotosData>('WorkPhotos', ctx.data)
     const need = await ctx.db.find(schema.need, { id: needId })
-    // Only the NGO that owns the need can publish its work photos.
-    if (!need || need.ngo.toLowerCase() !== ctx.attester.toLowerCase()) return null
+    // Only whoever runs the need can publish its work photos: its NGO, or the beneficiary who posted it.
+    if (!need || (need.beneficiary ?? need.ngo).toLowerCase() !== ctx.attester.toLowerCase()) return null
     const usable = usablePhotos(photos)
     if (usable.length === 0) return null
 
@@ -90,8 +90,8 @@ export const recordCommunityAttestation = async (
       ctx.data,
     )
     const need = await ctx.db.find(schema.need, { id: needId })
-    // Only the NGO that owns the need decides how it is presented.
-    if (!need || need.ngo.toLowerCase() !== ctx.attester.toLowerCase()) return null
+    // Only whoever runs the need decides how it is presented: its NGO, or the beneficiary who posted it.
+    if (!need || (need.beneficiary ?? need.ngo).toLowerCase() !== ctx.attester.toLowerCase()) return null
 
     const cover = usablePhotos([coverImage])[0] ?? ''
     const row = {

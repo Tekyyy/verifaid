@@ -22,6 +22,8 @@ ponder.on('NeedsRegistry:NeedCreated', async ({ event, context }) => {
   await context.db.insert(schema.need).values({
     id: needId,
     ngo,
+    // Set by BeneficiaryRegistry:BeneficiaryNeedPosted, logged later in the same transaction.
+    beneficiary: null,
     programId,
     category: params.category,
     regionCode: params.regionCode,
@@ -61,7 +63,8 @@ ponder.on('NeedsRegistry:NeedCreated', async ({ event, context }) => {
     expiredAt: null,
   })
 
-  // v4: who the vault pays. The NGO's own share (account zero) goes to its payout Safe at release time.
+  // v4: who the vault pays. The owner's own share (account zero) goes, at release time, to the NGO's payout Safe or
+  // (v10) to the wallet of the beneficiary who posted the need.
   if (params.payees.length > 0) {
     await context.db.insert(schema.payee).values(
       params.payees.map((planned, index) => ({

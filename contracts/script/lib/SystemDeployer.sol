@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {RoleRegistry} from "../../src/access/RoleRegistry.sol";
+import {BeneficiaryRegistry} from "../../src/beneficiaries/BeneficiaryRegistry.sol";
 import {ConversionRouter} from "../../src/conversion/ConversionRouter.sol";
 import {DeliveryManager} from "../../src/delivery/DeliveryManager.sol";
 import {ReleasePolicy} from "../../src/delivery/ReleasePolicy.sol";
@@ -18,6 +19,7 @@ import {IDonationForwarderFactory} from "../../src/interfaces/IDonationForwarder
 import {IDonationReceipt} from "../../src/interfaces/IDonationReceipt.sol";
 import {IFeeRecorder} from "../../src/interfaces/IFeeRecorder.sol";
 import {INeedsRegistry} from "../../src/interfaces/INeedsRegistry.sol";
+import {IProgramRegistry} from "../../src/interfaces/IProgramRegistry.sol";
 import {IRoleRegistry} from "../../src/interfaces/IRoleRegistry.sol";
 import {MockEURC} from "../../src/mocks/MockEURC.sol";
 import {MockSwapRouter} from "../../src/mocks/MockSwapRouter.sol";
@@ -96,6 +98,8 @@ abstract contract SystemDeployer is CommonBase {
         AidVaultFactory factory;
         DonationReceipt receipt;
         ProgramRegistry programs;
+        /// @notice Where a beneficiary an NGO certified posts a need of their own.
+        BeneficiaryRegistry beneficiaries;
         DeliveryManager deliveryManager;
         /// @notice The built-in release policies: donors decide (the default), a verifier checks, or both.
         ReleasePolicy donorPolicy;
@@ -137,6 +141,8 @@ abstract contract SystemDeployer is CommonBase {
 
         s.registry = new NeedsRegistry(roles, p.highValueThreshold);
         s.programs = new ProgramRegistry(roles);
+        s.beneficiaries =
+            new BeneficiaryRegistry(roles, INeedsRegistry(address(s.registry)), IProgramRegistry(address(s.programs)));
         s.deliveryManager = new DeliveryManager(roles, INeedsRegistry(address(s.registry)));
         s.resolver =
             new ProofOfAidResolver(IEAS(p.eas), roles, INeedsRegistry(address(s.registry)), p.minBeneficiariesServed);
@@ -156,7 +162,14 @@ abstract contract SystemDeployer is CommonBase {
             IFeeRecorder(address(s.resolver))
         );
 
-        s.registry.wire(address(s.factory), address(s.programs), address(s.deliveryManager), address(s.resolver));
+        s.registry
+            .wire(
+                address(s.factory),
+                address(s.programs),
+                address(s.deliveryManager),
+                address(s.resolver),
+                address(s.beneficiaries)
+            );
         _approveYieldVenue(s, p);
         _deployReleasePolicies(s, p);
         s.factory.wire(address(s.registry), s.token, address(s.vaultImplementation));

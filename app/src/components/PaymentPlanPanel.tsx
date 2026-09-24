@@ -40,7 +40,12 @@ export function PaymentPlanPanel({ need }: { need: NeedDetail }) {
           </thead>
           <tbody className="divide-y divide-slate-200">
             {need.payees.map((payee) => (
-              <PayeeRow key={payee.index} payee={payee} tranches={need.tranches.length} />
+              <PayeeRow
+                key={payee.index}
+                payee={payee}
+                tranches={need.tranches.length}
+                ownerIsBeneficiary={need.beneficiary !== null}
+              />
             ))}
           </tbody>
         </table>
@@ -81,7 +86,11 @@ export function PaymentPlanPanel({ need }: { need: NeedDetail }) {
                       })
                     : t('paymentPaid', {
                         index: payment.trancheIndex + 1,
-                        payee: payment.toNgo ? t('theNgo') : shorten(payment.payee),
+                        payee: payment.toNgo
+                          ? need.beneficiary
+                            ? t('theBeneficiary')
+                            : t('theNgo')
+                          : shorten(payment.payee),
                       })}
                 </span>
                 <span className="text-slate-500">{timestamp(payment.timestamp)}</span>
@@ -95,7 +104,16 @@ export function PaymentPlanPanel({ need }: { need: NeedDetail }) {
   )
 }
 
-function PayeeRow({ payee, tranches }: { payee: PayeeView; tranches: number }) {
+function PayeeRow({
+  payee,
+  tranches,
+  ownerIsBeneficiary,
+}: {
+  payee: PayeeView
+  tranches: number
+  /** The own share belongs to the beneficiary who posted the need, not to an NGO's payout Safe. */
+  ownerIsBeneficiary: boolean
+}) {
   const t = useTranslations('plan')
   const held = BigInt(payee.held) > 0n
 
@@ -108,7 +126,9 @@ function PayeeRow({ payee, tranches }: { payee: PayeeView; tranches: number }) {
             {shorten(payee.account)}
           </Link>
         ) : (
-          <span className="text-xs text-slate-600">{t('ngoShare')}</span>
+          <span className="text-xs text-slate-600">
+            {ownerIsBeneficiary ? t('beneficiaryShare') : t('ngoShare')}
+          </span>
         )}
       </td>
       {Array.from({ length: tranches }, (_, index) => (

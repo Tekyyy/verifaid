@@ -176,6 +176,12 @@ contract RoleRegistry is IRoleRegistry, AccessControl, Pausable {
     }
 
     /// @inheritdoc IRoleRegistry
+    /// @dev History, not only live roles: a removed verifier posting a need for itself is the conflict this rules out.
+    function holdsOperationalRole(address account) external view returns (bool) {
+        return everHeldRole[account] != bytes32(0) || isPayoutAddress[account];
+    }
+
+    /// @inheritdoc IRoleRegistry
     function paused() public view override(IRoleRegistry, Pausable) returns (bool) {
         return super.paused();
     }

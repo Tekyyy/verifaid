@@ -35,6 +35,8 @@ export const ROLE_INDEX = {
   foodSupplier: 10,
   shelterSupplier: 11,
   medicalSupplier: 12,
+  // 13 and 14 are the PII vault suite's second NGO. v10: a person the NGO certified, who posts a need of their own.
+  beneficiary: 15,
 } as const
 
 export type RoleName = keyof typeof ROLE_INDEX

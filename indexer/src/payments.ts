@@ -13,8 +13,10 @@ import { appendTimeline, type EventMeta, eventId, seconds } from './lib/timeline
 type PayeeRow = typeof schema.payee.$inferSelect
 
 /**
- * The plan entry an address is paid as: the supplier itself, or the NGO's own share when the address is the NGO's
- * payout Safe. Null when the address is in the plan no longer (a supplier replaced after its payment was held).
+ * The plan entry an address is paid as: the supplier itself, or the owner's own share when the address is where that
+ * share goes — the NGO's payout Safe, or the wallet of the beneficiary who posted the need. `toNgo` keeps its v4 name
+ * but means "the own share". Null when the address is in the plan no longer (a supplier replaced after its payment
+ * was held).
  */
 const planEntryOf = async (
   context: Context,
@@ -26,8 +28,10 @@ const planEntryOf = async (
   if (supplierRow) return { row: supplierRow, toNgo: false }
 
   const need = await context.db.find(schema.need, { id: needId })
-  const ngo = need ? await context.db.find(schema.ngo, { address: need.ngo as Address }) : null
-  if (ngo && ngo.payout.toLowerCase() === account.toLowerCase()) {
+  const ngo =
+    need && !need.beneficiary ? await context.db.find(schema.ngo, { address: need.ngo as Address }) : null
+  const own = need?.beneficiary ?? ngo?.payout
+  if (own && own.toLowerCase() === account.toLowerCase()) {
     return { row: rows.find((row) => row.account === null), toNgo: true }
   }
   return { row: undefined, toNgo: false }

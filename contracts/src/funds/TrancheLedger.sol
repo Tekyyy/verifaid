@@ -64,8 +64,9 @@ abstract contract TrancheLedger is ITrancheLedger, ReentrancyGuardTransient {
     function closeFunding() external nonReentrant onlyClone {
         _requireNotPaused();
         uint256 id = needId();
-        (address ngo, uint256 target, uint16 minFundingBps, bool open) = registry.fundingTermsOf(id);
-        if (msg.sender != ngo) revert Errors.Unauthorized();
+        (, uint256 target, uint16 minFundingBps, bool open) = registry.fundingTermsOf(id);
+        // Whoever runs the need: its NGO, or the beneficiary who posted it.
+        if (msg.sender != registry.ownerOf(id)) revert Errors.Unauthorized();
         if (_fundingClosed || !open) revert Errors.FundingNotOpen();
         uint256 raised = _totalDonated;
         if (raised == 0) revert Errors.NothingDonated();

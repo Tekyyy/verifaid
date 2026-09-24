@@ -1,7 +1,15 @@
-import { keccak256, stringToHex } from 'viem'
+import { getAddress, keccak256, recoverTypedDataAddress, stringToHex } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, it } from 'vitest'
 import { DONOR_STAGES, trackingRefKind } from '../src/api.js'
 import { createSessionToken, verifySessionToken, verifyWebhookSignature } from '../src/auth.js'
+import {
+  CERTIFICATION_TYPES,
+  certificationTypedData,
+  decodeCertificate,
+  encodeCertificate,
+  type SignedCertificate,
+} from '../src/certificates.js'
 import { hmac, open, openEnvelope, seal, sealEnvelope } from '../src/crypto.js'
 import { getDeployment, hasDeployment } from '../src/deployment.js'
 import { categoryHash, categoryLabel, countryOf, regionCode, regionLabel } from '../src/format.js'
@@ -15,6 +23,63 @@ import {
   type SettlementData,
 } from '../src/schemas.js'
 import { needStatusName, SCHEMA_NAMES } from '../src/types.js'
+
+describe('certificates', () => {
+  // anvil's well-known key #1, standing in for an NGO; nothing here touches a chain.
+  const ngo = privateKeyToAccount('0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d')
+  const registry = getAddress('0x5fbdb2315678afecb367f032d93f642f64180aa3')
+  const certification = {
+    beneficiary: getAddress('0x71be63f3384f5fb98995898a86b02fb2426c5788'),
+    ngo: ngo.address,
+    programId: 3n,
+    issuedAt: 1_790_000_000n,
+    expiresAt: 1_792_592_000n,
+  }
+  const signed = async (): Promise<SignedCertificate> => ({
+    certification,
+    signature: await ngo.signTypedData(
+      certificationTypedData({ chainId: 31337, registry, ...certification }),
+    ),
+    chainId: 31337,
+    registry,
+  })
+
+  it('names the type exactly as BeneficiaryRegistry.CERTIFICATION_TYPEHASH does', () => {
+    const fields = CERTIFICATION_TYPES.Certification.map((field) => `${field.type} ${field.name}`).join(',')
+    expect(`Certification(${fields})`).toBe(
+      'Certification(address beneficiary,address ngo,uint256 programId,uint64 issuedAt,uint64 expiresAt)',
+    )
+  })
+
+  it('is signed by the NGO: the signature recovers to it', async () => {
+    const certificate = await signed()
+    const recovered = await recoverTypedDataAddress({
+      ...certificationTypedData({ chainId: 31337, registry, ...certification }),
+      signature: certificate.signature,
+    })
+    expect(recovered).toBe(ngo.address)
+  })
+
+  it('travels as a URL-safe code and comes back unchanged', async () => {
+    const certificate = await signed()
+    const code = encodeCertificate(certificate)
+    expect(code).toMatch(/^[A-Za-z0-9_-]+$/)
+    const decoded = decodeCertificate(`  ${code}\n`)
+    expect(decoded).toEqual({ ok: true, value: certificate })
+  })
+
+  it('refuses what is not a certificate, or one it cannot read', async () => {
+    expect(decodeCertificate('not a certificate').ok).toBe(false)
+    const future = Buffer.from(JSON.stringify([2, 31337])).toString('base64url')
+    expect(decodeCertificate(future)).toMatchObject({ ok: false })
+    const code = encodeCertificate(await signed())
+    const payload = JSON.parse(Buffer.from(code, 'base64url').toString('binary')) as unknown[]
+    payload[3] = 'not-an-address'
+    expect(decodeCertificate(Buffer.from(JSON.stringify(payload), 'binary').toString('base64url')).ok).toBe(
+      false,
+    )
+  })
+})
 
 describe('roles', () => {
   it('matches the identifiers in Roles.sol', () => {

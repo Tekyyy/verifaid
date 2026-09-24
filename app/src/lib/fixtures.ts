@@ -205,6 +205,7 @@ const summary = (
     id,
     ngo: NGO,
     ngoName: 'Aurora Relief',
+    beneficiary: null,
     programId: '1',
     category: categoryHash(category),
     categoryLabel: categoryLabel(categoryHash(category)),
@@ -1051,7 +1052,8 @@ export const filterNeeds = (filters: NeedFilters): NeedSummary[] => {
       (!filters.category || need.category === filters.category || need.categoryLabel === filters.category) &&
       (!filters.region || need.regionCode === filters.region || need.regionLabel === filters.region) &&
       (!filters.country || need.country === filters.country.toUpperCase()) &&
-      (!filters.open || isOpen(need, now)),
+      (!filters.open || isOpen(need, now)) &&
+      (!filters.beneficiary || need.beneficiary?.toLowerCase() === filters.beneficiary.toLowerCase()),
   )
   return filters.sort ? [...matches].sort(SORTS[filters.sort]) : matches
 }

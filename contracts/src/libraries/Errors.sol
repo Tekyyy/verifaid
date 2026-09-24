@@ -66,6 +66,14 @@ library Errors {
     error ProgramNotFound();
     error ProgramInactive();
 
+    // ─── beneficiaries ─────────────────────────────────────────────────────────
+    /// @dev The NGO's certificate is past its expiry, or not valid yet.
+    error CertificationExpired();
+    /// @dev The NGO withdrew its certification of this wallet after the certificate was issued.
+    error CertificationRevoked();
+    /// @dev A beneficiary has one need open at a time; the last one must be over first.
+    error OpenNeedExists();
+
     // ─── deliveries ────────────────────────────────────────────────────────────
     error DeliveryNotFound();
     error InvalidDeliveryStatus();

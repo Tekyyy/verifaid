@@ -1,46 +1,235 @@
 'use client'
 
-import { aidVaultAbi, easAbi, needsRegistryAbi, programRegistryAbi } from '@poa/shared'
-import { useQueryClient } from '@tanstack/react-query'
+import { aidVaultAbi, easAbi, needsRegistryAbi, programRegistryAbi, roleRegistryAbi } from '@poa/shared'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { type Address, type Hex, keccak256, parseEventLogs, toHex } from 'viem'
 import { useAccount, useReadContract } from 'wagmi'
-import { AcknowledgeDonationsPanel } from '@/components/AcknowledgeDonationsPanel'
+import { CertifyBeneficiaryPanel, RevokeCertificationPanel } from '@/components/CertifyBeneficiaryPanel'
 import { CreateNeedPanel } from '@/components/CreateNeedPanel'
+import { ExplorerLink } from '@/components/ExplorerLink'
 import { Advanced, FormError, Panel, TextArea, TextField } from '@/components/form'
-import { IdleCapitalPanel } from '@/components/IdleCapitalPanel'
-import { NeedPresentationPanel } from '@/components/NeedPresentationPanel'
+import { ImagePlaceholder } from '@/components/ImagePlaceholder'
+import { NgoCampaignDashboard } from '@/components/NgoCampaignDashboard'
 import { MissingDeployment } from '@/components/Notice'
-import { ProposePayeeChangePanel } from '@/components/PayeeChangePanel'
-import { PublishPhotosPanel } from '@/components/PublishPhotosPanel'
-import { SettlementPanel } from '@/components/SettlementPanel'
+import { type TabSpec, Tabs, useTabParam } from '@/components/Tabs'
 import { TaxStatusPanel } from '@/components/TaxStatusPanel'
 import { TxStatus } from '@/components/TxStatus'
+import { Link } from '@/i18n/navigation'
 import { deployment } from '@/lib/config'
 import { attestationRequest, schemaRecipient } from '@/lib/eas'
-import { amount, bpsPercent, isBytes32, isZeroHash, ZERO_BYTES32 } from '@/lib/format'
-import { useLedger, useTx } from '@/lib/hooks'
+import { amount, bpsPercent, isBytes32, isZeroHash, timestamp, ZERO_BYTES32 } from '@/lib/format'
+import { useLedger, useMounted, useTx } from '@/lib/hooks'
 import { getPrograms } from '@/lib/indexer'
-import { rememberProgramPolicy } from '@/lib/programNames'
+import { programPolicyLabel, rememberProgramPolicy } from '@/lib/programNames'
 
+const TAB_KEYS = ['overview', 'newNeed', 'beneficiaries', 'programmes', 'organisation'] as const
+type ConsoleTab = (typeof TAB_KEYS)[number]
+
+/**
+ * The NGO console, one job per tab: an overview of its campaigns, registering a need, certifying beneficiaries,
+ * its programmes, and its organisation's standing. Everything done to one need in particular — evidence, releases,
+ * photos, reports — lives in that need's own dashboard (Need management), already pointed at it.
+ */
 export function NgoConsole() {
   if (!deployment) return <MissingDeployment />
+  return <ConsoleTabs />
+}
+
+function ConsoleTabs() {
+  const t = useTranslations('ngo')
+  const [tab, setTab] = useTabParam(TAB_KEYS, 'overview')
+  const beneficiariesEnabled = Boolean(deployment?.contracts.BeneficiaryRegistry)
+
+  const tabs: TabSpec<ConsoleTab>[] = [
+    { key: 'overview', label: t('tabOverview'), content: <Overview onGo={setTab} /> },
+    { key: 'newNeed', label: t('tabNewNeed'), content: <CreateNeedPanel /> },
+    ...(beneficiariesEnabled
+      ? [
+          {
+            key: 'beneficiaries' as const,
+            label: t('tabBeneficiaries'),
+            content: (
+              <>
+                <CertifyBeneficiaryPanel />
+                <RevokeCertificationPanel />
+              </>
+            ),
+          },
+        ]
+      : []),
+    {
+      key: 'programmes',
+      label: t('tabProgrammes'),
+      content: (
+        <>
+          <ProgramList />
+          <CreateProgram />
+        </>
+      ),
+    },
+    { key: 'organisation', label: t('tabOrganisation'), content: <TaxStatusPanel /> },
+  ]
 
   return (
     <div className="space-y-6">
-      <CreateProgram />
-      <CreateNeedPanel />
-      <NeedPresentationPanel />
-      <CloseFunding />
-      <IdleCapitalPanel />
-      <ProposePayeeChangePanel />
-      <SettlementPanel />
-      <PublishPhotosPanel />
-      <TaxStatusPanel />
-      <AcknowledgeDonationsPanel />
-      <PublishImpactReport />
+      <ConsoleHeader onNewNeed={() => setTab('newNeed')} />
+      <Tabs tabs={tabs} active={tab} onSelect={setTab} label={t('tabsLabel')} />
     </div>
+  )
+}
+
+/** Who is signed in, whether the platform knows it as an NGO, and the two things an NGO comes here to do. */
+function ConsoleHeader({ onNewNeed }: { onNewNeed: () => void }) {
+  const t = useTranslations('ngo')
+  const tUi = useTranslations('ui')
+  const mounted = useMounted()
+  const { address } = useAccount()
+  const { data: active } = useReadContract({
+    address: deployment?.contracts.RoleRegistry as Address | undefined,
+    abi: roleRegistryAbi,
+    functionName: 'isActiveNgo',
+    args: address ? [address] : undefined,
+    query: { enabled: Boolean(address && deployment) },
+  })
+
+  return (
+    <section className="card flex flex-col gap-4 sm:flex-row sm:items-center">
+      <ImagePlaceholder shape="circle" label={tUi('ngoLogo')} className="h-16 w-16 shrink-0" />
+      <div className="min-w-0 flex-1">
+        <p className="eyebrow">{t('consoleEyebrow')}</p>
+        <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+        {mounted && address ? (
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-700">
+            <ExplorerLink kind="address" value={address} />
+            {active === true ? (
+              <span className="chip bg-emerald-100 text-emerald-900">{t('activeNgo')}</span>
+            ) : active === false ? (
+              <span className="chip bg-amber-100 text-amber-900">{t('notRegisteredNgo')}</span>
+            ) : null}
+          </p>
+        ) : (
+          <p className="mt-1 text-sm text-slate-700">{t('subtitle')}</p>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className="btn-primary" onClick={onNewNeed}>
+          + {t('quickNewNeed')}
+        </button>
+        <Link href="/ngo/manage" className="btn-secondary no-underline">
+          {t('manageButton')}
+        </Link>
+      </div>
+    </section>
+  )
+}
+
+/** The shortcuts, then every campaign still raising or delivering. */
+function Overview({ onGo }: { onGo: (tab: ConsoleTab) => void }) {
+  const t = useTranslations('ngo')
+  const beneficiariesEnabled = Boolean(deployment?.contracts.BeneficiaryRegistry)
+  const tiles: { icon: string; title: string; body: string; go: ConsoleTab | 'manage' }[] = [
+    { icon: '📝', title: t('quick.newNeed'), body: t('quick.newNeedBody'), go: 'newNeed' },
+    { icon: '📊', title: t('quick.manage'), body: t('quick.manageBody'), go: 'manage' },
+    ...(beneficiariesEnabled
+      ? [
+          {
+            icon: '🤝',
+            title: t('quick.certify'),
+            body: t('quick.certifyBody'),
+            go: 'beneficiaries' as const,
+          },
+        ]
+      : []),
+    { icon: '🗂️', title: t('quick.programmes'), body: t('quick.programmesBody'), go: 'programmes' },
+  ]
+  const tileClass =
+    'card flex h-full gap-3 text-left no-underline transition-shadow hover:border-teal-300 hover:shadow-md'
+  const inner = (tile: (typeof tiles)[number]) => (
+    <>
+      <span className="text-2xl" aria-hidden="true">
+        {tile.icon}
+      </span>
+      <span>
+        <span className="block font-semibold text-slate-900">{tile.title}</span>
+        <span className="mt-0.5 block text-sm text-slate-600">{tile.body}</span>
+      </span>
+    </>
+  )
+
+  return (
+    <>
+      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {tiles.map((tile) => (
+          <li key={tile.go}>
+            {tile.go === 'manage' ? (
+              <Link href="/ngo/manage" className={tileClass}>
+                {inner(tile)}
+              </Link>
+            ) : (
+              <button
+                type="button"
+                className={`${tileClass} w-full`}
+                onClick={() => onGo(tile.go as ConsoleTab)}
+              >
+                {inner(tile)}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      <NgoCampaignDashboard />
+    </>
+  )
+}
+
+/** The connected NGO's programmes: the ones needs and certificates can point to. */
+function ProgramList() {
+  const t = useTranslations('ngo')
+  const tCommon = useTranslations('common')
+  const mounted = useMounted()
+  const { address } = useAccount()
+  const query = useQuery({
+    queryKey: ['programs', address],
+    queryFn: () => getPrograms(address as string),
+    enabled: Boolean(address),
+  })
+  const programs = query.data?.ok ? query.data.data : []
+
+  return (
+    <Panel title={t('programmesTitle')} description={t('programmesBody')}>
+      {!mounted || !address ? <p className="hint">{t('programConnect')}</p> : null}
+      {query.isLoading ? <p className="hint">{tCommon('loading')}</p> : null}
+      {mounted && address && query.data?.ok && programs.length === 0 ? (
+        <p className="text-sm text-slate-700">{t('programmesEmpty')}</p>
+      ) : null}
+      {programs.length > 0 ? (
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {programs.map((program) => (
+            <li key={program.id} className="flex gap-3 rounded-lg border border-slate-200 p-3">
+              <ImagePlaceholder shape="circle" label={t('programmeImage')} className="h-10 w-10 shrink-0" />
+              <div className="min-w-0">
+                <p className="font-semibold text-slate-900">
+                  {programPolicyLabel(program.eligibilityHash)
+                    ? t('programOptionNamed', {
+                        id: program.id,
+                        name: programPolicyLabel(program.eligibilityHash) ?? '',
+                      })
+                    : t('programOption', { id: program.id })}
+                </p>
+                <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                  <span className={`chip ${program.active ? 'bg-emerald-100 text-emerald-900' : ''}`}>
+                    {program.active ? t('programmeActive') : t('programmeClosed')}
+                  </span>
+                  {timestamp(program.createdAt)}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </Panel>
   )
 }
 

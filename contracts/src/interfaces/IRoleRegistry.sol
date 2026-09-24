@@ -65,6 +65,10 @@ interface IRoleRegistry is IAccessControl {
     /// @notice Payout address of a registered NGO (zero if unregistered).
     function payoutOf(address ngo) external view returns (address);
 
+    /// @notice True if `account` holds, or ever held, an operational role (NGO, verifier, supplier) or is an NGO's
+    ///         payout address. Such an address can never post a need as a beneficiary.
+    function holdsOperationalRole(address account) external view returns (bool);
+
     /// @notice Global pause flag.
     function paused() external view returns (bool);
 }

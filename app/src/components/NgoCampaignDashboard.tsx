@@ -9,8 +9,10 @@ import { useAccount, useReadContract } from 'wagmi'
 import { Deadline } from '@/components/Deadline'
 import { ExplorerLink } from '@/components/ExplorerLink'
 import { Panel, SelectField } from '@/components/form'
+import { CoverImage } from '@/components/ImagePlaceholder'
 import { IndexerNotice } from '@/components/Notice'
 import { ProgressBar } from '@/components/ProgressBar'
+import { StatTile } from '@/components/StatTile'
 import { NeedStatusBadge } from '@/components/StatusBadge'
 import { Link } from '@/i18n/navigation'
 import {
@@ -26,7 +28,7 @@ import {
   type YieldVenueOption,
 } from '@/lib/campaigns'
 import { BASE_MAINNET_CHAIN_ID, chainId, deployment } from '@/lib/config'
-import { amount, bpsPercent, percent } from '@/lib/format'
+import { amount, bpsPercent, categoryIcon, percent } from '@/lib/format'
 import { useMounted } from '@/lib/hooks'
 import { getNeed, getNeeds } from '@/lib/indexer'
 
@@ -93,17 +95,18 @@ export function NgoCampaignDashboard() {
       {mine.length > 0 ? (
         <>
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Tile label={t('active')} value={String(mine.length)} />
-            <Tile label={t('raised')} value={`${amount(raised)} ${unit}`} />
-            <Tile label={t('stillNeeded')} value={`${amount(gap)} ${unit}`} />
-            <Tile
+            <StatTile size="sm" label={t('active')} value={mine.length} />
+            <StatTile size="sm" label={t('raised')} value={amount(raised)} hint={unit} />
+            <StatTile size="sm" label={t('stillNeeded')} value={amount(gap)} hint={unit} />
+            <StatTile
+              size="sm"
               label={t('waiting')}
-              value={`${amount(lent)} ${unit}`}
-              note={earned > 0n ? t('earnedSoFar', { amount: amount(earned), unit }) : undefined}
+              value={amount(lent)}
+              hint={earned > 0n ? t('earnedSoFar', { amount: amount(earned), unit }) : unit}
             />
           </dl>
 
-          <ul className="divide-y divide-slate-200 rounded-md border border-slate-200">
+          <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200">
             {mine.map((need) => (
               <CampaignRow key={need.id} need={need} long={long.includes(need)} now={now} />
             ))}
@@ -116,65 +119,68 @@ export function NgoCampaignDashboard() {
   )
 }
 
-function Tile({ label, value, note }: { label: string; value: string; note?: string }) {
-  return (
-    <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-      <dt className="text-xs text-slate-600">{label}</dt>
-      <dd className="text-base font-semibold tabular-nums">{value}</dd>
-      {note ? <dd className="text-xs text-emerald-800">{note}</dd> : null}
-    </div>
-  )
-}
-
 function CampaignRow({ need, long, now }: { need: NeedSummary; long: boolean; now: number }) {
   const t = useTranslations('campaigns')
   const tCommon = useTranslations('common')
+  const tUi = useTranslations('ui')
   const unit = tCommon('amountUnit')
   const share = percent(need.totalDonated, need.targetAmount)
   const before = isBeforeClose(need)
   const state = optInState(need)
 
   return (
-    <li className="space-y-2 p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Link
-          href={`/needs/${need.id}`}
-          className="font-semibold text-teal-800 underline-offset-2 hover:underline"
-        >
-          {t('needLabel', { id: need.id, category: need.categoryLabel })}
-        </Link>
-        <Link
-          href={`/ngo/manage?need=${need.id}`}
-          className="text-sm font-medium text-teal-800 underline-offset-2 hover:underline"
-        >
-          {t('manageLink')}
-        </Link>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {long ? (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
-              {t('long', { months: monthsOf(waitingWindow(need, now)) })}
+    <li className="flex gap-4 p-3 hover:bg-slate-50/60">
+      <Link
+        href={`/ngo/manage?need=${need.id}`}
+        className="hidden shrink-0 sm:block"
+        tabIndex={-1}
+        aria-hidden="true"
+      >
+        <CoverImage src={need.presentation?.coverImage} label={tUi('coverPhoto')} className="h-20 w-28" />
+      </Link>
+      <div className="min-w-0 flex-1 space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Link
+            href={`/needs/${need.id}`}
+            className="font-semibold text-slate-900 underline-offset-2 hover:text-teal-800 hover:underline"
+          >
+            <span aria-hidden="true">{categoryIcon(need.categoryLabel)} </span>
+            {t('needLabel', { id: need.id, category: need.categoryLabel })}
+            <span className="ml-1 font-normal text-slate-500">· {need.regionLabel}</span>
+          </Link>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {long ? (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
+                {t('long', { months: monthsOf(waitingWindow(need, now)) })}
+              </span>
+            ) : null}
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${OPT_IN_TONES[state]}`}>
+              {t(`optIn.${state}`)}
             </span>
-          ) : null}
-          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${OPT_IN_TONES[state]}`}>
-            {t(`optIn.${state}`)}
-          </span>
-          <NeedStatusBadge status={need.status} />
+            <NeedStatusBadge status={need.status} />
+          </div>
         </div>
-      </div>
-      <ProgressBar value={share} label={t('progressLabel', { id: need.id })} />
-      <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 text-xs text-slate-700">
-        <span className="tabular-nums">
-          {t('raisedOf', {
-            raised: amount(need.totalDonated),
-            target: amount(need.targetAmount),
-            unit,
-            share,
-          })}
-        </span>
-        <span>
-          {before ? t('fundingCloses') : t('deliverBy')}{' '}
-          <Deadline seconds={before ? need.fundingDeadline : need.executionDeadline} none={t('noDeadline')} />
-        </span>
+        <ProgressBar value={share} label={t('progressLabel', { id: need.id })} />
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-slate-700">
+          <span className="tabular-nums">
+            {t('raisedOf', {
+              raised: amount(need.totalDonated),
+              target: amount(need.targetAmount),
+              unit,
+              share,
+            })}
+          </span>
+          <span>
+            {before ? t('fundingCloses') : t('deliverBy')}{' '}
+            <Deadline
+              seconds={before ? need.fundingDeadline : need.executionDeadline}
+              none={t('noDeadline')}
+            />
+          </span>
+          <Link href={`/ngo/manage?need=${need.id}`} className="btn-secondary px-3 py-1 text-xs">
+            {t('manageLink')}
+          </Link>
+        </div>
       </div>
     </li>
   )

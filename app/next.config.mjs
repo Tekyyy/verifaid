@@ -5,6 +5,8 @@ const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts')
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // A second dev server (the local chain beside Base Sepolia) needs its own build folder, or the two overwrite each other.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   // Biome lints the whole monorepo from the root; Next's own ESLint pass is not configured here.
   eslint: { ignoreDuringBuilds: true },
   // The tracking widget is meant to be embedded on NGO and donor sites, so only its routes may be framed.

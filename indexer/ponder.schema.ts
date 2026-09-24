@@ -84,6 +84,8 @@ export const need = onchainTable(
   (t) => ({
     id: t.bigint().primaryKey(),
     ngo: t.hex().notNull(),
+    /** v10: the certified beneficiary who posted and runs the need; null when its NGO runs it. */
+    beneficiary: t.hex(),
     programId: t.bigint().notNull(),
     category: t.hex().notNull(),
     regionCode: t.hex().notNull(),
@@ -140,7 +142,26 @@ export const need = onchainTable(
     regionIdx: index().on(table.regionCode),
     countryIdx: index().on(table.country),
     ngoIdx: index().on(table.ngo),
+    beneficiaryIdx: index().on(table.beneficiary),
     vaultIdx: index().on(table.vault),
+  }),
+)
+
+/**
+ * v10: an NGO withdrew its certification of a wallet, voiding every certificate it issued until then. One row per
+ * (NGO, wallet), holding the latest withdrawal. Only withdrawals reach the chain: who an NGO certified does not.
+ */
+export const certificationRevocation = onchainTable(
+  'certification_revocation',
+  (t) => ({
+    ngo: t.hex().notNull(),
+    beneficiary: t.hex().notNull(),
+    revokedAt: t.integer().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (table) => ({
+    pk: primaryKey({ columns: [table.ngo, table.beneficiary] }),
+    beneficiaryIdx: index().on(table.beneficiary),
   }),
 )
 

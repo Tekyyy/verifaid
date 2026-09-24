@@ -12,10 +12,11 @@ import { conflict, forbidden, gone, notFound } from './errors.js'
 import { ngoContext } from './keys.js'
 
 /**
- * Beneficiary records: the one place in the system where a name exists, and since v9 the only place a beneficiary
- * exists at all — the chain holds programmes, never people. `commitment` is the NGO's own opaque reference for a
- * household (a card number, a random id), unique within its programme; the profile is sealed under a per-NGO key
- * and can be destroyed on request (spec §8.2, right to erasure).
+ * Beneficiary records: the one place in the system where a name exists, and since v9 the only place the people an
+ * NGO serves exist at all — the chain holds programmes, never people. (Since v10 a beneficiary the NGO certified may
+ * post a need of their own; the chain then holds their wallet, and nothing from here.) `commitment` is the NGO's own
+ * opaque reference for a household (a card number, a random id), unique within its programme; the profile is sealed
+ * under a per-NGO key and can be destroyed on request (spec §8.2, right to erasure).
  */
 
 const DecimalSchema = z.string().regex(/^\d+$/, 'must be a decimal integer string')

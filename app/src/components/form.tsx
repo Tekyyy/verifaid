@@ -1,6 +1,13 @@
 'use client'
 
-import { type ReactNode, useId } from 'react'
+import { createContext, type ReactNode, useContext, useId } from 'react'
+
+/** Inside an accordion row the row is the frame and shows the title, so a panel drops its own card and heading. */
+const BarePanel = createContext(false)
+
+export function BarePanels({ children }: { children: ReactNode }) {
+  return <BarePanel.Provider value={true}>{children}</BarePanel.Provider>
+}
 
 export function Panel({
   title,
@@ -11,11 +18,12 @@ export function Panel({
   description?: string
   children: ReactNode
 }) {
+  const bare = useContext(BarePanel)
   const id = `panel-${title.replace(/\W+/g, '-').toLowerCase()}`
   return (
-    <section className="card space-y-3" aria-labelledby={id}>
+    <section className={bare ? 'space-y-3' : 'card space-y-3'} aria-labelledby={id}>
       <div>
-        <h2 id={id} className="section-title">
+        <h2 id={id} className={bare ? 'sr-only' : 'section-title'}>
           {title}
         </h2>
         {description ? <p className="mt-1 text-sm text-slate-700">{description}</p> : null}

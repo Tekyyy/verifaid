@@ -42,12 +42,15 @@ export function DeliveryReviewPanel({
   policy,
   verifications,
   strikes,
+  ownerIsBeneficiary = false,
 }: {
   needId: string
   delivery: DeliveryView
   policy: ReleasePolicyView
   verifications: number
   strikes: number
+  /** The evidence was filed by the beneficiary who posted the need, not by an NGO. */
+  ownerIsBeneficiary?: boolean
 }) {
   const t = useTranslations('evidence')
   const tCommon = useTranslations('common')
@@ -146,8 +149,16 @@ export function DeliveryReviewPanel({
       <h2 id="review" className="section-title">
         {t('reviewTitle', { spent: delivery.trancheIndex - 1 })}
       </h2>
-      <p className="text-sm text-slate-700">{t('reviewBody', { next: delivery.trancheIndex })}</p>
-      <ReleasePolicyNote policy={policy} verifiers={verifications} strikes={strikes} compact />
+      <p className="text-sm text-slate-700">
+        {t('reviewBody', { next: delivery.trancheIndex, owner: ownerIsBeneficiary ? 'beneficiary' : 'ngo' })}
+      </p>
+      <ReleasePolicyNote
+        policy={policy}
+        verifiers={verifications}
+        strikes={strikes}
+        compact
+        ownerIsBeneficiary={ownerIsBeneficiary}
+      />
       <a className="link text-sm" href={`#delivery-${delivery.id}`}>
         {t('reviewSee', { count: files })}
       </a>

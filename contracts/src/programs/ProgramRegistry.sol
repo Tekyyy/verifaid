@@ -11,7 +11,8 @@ import {Errors} from "../libraries/Errors.sol";
 ///         eligibility rules — that needs point to, so donors can see what a need is part of.
 /// @dev Programmes used to be Semaphore groups whose members confirmed deliveries anonymously. Since donors approve
 ///      deliveries themselves, nothing reads membership any more, and a beneficiary is safest nowhere on chain at
-///      all: enrolment lives only in the NGO's encrypted records.
+///      all: enrolment lives only in the NGO's encrypted records. (Since v10 a beneficiary the NGO certified may post
+///      a need of their own through the BeneficiaryRegistry; they appear as that need's owner, never here.)
 contract ProgramRegistry is IProgramRegistry, RoleAware {
     /// @inheritdoc IProgramRegistry
     uint256 public programCount;

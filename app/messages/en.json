@@ -37,7 +37,8 @@
     "ngo": "NGO",
     "verifier": "Verifier",
     "track": "Track a donation",
-    "suppliers": "Suppliers"
+    "suppliers": "Suppliers",
+    "beneficiary": "My need"
   },
   "errors": {
     "indexerTitle": "Indexer unavailable",
@@ -126,11 +127,12 @@
     "DeliverySuperseded": "Evidence replaced",
     "DeliveryApproved": "Evidence approved: next tranche unlocked",
     "DeliveryVoteCast": "A vote on the evidence",
-    "DeliveryRejected": "Evidence rejected"
+    "DeliveryRejected": "Evidence rejected",
+    "BeneficiaryNeedPosted": "Posted by a beneficiary the NGO certified"
   },
   "home": {
     "title": "Aid you can audit, beneficiaries you cannot identify",
-    "lead": "Register verified needs, follow every donation from donor to delivery, and prove aid arrived — without ever putting a person on a public chain.",
+    "lead": "Register verified needs, follow every donation from donor to delivery, and prove aid arrived — without ever putting a person’s identity on a public chain.",
     "browseNeeds": "Browse open needs",
     "seeImpact": "See the impact",
     "totalsTitle": "Live totals",
@@ -144,7 +146,7 @@
     "beneficiaries": "Beneficiaries served",
     "flowTitle": "How the money moves",
     "flow1Title": "A need is verified",
-    "flow1Body": "An NGO registers a need with a tranche plan. Independent verifiers attest it on EAS; only then is a vault deployed.",
+    "flow1Body": "An NGO — or someone it has certified — registers a need with a tranche plan. Independent verifiers attest it on EAS; only then is a vault deployed.",
     "flow2Title": "Donors fund the vault",
     "flow2Body": "Stablecoin goes into a vault owned by nobody. Each donation mints a soulbound receipt you can trace.",
     "flow3Title": "The first tranche pre-finances",
@@ -154,7 +156,10 @@
     "flow5Title": "Donors approve before the next tranche",
     "flow5Body": "The next tranche only unlocks once donors who gave at least 30% of the money approve that evidence. The last release completes the need; if donors never approve, they get back what was not spent.",
     "privacyTitle": "What never reaches the chain",
-    "privacyBody": "Nobody who receives aid is named, numbered or located. Evidence photos are stripped of their location data, and NGOs must redact names and account numbers from receipts and statements before filing them."
+    "privacyBody": "Nobody who receives aid is named, numbered or located. A person appears only if they choose to post a need themselves, and then only as the wallet their NGO certified. Evidence photos are stripped of their location data, and receipts and statements must be redacted of names and account numbers before they are filed.",
+    "featuredTitle": "Needs to fund now",
+    "featuredNote": "Verified, open for donations, soonest deadline first.",
+    "featuredAll": "All open needs"
   },
   "needs": {
     "title": "Needs",
@@ -181,7 +186,8 @@
     "sort_gap": "Largest funding gap",
     "sort_newest": "Newest",
     "gap": "Still needed",
-    "ofTarget": "of {target} raised · {percent}%"
+    "ofTarget": "of {target} raised · {percent}%",
+    "postedByBeneficiary": "Posted by a person this NGO certified"
   },
   "need": {
     "title": "Need #{id}",
@@ -279,7 +285,38 @@
     "evidenceContested": "Replaced (#{id}) after some had rejected it, which cost the NGO its second chance.",
     "evidenceRejected": "Rejected. The NGO may file better evidence for this tranche.",
     "evidenceRejectedFinal": "Rejected a second time: the need was cancelled and donors can claim back what was not released.",
-    "evidenceIpfs": "on IPFS"
+    "evidenceIpfs": "on IPFS",
+    "postedByBeneficiary": "Posted by a person the NGO certified. They run this need: they file its evidence and receive its tranches in their own wallet.",
+    "runBy": "Run by (certified beneficiary)",
+    "backToNeeds": "All needs",
+    "postedByBeneficiaryShort": "Run by a certified person",
+    "ofTargetPercent": "of {target} {unit} · {percent}%",
+    "donorsLabel": "Donations",
+    "fundingCloses": "Funding closes",
+    "deliverBy": "Deliver by",
+    "openEnded": "No deadline",
+    "donateCta": "Donate to this need",
+    "notFundingNow": "This need is not taking donations right now.",
+    "organisedBy": "Organised by",
+    "atGlance": "At a glance",
+    "tranchesPaid": "Tranches paid",
+    "tranchesPaidHint": "each one after proof",
+    "evidenceApproved": "Evidence approved",
+    "evidenceApprovedHint": "deliveries signed off",
+    "verificationsHint": "independent checks",
+    "sectionsLabel": "Sections of this page",
+    "navAbout": "About",
+    "navTranches": "Tranches",
+    "navEvidence": "Deliveries",
+    "navTerms": "Terms",
+    "navPlan": "Who gets paid",
+    "navTimeline": "Timeline",
+    "navDetails": "On-chain details",
+    "aboutEmpty": "The organiser has not added a story or photos yet.",
+    "workPhotosEmpty": "Photos of the delivery will appear here once the organiser publishes them.",
+    "detailsTitle": "On-chain details",
+    "detailsNote": "Every figure on this page comes from these contracts. Anyone can check them on the explorer.",
+    "navNews": "News"
   },
   "donor": {
     "title": "My donations",
@@ -316,7 +353,7 @@
     "metadataUri": "Public metadata URI",
     "createProgram": "Create program",
     "programId": "Program id",
-    "needTitle": "2. Ask for money",
+    "needTitle": "Post a new need",
     "needBody": "What you need, how much, and who gets paid. Everything else has a sensible default you can change under Advanced. These terms are shown to every donor and cannot be changed later.",
     "category": "Category",
     "targetAmount": "Target amount in {unit}",
@@ -432,7 +469,7 @@
     "planRef": "Contract or quote",
     "planRefHint": "Only its hash goes on chain, as the reference for what was agreed.",
     "planTrancheShare": "Tranche {index} ({tranche}% of the need)",
-    "planTotals": "Tranche totals: {totals} · the NGO takes {ngo}% of the need",
+    "planTotals": "Tranche totals: {totals} · {owner, select, beneficiary {your wallet receives {ngo}% of the need} other {the NGO takes {ngo}% of the need}}",
     "planCount": "A payment plan has between one and five payees.",
     "planAddress": "Every payee must be a registered supplier’s address, or the NGO itself.",
     "planDuplicate": "The same payee cannot appear twice in a plan.",
@@ -520,7 +557,59 @@
     "idleHint": "Only after funding closes, and never money a supplier can claim. Donors see this on the need before they give, and are always repaid what they gave. It needs a second signature right after the need is created.",
     "policyLabel": "Who approves each tranche",
     "policyHint": "Fixed once the need is created: donors see it before they give, and it cannot be changed afterwards.",
-    "summaryPolicy": "Each tranche after the first is released under the rule “{name}”."
+    "summaryPolicy": "Each tranche after the first is released under the rule “{name}”.",
+    "planOwnOption": "You (your own wallet)",
+    "planOwnLabel": "Paid to me",
+    "planOwnSimpleBody": "Each tranche is paid into your own wallet. After the first one you show, with receipts and photos, how you spent it before the next is released. You can also have part of each tranche paid straight to a registered supplier.",
+    "planOwnKeep": "Share of each tranche paid to your wallet (%)",
+    "planOwnKeepHint": "100 unless a registered supplier should be paid directly for the rest.",
+    "summaryPlanOwn": "{own}% of every tranche is paid to your wallet{paysSupplier, select, true {; the vault pays {payee} the rest directly} other {}}.",
+    "beneficiaryNeedTitle": "Post your need",
+    "beneficiaryNeedBody": "Say what you need, how much and where. Independent verifiers check it before anyone can give; then donors fund it and the money reaches you tranche by tranche, each one after you show how the last was spent.",
+    "beneficiaryProgram": "Programme #{id} of the NGO that certified you",
+    "beneficiaryCreateNeed": "Post this need",
+    "createdNeed": "Need #{id} created.",
+    "createdNeedManage": "Manage it",
+    "consoleEyebrow": "Organisation",
+    "activeNgo": "Registered NGO",
+    "notRegisteredNgo": "Not a registered NGO",
+    "quickNewNeed": "New need",
+    "tabsLabel": "Console sections",
+    "tabOverview": "Overview",
+    "tabNewNeed": "New need",
+    "tabBeneficiaries": "Beneficiaries",
+    "tabProgrammes": "Programmes",
+    "tabOrganisation": "Organisation",
+    "quick": {
+      "newNeed": "Post a need",
+      "newNeedBody": "Four short steps: what, when, how much, check.",
+      "manage": "Manage a need",
+      "manageBody": "One need at a time: what it is waiting for, and the action to take.",
+      "certify": "Certify a beneficiary",
+      "certifyBody": "Sign a certificate so a person can post their own need.",
+      "programmes": "Programmes",
+      "programmesBody": "Open a programme, or see the ones you run."
+    },
+    "programmesTitle": "Your programmes",
+    "programmesBody": "Every need belongs to a programme. Its rule decides who approves each tranche.",
+    "programmesEmpty": "You have not opened a programme yet.",
+    "programmeImage": "Programme image",
+    "programmeActive": "Active",
+    "programmeClosed": "Closed",
+    "step": {
+      "need": "The need",
+      "needHint": "What and where",
+      "timeline": "Timeline",
+      "timelineHint": "How long",
+      "money": "Money",
+      "moneyHint": "Who gets paid, and when",
+      "review": "Review",
+      "reviewHint": "Check and post"
+    },
+    "stepCounter": "Step {current} of {total}",
+    "stepBack": "Back",
+    "stepNext": "Continue",
+    "coverLater": "You can add a cover photo and a story once the need is posted, from its dashboard."
   },
   "verifier": {
     "title": "Verifier queue",
@@ -836,7 +925,9 @@
     "changeApprovals": "{approvals} of {required} independent verifier approvals",
     "paymentsTitle": "Payments",
     "paymentPaid": "of tranche {index} to {payee}",
-    "paymentHeld": "of tranche {index} held for {payee}: the token refused it"
+    "paymentHeld": "of tranche {index} held for {payee}: the token refused it",
+    "beneficiaryShare": "The beneficiary’s own wallet",
+    "theBeneficiary": "the beneficiary"
   },
   "suppliers": {
     "title": "Suppliers",
@@ -1052,7 +1143,7 @@
     "publicPage": "Public page →",
     "notFound": "There is no need #{id}.",
     "notYoursTitle": "This need belongs to another organisation",
-    "notYoursBody": "You can see where it stands, but every action below would be refused: only the NGO that created a need can manage it.",
+    "notYoursBody": "You can see where it stands, but every action below would be refused: only whoever runs a need — the NGO that created it, or the beneficiary who posted it — can manage it.",
     "needTitle": "Need #{id} · {category} · {region}",
     "raised": "{raised} of {target} {unit} raised",
     "fundingCloses": "Funding closes",
@@ -1074,10 +1165,69 @@
       "Completed": "Every tranche has been paid. Publish the impact report to close the story.",
       "Done": "Completed and reported. Nothing left to do.",
       "Closed": "This need was {status}: donors can reclaim what was not released.",
-      "deliveryUnderwayVerifier": "Your evidence for tranche {spent} is waiting for a verifier: {approved} of {required} have approved."
+      "deliveryUnderwayVerifier": "Your evidence for tranche {spent} is waiting for a verifier: {approved} of {required} have approved.",
+      "CompletedOwn": "Every tranche has been paid. The NGO that certified you publishes the impact report to close the story."
     },
     "actionsTitle": "Actions on this need",
-    "noActions": "Nothing to do on this need in its current state."
+    "noActions": "Nothing to do on this need in its current state.",
+    "sponsorTitle": "Run by a beneficiary you certified",
+    "sponsorBody": "{beneficiary} posted this need with your certificate and runs it: they file its evidence and receive its tranches. You can withdraw it until funding closes, and publish its impact report.",
+    "runBy": "Run by",
+    "cancelTitle": "Withdraw this need",
+    "cancelBody": "Until funding closes, the need can be withdrawn — by its NGO, or by the beneficiary who posted it. Anything already given can then be claimed back in full. After that, only the platform can cancel it.",
+    "cancel": "Withdraw the need",
+    "needHeading": "Need #{id}",
+    "ofTarget": "of {target} {unit} · {percent}%",
+    "moreTools": "More tools",
+    "moreToolsHint": "Everything else you can do on this need now. Open one to use it.",
+    "noMoreTools": "Nothing else to do on this need right now.",
+    "tool": {
+      "evidence": {
+        "title": "Submit delivery evidence",
+        "body": "Receipts, photos or a transfer, to unlock the next tranche."
+      },
+      "release": {
+        "title": "Release a tranche",
+        "body": "Pay out a tranche that has been approved."
+      },
+      "close": {
+        "title": "Close funding",
+        "body": "Stop donations and split what was raised into tranches."
+      },
+      "idle": {
+        "title": "Money waiting in the vault",
+        "body": "Put funds not needed yet to work, and bring them back."
+      },
+      "settle": {
+        "title": "Settlements",
+        "body": "Record how paid-out money reached the supplier or person."
+      },
+      "payee": {
+        "title": "Change a supplier",
+        "body": "Propose a replacement; donors and verifiers get a say."
+      },
+      "photos": {
+        "title": "Delivery photos",
+        "body": "Show donors the aid arriving. No faces."
+      },
+      "ack": {
+        "title": "Acknowledge donations",
+        "body": "Tax receipts for the donors who asked for one."
+      },
+      "impact": {
+        "title": "Impact report",
+        "body": "Close the story: what was delivered, and to how many people."
+      },
+      "presentation": {
+        "title": "Presentation",
+        "body": "Cover photo, gallery and the story donors read first."
+      },
+      "cancel": {
+        "title": "Withdraw this need",
+        "body": "Before funding closes only. Donors get their money back."
+      }
+    },
+    "toolsHint": "What you can do on this need now. Open one to use it."
   },
   "evidence": {
     "submitTitle": "Account for tranche {spent}",
@@ -1106,7 +1256,7 @@
     "errorUpload": "The files could not be uploaded: {detail}",
     "errorTooLong": "Too many files or too long a note to fit on chain: remove a file or shorten the note.",
     "reviewTitle": "Judge how tranche {spent} was spent",
-    "reviewBody": "The NGO filed its evidence. Approve it if it convinces you; reject it if it does not. Tranche {next} is paid only once it is approved.",
+    "reviewBody": "{owner, select, beneficiary {The beneficiary} other {The NGO}} filed its evidence. Approve it if it convinces you; reject it if it does not. Tranche {next} is paid only once it is approved.",
     "reviewSee": "{count, plural, =0 {See the evidence ↓} one {See the evidence (# file) ↓} other {See the evidence (# files) ↓}}",
     "reviewConnect": "Connect the wallet you donated with, or your verifier wallet, to vote.",
     "reviewDone": "You voted on this evidence.",
@@ -1135,12 +1285,131 @@
       "custom": "Custom rule"
     },
     "summary": {
-      "donors": "Each tranche after the first is paid once donors who gave {approve}% of the money approve the NGO’s evidence. Donors who gave {reject}% can reject it.",
-      "verifier": "Each tranche after the first is paid once {verifiers, plural, one {an independent verifier approves} other {# independent verifiers approve}} the NGO’s evidence, and as many can reject it. Donors have no vote.",
-      "both": "Each tranche after the first is paid once donors who gave {approve}% of the money and {verifiers, plural, one {an independent verifier} other {# independent verifiers}} approve the NGO’s evidence. Donors who gave {reject}%, or the verifiers, can reject it.",
+      "donors": "Each tranche after the first is paid once donors who gave {approve}% of the money approve {owner, select, beneficiary {the beneficiary’s} other {the NGO’s}} evidence. Donors who gave {reject}% can reject it.",
+      "verifier": "Each tranche after the first is paid once {verifiers, plural, one {an independent verifier approves} other {# independent verifiers approve}} {owner, select, beneficiary {the beneficiary’s} other {the NGO’s}} evidence, and as many can reject it. Donors have no vote.",
+      "both": "Each tranche after the first is paid once donors who gave {approve}% of the money and {verifiers, plural, one {an independent verifier} other {# independent verifiers}} approve {owner, select, beneficiary {the beneficiary’s} other {the NGO’s}} evidence. Donors who gave {reject}%, or the verifiers, can reject it.",
       "custom": "This need uses a rule the platform approved after launch; its contract decides who approves."
     },
-    "retries": "{retries, plural, =0 {The next rejection cancels the need, and donors get back what was not released.} one {After a rejection the NGO may file new evidence once; the next rejection cancels the need, and donors get back what was not released.} other {After a rejection the NGO may file new evidence # times; the rejection after that cancels the need.}}",
+    "retries": "{retries, plural, =0 {The next rejection cancels the need, and donors get back what was not released.} one {After a rejection {owner, select, beneficiary {the beneficiary} other {the NGO}} may file new evidence once; the next rejection cancels the need, and donors get back what was not released.} other {After a rejection {owner, select, beneficiary {the beneficiary} other {the NGO}} may file new evidence # times; the rejection after that cancels the need.}}",
     "strikes": "{strikes, plural, one {Its evidence has been rejected once.} other {Its evidence has been rejected # times.}}"
+  },
+  "certify": {
+    "title": "Certify a beneficiary",
+    "body": "Let someone your NGO supports post a need of their own. You sign a certificate for their wallet — no gas, nothing written on chain — and send them the link. Their need is still checked by independent verifiers, paid by tranches and approved against evidence, and it stays under your NGO: if your NGO is suspended, their needs freeze too.",
+    "wallet": "Beneficiary’s wallet",
+    "walletHint": "The wallet they will post and receive money with. Only this wallet can use the certificate.",
+    "days": "Valid for (days)",
+    "daysHint": "At most {max}. They have to post their need before it expires; a need already posted is not affected.",
+    "privacyHint": "Who you certify stays in your own records. A wallet appears on chain only when its owner posts a need — or if you withdraw the certification early.",
+    "sign": "Sign certificate",
+    "signing": "Waiting for your wallet…",
+    "errorWallet": "Enter a valid wallet address.",
+    "errorDays": "The certificate can last between 1 and {max} days.",
+    "errorRole": "This wallet is an NGO, verifier, supplier or payout address — or used to be. It can never post as a beneficiary.",
+    "errorRefused": "The contract would not accept this certificate. Check that the programme is open and that you signed with this NGO’s wallet.",
+    "issuedTitle": "Certificate ready",
+    "issuedBody": "Send this link to the person who owns {wallet}. It works until {date}.",
+    "link": "Certificate link",
+    "copy": "Copy link",
+    "copied": "Copied",
+    "issuedPrivate": "The link says your NGO certified this wallet, so send it privately — never post it. It is too long for a QR code.",
+    "revokeTitle": "Withdraw a certification",
+    "revokeBody": "Voids every certificate you issued for a wallet so far. This writes the wallet on chain, next to your NGO — the only way it can appear there without its owner posting a need — so prefer short certificates and let them expire. Needs already posted are not affected; you can still withdraw those until funding closes.",
+    "revoke": "Withdraw certification"
+  },
+  "apply": {
+    "title": "Post a need",
+    "subtitle": "For people an NGO has certified: open the link your NGO sent you, connect the wallet it names, and describe what you need.",
+    "unsupportedTitle": "Not available on this deployment",
+    "unsupportedBody": "This deployment predates beneficiary needs. Ask your NGO to post the need for you.",
+    "pasteLabel": "Your certificate link",
+    "pasteHint": "Paste the link your NGO sent you.",
+    "badLink": "This link cannot be read",
+    "noLinkTitle": "You need a certificate first",
+    "noLinkBody": "An NGO that supports you can certify your wallet and send you a link. With it, you can post a need of your own here.",
+    "certificateTitle": "Your certificate",
+    "ngo": "Certified by",
+    "program": "Programme",
+    "wallet": "Wallet",
+    "validUntil": "Valid until",
+    "certificateHint": "Posting a need puts this wallet on the public chain, next to the NGO that certified it. Nothing else about you is published.",
+    "otherNetworkTitle": "Made for another network",
+    "otherNetworkBody": "This certificate was signed for a different deployment. Ask your NGO for a new link.",
+    "expiredTitle": "This certificate has expired",
+    "expiredBody": "Ask your NGO for a new one.",
+    "connectTitle": "Connect your wallet",
+    "connectBody": "Connect {wallet}, the wallet this certificate names.",
+    "wrongWalletTitle": "This certificate is for another wallet",
+    "wrongWalletBody": "It names {wallet}. Connect that wallet to use it.",
+    "refusedTitle": "This certificate is no longer valid",
+    "refusedBody": "It may have expired or been withdrawn by your NGO, or your NGO may be suspended. Ask your NGO for a new link.",
+    "openNeedTitle": "You already have need #{id} open",
+    "openNeedBody": "You can post one need at a time. When this one is completed, cancelled or expired, you can post the next.",
+    "openNeedLink": "Manage it",
+    "eyebrow": "For certified beneficiaries",
+    "how": {
+      "cert": {
+        "title": "Open your NGO’s link",
+        "body": "It carries your certificate. Connect the wallet it names."
+      },
+      "post": {
+        "title": "Describe your need",
+        "body": "What you need, where, how much, and by when."
+      },
+      "paid": {
+        "title": "Get paid in tranches",
+        "body": "Straight to your wallet, one tranche after each proof."
+      }
+    }
+  },
+  "beneficiary": {
+    "title": "My need",
+    "subtitle": "The needs you posted with your NGO’s certificate: where each stands, and what to do next.",
+    "applyButton": "Post a need",
+    "connectTitle": "Connect your wallet",
+    "connectBody": "Connect the wallet your NGO certified to see your needs.",
+    "noneTitle": "No needs yet",
+    "noneBody": "Once an NGO has certified your wallet, you can post a need with the link it sent you.",
+    "noneLink": "Post a need",
+    "raised": "{raised} of {target} {unit} raised",
+    "allNeeds": "All my needs",
+    "eyebrow": "Certified beneficiary"
+  },
+  "ui": {
+    "coverPhoto": "Cover photo",
+    "coverPhotoHint": "A wide photo of the place or the goods. No faces.",
+    "coverPhotoManageHint": "Add one under “Presentation” below. No faces.",
+    "galleryPhoto": "Gallery photo",
+    "workPhoto": "Delivery photo",
+    "ngoLogo": "NGO logo",
+    "profilePhoto": "Profile picture",
+    "heroPhoto": "Hero photo",
+    "heroPhotoHint": "Aid arriving: goods, a warehouse, a water point. No faces.",
+    "illustration": "Illustration",
+    "illustrationEmptyHint": "A friendly drawing: a hand holding a parcel.",
+    "illustrationApplyHint": "A drawing of a certificate turning into a delivered parcel."
+  },
+  "news": {
+    "title": "In the news",
+    "subtitle": "Recent reporting on {topic} in {place}, the problem this need addresses.",
+    "more": "More on Google News",
+    "newTab": "(opens in a new tab)",
+    "loading": "Looking for recent news…",
+    "empty": "No recent news found about {topic} in {place}.",
+    "unavailable": "News could not be loaded right now. Try again later.",
+    "disclaimer": "Found automatically by searching news sites for this need’s category and region — never for anything about the people it helps. VerifAid does not write, check or endorse these articles; they are context, not evidence.",
+    "language": {
+      "en": "In English",
+      "es": "In Spanish"
+    },
+    "topic": {
+      "WATER": "water shortages",
+      "FOOD": "hunger and food insecurity",
+      "SHELTER": "housing and homelessness",
+      "MEDICAL": "health care",
+      "CASH": "poverty",
+      "EDUCATION": "education",
+      "other": "needs like this one"
+    }
   }
 }

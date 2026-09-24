@@ -850,3 +850,100 @@ and a description, and needs still point to one. Enrolment lives only in the NGO
 **Not done, on purpose.** The 30% threshold is still a share of everything raised, including money that has no vote
 (the NGO's own gifts, a deposit address that credited itself); a need where most of the money cannot vote can
 therefore stall until its deadline. It was left out of this release by choice and is the next thing to change.
+
+## 23. People who post their own needs (v10)
+
+Until v9 only an NGO could post a need, and a beneficiary existed nowhere on chain. v10 lets a person an NGO supports
+post a need of their own — rent arrears, a medical bill, school costs — and run it: they receive its tranches in
+their own wallet and account for each one with evidence, exactly as an NGO does. What the NGO adds is its word that
+this person is one of its beneficiaries.
+
+**The NGO's list stays private; the NGO signs a certificate.** Each NGO keeps its beneficiaries in its own records
+(the PII vault), never on chain. For a wallet it has certified, it signs an EIP-712 `Certification` — this wallet, in
+this programme of ours, from `issuedAt` until `expiresAt` — and sends the beneficiary a link carrying it. The link is
+no bearer credential: `BeneficiaryRegistry.createNeed` only accepts it from the wallet it names. Nothing reaches the
+chain until that person posts a need, which is their own choice to appear; from then on their wallet is public, next
+to the NGO that certified it, and nothing else about them is. We chose this over a public registry of every NGO's
+beneficiary wallets, which would have listed people who never asked for anything, and over a Merkle root, which
+adds an update transaction per change without hiding more than signatures do. Smart-wallet NGOs sign through
+ERC-1271. What "certified" requires the NGO to have checked is deliberately left for a later certification scheme;
+it can tighten what an NGO must do before it signs without touching needs already posted.
+
+**Withdrawing a certification.** `revoke(wallet)` voids every certificate the NGO issued for that wallet until now;
+a later one works again. It is the one step that writes a wallet on chain without its owner choosing to, so the app
+defaults certificates to 30 days (365 at most) and tells the NGO to prefer letting them expire. A posted need is not
+touched by a withdrawal: its money is escrowed under the terms donors saw. Its NGO can still withdraw it until funding
+closes, like one of its own.
+
+**The need is an ordinary need with a different owner.** `NeedsRegistry` records the beneficiary (`beneficiaryOf`)
+and answers `ownerOf` (the beneficiary, else the NGO) and `ownPayoutOf` (their wallet, else the NGO's payout Safe).
+Everything the owner does moved from "the NGO" to "the owner": closing funding, filing evidence, replacing a
+supplier, opting into idle capital, the Settlement attestation, receiving the yield. Independent verifiers still
+attest the need before it can raise a cent (two above the high-value threshold), the release policy still judges
+every tranche after the first, and rejections still cancel and refund. The need stays under its NGO: its programme,
+its standing — a suspended NGO freezes its beneficiaries' needs exactly as it freezes its own — and its impact
+report, which keeps the five-people floor and so is an NGO-level statement. `BeneficiaryRegistry` is a separate
+contract, and the only caller of `createBeneficiaryNeed`, because `NeedsRegistry` had 3.3 KB left under EIP-170.
+
+**The whole tranche can be the beneficiary's.** An NGO keeps at most 25% of a need for itself and pays the rest to
+vetted suppliers. For a beneficiary the own share *is* the aid, so it has no cap; the plan may still name registered
+suppliers to be paid directly (a landlord, a pharmacy). The protection that replaces the cap is the tranche: only
+the pre-financing is paid before any evidence exists, and each later tranche waits for the donors (or verifiers) to
+approve how the last was spent.
+
+**Nobody judges their own account.** A wallet that holds or ever held an operational role (NGO, verifier, supplier,
+payout Safe) can never post as a beneficiary (`RoleRegistry.holdsOperationalRole`). The reverse cannot be enforced
+at registration — the role registry does not know who posted needs — so it is enforced where it matters: the
+beneficiary is never independent of their own need (verification, supplier changes) and never has a say on its
+evidence, and neither does the NGO that certified them.
+
+**One open need per beneficiary.** A certificate is not a licence to post a stream of needs for verifiers to wade
+through: the next one can be posted once the last is completed, cancelled or expired.
+
+**Where it shows.** The NGO console gains *Certify a beneficiary* (sign, copy the link — too long for a QR code) and
+*Withdraw a certification*. `/apply` reads the link, checks the network, the connected wallet, the certificate's
+standing on chain and the one-open-need rule, then shows the need form in beneficiary mode. `/beneficiary` is the
+per-need dashboard an NGO has, for the needs the person posted; the NGO sees them in its own list, marked as run by
+the beneficiary, with only what stays the NGO's. Need cards and pages say who runs the need, and the payment plan
+shows the own share as the beneficiary's wallet. The indexer credits payments to that wallet to the plan's own share,
+accepts work photos and presentations from whoever runs the need, and filters `/needs?beneficiary=`.
+
+**Not done.** The certificate says nothing about what the NGO checked (see above). The PII vault does not store
+wallets or certificates yet: the NGO keeps track of whom it certified itself. A beneficiary must pay gas for their
+own transactions unless the paymaster is configured. The live testnet deployment is still v9 until it is redeployed.
+
+## 24. The problem in the news (v10 app)
+
+A donor looking at a need for water in Castilla-La Mancha reads what the NGO says, and sees on chain what happened
+to the money; nothing tells them whether the region really has a water problem. The need page now shows recent news
+about the problem the need addresses: up to six articles, each a link to the article with its outlet, date, a short
+summary and, where the article has one, its own picture.
+
+**What is searched for.** The need's category and its coarse region, both already public on chain, and nothing else —
+not its description or presentation, which could say something about a person. The region is named the way news
+names it: Spain's autonomous communities by name, in Spanish and English; any other ISO code falls back to its
+country. The category becomes a few keywords per language (water: drought, water shortage, drinking water; sequía,
+escasez de agua, agua potable). A need is searched in the language of its place, where most of its news is written,
+and in the reader's as well when that differs; an article in the other language says so.
+
+**Where from.** Bing News and Google News, read as RSS: no key, no account. Google is the better search — its boolean
+query holds to the place — but its links go through a redirect that ends at a consent page, so its results come
+without a preview. Bing links to the article itself, so the server reads that page's Open Graph tags for the picture
+and summary. Both are searched and merged, one copy per story. GDELT, the open research index, refused every request
+from our network. Both feeds' terms allow personal, non-commercial use: fine for this project, but a deployment beyond
+it should swap in a licensed news API, in `app/src/lib/server/news.ts`.
+
+**What counts as on topic.** Search engines match anywhere in a page, and Bing does not even hold to the quoted place,
+so a raw search is mostly the region's other news and other regions' news of the same problem. An article is kept
+only if its title or snippet names both the problem and the place — the region in either language, or one of its
+provinces or main cities — matched as whole words, accents aside. A few phrases that use a keyword for something
+else are left out (a hunger strike is not a food shortage). A mention in the title counts for more, a result with a
+preview edges ahead of one without, no outlet gets more than two, and nothing is older than a year.
+
+**How it is fetched.** On the server, streamed into the page after everything else, so a slow news site holds nothing
+up; cached for three hours per region and category; and with the address checks of THREAT_MODEL §3.24, because the
+server fetches pages whose addresses a third party chose. `NEWS_SEARCH=off` turns it off.
+
+**Not done.** Region names outside Spain's communities (the country is searched instead). Relevance is keywords, not
+understanding: expect the odd article that mentions both the problem and the place and is about neither. An NGO
+cannot pin or hide an article.

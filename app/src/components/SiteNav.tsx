@@ -17,6 +17,7 @@ const PUBLIC_ROUTES = [
 
 const ROLE_ROUTES = [
   { href: '/donor', key: 'donor' },
+  { href: '/beneficiary', key: 'beneficiary' },
   { href: '/ngo', key: 'ngo' },
   { href: '/verifier', key: 'verifier' },
 ] as const

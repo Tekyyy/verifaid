@@ -136,6 +136,7 @@ export function SubmitEvidencePanel({ need }: { need: NeedDetail }) {
         verifiers={need.verificationsRequired}
         strikes={need.strikes}
         compact
+        ownerIsBeneficiary={need.beneficiary !== null}
       />
 
       <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">

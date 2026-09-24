@@ -127,6 +127,13 @@ app.get('/needs', async (c) => {
     filters.push(eq(schema.need.country, country.toUpperCase()))
   }
 
+  // v10: the needs one beneficiary posted — the beneficiary's own dashboard reads this.
+  const beneficiary = c.req.query('beneficiary')?.toLowerCase()
+  if (beneficiary) {
+    if (!/^0x[0-9a-f]{40}$/.test(beneficiary)) return c.json({ error: 'invalid beneficiary' }, 400)
+    filters.push(eq(schema.need.beneficiary, beneficiary as Address))
+  }
+
   const sort = (c.req.query('sort') ?? '') as NeedSort | ''
   if (sort && !(NEED_SORTS as readonly string[]).includes(sort)) return c.json({ error: 'invalid sort' }, 400)
 

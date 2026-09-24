@@ -6,6 +6,7 @@ import type { TimelineEvent, TimelineEventType } from '@poa/shared'
  */
 export const TIMELINE_EVENT_TYPES = [
   'NeedCreated',
+  'BeneficiaryNeedPosted',
   'NeedVerificationRecorded',
   'NeedVerified',
   'NeedStatusChanged',

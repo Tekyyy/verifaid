@@ -17,11 +17,19 @@ const RELEASE_STATUSES = new Set(['Funded', 'InDelivery'])
 
 const releasable = (need: NeedDetail) => need.tranches.filter((tranche) => tranche.status === 'Releasable')
 
-/** The connected NGO's needs that could have something to release, with their tranches. */
-const loadCandidates = async (ngo: Address): Promise<Result<NeedDetail[]>> => {
+/**
+ * The needs the connected wallet runs or answers for — an NGO's own and its beneficiaries', or a beneficiary's —
+ * that could have something to release, with their tranches.
+ */
+const loadCandidates = async (account: Address): Promise<Result<NeedDetail[]>> => {
   const needs = await getNeeds()
   if (!needs.ok) return needs
-  const mine = needs.data.filter((need) => isAddressEqual(need.ngo, ngo) && RELEASE_STATUSES.has(need.status))
+  const mine = needs.data.filter(
+    (need) =>
+      (isAddressEqual(need.ngo, account) ||
+        Boolean(need.beneficiary && isAddressEqual(need.beneficiary, account))) &&
+      RELEASE_STATUSES.has(need.status),
+  )
   const details = await Promise.all(mine.map((need) => getNeed(need.id)))
   return { ok: true, data: details.flatMap((detail) => (detail.ok ? [detail.data] : [])) }
 }

@@ -174,7 +174,8 @@ contract ProofOfAidResolver is SchemaResolver, IFeeRecorder {
         settlementOf[needId][trancheIndex] = a.uid;
         settlementFeesOf[needId] += fee;
 
-        if (a.attester != n.ngo) revert Errors.Unauthorized();
+        // Whoever was paid the owner's share accounts for it: the NGO, or the beneficiary who posted the need.
+        if (a.attester != registry.ownerOf(needId)) revert Errors.Unauthorized();
         if (tranches[trancheIndex].status != ITrancheLedger.TrancheStatus.Released) {
             revert Errors.InvalidTrancheStatus();
         }

@@ -22,6 +22,8 @@ const FORGE_ARTIFACTS = [
   'AidVault',
   'DonationReceipt',
   'ProgramRegistry',
+  // v10: a beneficiary posts a need of their own on the strength of their NGO's certificate.
+  'BeneficiaryRegistry',
   'DeliveryManager',
   'ReleasePolicy',
   'ProofOfAidResolver',

@@ -287,7 +287,8 @@ contract AidVault is TrancheLedger, IAidVault {
         emit YieldHarvested(needId(), address(venue), amount);
     }
 
-    /// @notice Hands the earnings to the NGO once the need is over and the position is closed.
+    /// @notice Hands the earnings to the need's owner (the NGO's payout Safe, or the beneficiary who posted it) once
+    ///         the need is over and the position is closed.
     /// @dev Donors are repaid principal and nothing else, whatever happened in the venue — a refund is worked out
     ///      from what was donated and released, never from this vault's balance. What the money earned while it
     ///      waited belongs to the need, and a loss is charged against those earnings before anything is paid.
@@ -300,8 +301,7 @@ contract AidVault is TrancheLedger, IAidVault {
         if (yieldRealised <= charged) revert Errors.NothingToClaim();
         amount = yieldRealised - charged;
         yieldPaid += amount;
-        (address ngo,,,) = registry.coreOf(id);
-        address to = roles.payoutOf(ngo);
+        address to = registry.ownPayoutOf(id);
         token.safeTransfer(to, amount);
         emit YieldPaid(id, to, amount);
     }

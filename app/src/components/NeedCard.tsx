@@ -1,11 +1,12 @@
 import type { NeedSummary } from '@poa/shared'
 import { useTranslations } from 'next-intl'
 import { Deadline } from '@/components/Deadline'
+import { ImagePlaceholder } from '@/components/ImagePlaceholder'
 import { NeedBadgeRow } from '@/components/NeedBadgeRow'
 import { ProgressBar } from '@/components/ProgressBar'
 import { NeedStatusBadge } from '@/components/StatusBadge'
 import { Link } from '@/i18n/navigation'
-import { amount, flagEmoji, imageSrc, percent } from '@/lib/format'
+import { amount, categoryIcon, flagEmoji, imageSrc, percent } from '@/lib/format'
 
 /**
  * One need, as a donor first meets it: the picture and the sentence its NGO chose, what it is raising and how
@@ -14,6 +15,7 @@ import { amount, flagEmoji, imageSrc, percent } from '@/lib/format'
  */
 export function NeedCard({ need }: { need: NeedSummary }) {
   const t = useTranslations('needs')
+  const tUi = useTranslations('ui')
   const tCommon = useTranslations('common')
   const tTerms = useTranslations('terms')
   const progress = percent(need.totalDonated, need.targetAmount)
@@ -33,9 +35,10 @@ export function NeedCard({ need }: { need: NeedSummary }) {
             className="h-40 w-full bg-slate-100 object-cover"
           />
         ) : (
-          <div className="flex h-20 w-full items-end bg-gradient-to-br from-slate-100 to-slate-200 px-4 py-3">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              {need.categoryLabel}
+          <div className="relative">
+            <ImagePlaceholder label={tUi('coverPhoto')} className="h-40 w-full" flush />
+            <span className="chip absolute left-3 top-3 bg-white/90 text-teal-800">
+              {categoryIcon(need.categoryLabel)} {need.categoryLabel}
             </span>
           </div>
         )}
@@ -54,6 +57,9 @@ export function NeedCard({ need }: { need: NeedSummary }) {
               {need.regionLabel}
               {need.ngoName ? ` · ${need.ngoName}` : ''}
             </p>
+            {need.beneficiary ? (
+              <p className="chip mt-1.5 bg-teal-50 text-teal-800">{t('postedByBeneficiary')}</p>
+            ) : null}
           </div>
           <NeedStatusBadge status={need.status} />
         </div>

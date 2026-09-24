@@ -20,6 +20,9 @@ import {Errors} from "../libraries/Errors.sol";
 ///      the approval of as many independent verifiers as verified the need.
 ///      Every need also names the release policy its evidence is judged by — one of the policies the platform
 ///      approved — and keeps it for life, whatever the platform approves or withdraws later.
+///      A need is created either by an NGO, which then runs it, or — through the BeneficiaryRegistry, on the strength
+///      of the NGO's certificate — by one of the NGO's beneficiaries, who runs it instead and receives its own share.
+///      The NGO stays the need's NGO either way: its programme, its standing, its accountability.
 contract NeedsRegistry is INeedsRegistry, RoleAware {
     uint16 public constant BPS_DENOMINATOR = 10_000;
     uint256 public constant MAX_TRANCHES = 5;
@@ -46,6 +49,8 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     IProgramRegistry public programs;
     address public deliveryManager;
     address public resolver;
+    /// @notice The BeneficiaryRegistry: the only caller of `createBeneficiaryNeed`.
+    address public beneficiaries;
     bool public wired;
 
     /// @inheritdoc INeedsRegistry
@@ -84,7 +89,7 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     /// @notice needId => verifier => UID of the recorded NeedVerified attestation.
     mapping(uint256 => mapping(address => bytes32)) public verificationUID;
 
-    /// @dev One slot per payee: the account (zero = the NGO's payout Safe) and its tranche shares, packed like
+    /// @dev One slot per payee: the account (zero = the owner's own share) and its tranche shares, packed like
     ///      `trancheBps` except that a share may be zero (a supplier paid only in later tranches).
     struct PayeeRecord {
         address account;
@@ -113,6 +118,9 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     /// @inheritdoc INeedsRegistry
     address public defaultReleasePolicy;
 
+    /// @inheritdoc INeedsRegistry
+    mapping(uint256 => address) public beneficiaryOf;
+
     /// @param roles_ System role registry.
     /// @param highValueThreshold Target amount (base units) above which M-of-N (M ≥ 2) verification is enforced.
     constructor(IRoleRegistry roles_, uint256 highValueThreshold) RoleAware(roles_) {
@@ -120,21 +128,25 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     }
 
     /// @notice One-time wiring of the contracts this registry depends on. Admin only.
-    function wire(address vaultFactory_, address programs_, address deliveryManager_, address resolver_)
-        external
-        onlyAdmin
-    {
+    function wire(
+        address vaultFactory_,
+        address programs_,
+        address deliveryManager_,
+        address resolver_,
+        address beneficiaries_
+    ) external onlyAdmin {
         if (wired) revert Errors.AlreadyWired();
         if (
             vaultFactory_ == address(0) || programs_ == address(0) || deliveryManager_ == address(0)
-                || resolver_ == address(0)
+                || resolver_ == address(0) || beneficiaries_ == address(0)
         ) revert Errors.ZeroAddress();
         wired = true;
         vaultFactory = IAidVaultFactory(vaultFactory_);
         programs = IProgramRegistry(programs_);
         deliveryManager = deliveryManager_;
         resolver = resolver_;
-        emit Wired(vaultFactory_, programs_, deliveryManager_, resolver_);
+        beneficiaries = beneficiaries_;
+        emit Wired(vaultFactory_, programs_, deliveryManager_, resolver_, beneficiaries_);
     }
 
     // ─── release policies ──────────────────────────────────────────────────────
@@ -177,7 +189,7 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     ///      page before anyone donates, not switched on over the heads of people who already gave.
     function enableYield(uint256 needId) external whenNotPaused {
         NeedRecord storage n = _need(needId);
-        if (msg.sender != n.ngo) revert Errors.Unauthorized();
+        if (msg.sender != _ownerOf(needId, n)) revert Errors.Unauthorized();
         if (n.status != NeedStatus.Pending) revert Errors.InvalidNeedStatus();
         address venue = yieldVenue;
         if (venue == address(0)) revert Errors.YieldNotEnabled();
@@ -195,20 +207,41 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
 
     /// @inheritdoc INeedsRegistry
     function createNeed(CreateNeedParams calldata p) external whenNotPaused returns (uint256 needId) {
+        return _create(p, msg.sender, address(0));
+    }
+
+    /// @inheritdoc INeedsRegistry
+    /// @dev The certificate, the one-open-need rule and the beneficiary's own eligibility are the caller's to check;
+    ///      everything about the need itself is checked here, exactly as for an NGO's need.
+    function createBeneficiaryNeed(CreateNeedParams calldata p, address ngo, address beneficiary)
+        external
+        whenNotPaused
+        returns (uint256 needId)
+    {
+        if (msg.sender != beneficiaries || msg.sender == address(0)) revert Errors.Unauthorized();
+        if (beneficiary == address(0)) revert Errors.ZeroAddress();
+        return _create(p, ngo, beneficiary);
+    }
+
+    /// @dev `beneficiary` is zero for a need the NGO runs itself.
+    function _create(CreateNeedParams calldata p, address ngo, address beneficiary) internal returns (uint256 needId) {
         if (!wired) revert Errors.NotWired();
-        if (!roles.isActiveNgo(msg.sender)) revert Errors.Unauthorized();
-        if (programs.programNgo(p.programId) != msg.sender) revert Errors.ProgramMismatch();
+        if (!roles.isActiveNgo(ngo)) revert Errors.Unauthorized();
+        if (programs.programNgo(p.programId) != ngo) revert Errors.ProgramMismatch();
         if (!programs.isProgramActive(p.programId)) revert Errors.ProgramInactive();
         address policy = p.releasePolicy == address(0) ? defaultReleasePolicy : p.releasePolicy;
         if (!isReleasePolicy[policy]) revert Errors.InvalidReleasePolicy();
-        _validateTerms(p);
+        // An NGO keeps at most a quarter for itself and pays the rest to vetted suppliers. A beneficiary's own share
+        // is the aid itself, so it has no cap; each tranche after the first still waits for evidence of how the
+        // previous one was spent.
+        _validateTerms(p, beneficiary == address(0) ? MAX_NGO_SHARE_BPS : BPS_DENOMINATOR);
         if (p.verificationsRequired == 0 || (p.targetAmount > HIGH_VALUE_THRESHOLD && p.verificationsRequired < 2)) {
             revert Errors.InsufficientVerifications();
         }
 
         needId = ++needCount;
         NeedRecord storage n = _needs[needId];
-        n.ngo = msg.sender;
+        n.ngo = ngo;
         n.verificationsRequired = p.verificationsRequired;
         n.minFundingBps = p.minFundingBps;
         n.thirdPartyCostBps = p.thirdPartyCostBps;
@@ -222,8 +255,9 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         n.releasePolicy = policy;
         // status is Pending (the zero value)
         _storePayees(needId, p.payees);
+        if (beneficiary != address(0)) beneficiaryOf[needId] = beneficiary;
 
-        emit NeedCreated(needId, msg.sender, p.programId, policy, p);
+        emit NeedCreated(needId, ngo, p.programId, policy, p);
     }
 
     /// @inheritdoc INeedsRegistry
@@ -232,7 +266,8 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         NeedStatus s = n.status;
         if (_isTerminal(s)) revert Errors.InvalidNeedStatus();
         if (!roles.isAdmin(msg.sender)) {
-            if (msg.sender != n.ngo) revert Errors.Unauthorized();
+            // On a beneficiary's need both the beneficiary and the NGO that certified them may withdraw it.
+            if (msg.sender != n.ngo && msg.sender != beneficiaryOf[needId]) revert Errors.Unauthorized();
             // NGOs may only cancel before funding closes; afterwards cancellation is an admin (dispute) decision.
             if (uint8(s) >= uint8(NeedStatus.Funded)) revert Errors.InvalidNeedStatus();
         }
@@ -258,7 +293,7 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         returns (uint256 changeId)
     {
         NeedRecord storage n = _need(needId);
-        if (msg.sender != n.ngo || !roles.isActiveNgo(msg.sender)) revert Errors.Unauthorized();
+        if (msg.sender != _ownerOf(needId, n) || !roles.isActiveNgo(n.ngo)) revert Errors.Unauthorized();
         if (_isTerminal(n.status)) revert Errors.InvalidNeedStatus();
         if (_pendingChange[needId].id != 0) revert Errors.ChangePending();
         PayeeRecord[] storage list = _payees[needId];
@@ -282,7 +317,7 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         PayeeChange storage change = _pendingChange[needId];
         if (change.id == 0 || change.id != changeId) revert Errors.NoPendingChange();
         if (_isTerminal(n.status)) revert Errors.InvalidNeedStatus();
-        if (!roles.isIndependent(msg.sender, n.ngo)) revert Errors.NotIndependent();
+        if (!_isIndependent(needId, n, msg.sender)) revert Errors.NotIndependent();
         if (_changeApprovedBy[changeId][msg.sender]) revert Errors.AlreadyApproved();
 
         _changeApprovedBy[changeId][msg.sender] = true;
@@ -318,7 +353,7 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
     /// @inheritdoc INeedsRegistry
     function cancelPayeeChange(uint256 needId, uint256 changeId) external {
         NeedRecord storage n = _need(needId);
-        if (msg.sender != n.ngo) revert Errors.Unauthorized();
+        if (msg.sender != _ownerOf(needId, n)) revert Errors.Unauthorized();
         if (_pendingChange[needId].id == 0 || _pendingChange[needId].id != changeId) revert Errors.NoPendingChange();
         delete _pendingChange[needId];
         emit PayeeChangeCancelled(needId, changeId);
@@ -372,7 +407,7 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         NeedRecord storage n = _need(needId);
         if (n.status != NeedStatus.Pending) revert Errors.InvalidNeedStatus();
         if (_passed(n.fundingDeadline) || _passed(n.executionDeadline)) revert Errors.DeadlinePassed();
-        if (!roles.isIndependent(verifier, n.ngo)) revert Errors.NotIndependent();
+        if (!_isIndependent(needId, n, verifier)) revert Errors.NotIndependent();
         if (verifiedBy[needId][verifier]) revert Errors.AlreadyVerified();
 
         verifiedBy[needId][verifier] = true;
@@ -570,7 +605,7 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
             if (share == 0) continue;
             address account = list[i].account;
             if (account == address(0)) {
-                account = roles.payoutOf(n.ngo);
+                account = _ownPayout(needId, n);
             } else if (!roles.isActiveSupplier(account)) {
                 revert Errors.SupplierInactive();
             }
@@ -585,6 +620,16 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         return _pendingChange[needId];
     }
 
+    /// @inheritdoc INeedsRegistry
+    function ownerOf(uint256 needId) external view returns (address) {
+        return _ownerOf(needId, _need(needId));
+    }
+
+    /// @inheritdoc INeedsRegistry
+    function ownPayoutOf(uint256 needId) external view returns (address) {
+        return _ownPayout(needId, _need(needId));
+    }
+
     // ─── internal ──────────────────────────────────────────────────────────────
 
     function _need(uint256 needId) internal view returns (NeedRecord storage n) {
@@ -592,7 +637,23 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         if (n.ngo == address(0)) revert Errors.NeedNotFound();
     }
 
-    function _validateTerms(CreateNeedParams calldata p) internal view {
+    function _ownerOf(uint256 needId, NeedRecord storage n) internal view returns (address) {
+        address beneficiary = beneficiaryOf[needId];
+        return beneficiary == address(0) ? n.ngo : beneficiary;
+    }
+
+    function _ownPayout(uint256 needId, NeedRecord storage n) internal view returns (address) {
+        address beneficiary = beneficiaryOf[needId];
+        return beneficiary == address(0) ? roles.payoutOf(n.ngo) : beneficiary;
+    }
+
+    /// @dev A verifier independent of the NGO, and never the beneficiary who owns the need: a wallet registered as a
+    ///      verifier after it posted a need must not be the one who verifies it.
+    function _isIndependent(uint256 needId, NeedRecord storage n, address verifier) internal view returns (bool) {
+        return roles.isIndependent(verifier, n.ngo) && verifier != beneficiaryOf[needId];
+    }
+
+    function _validateTerms(CreateNeedParams calldata p, uint16 maxOwnShareBps) internal view {
         if (p.targetAmount == 0) revert Errors.ZeroAmount();
         if (
             p.category == bytes32(0) || p.regionCode == bytes32(0) || p.dossierHash == bytes32(0)
@@ -618,24 +679,24 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
             }
         }
         _validateTranches(p.trancheBps);
-        _validatePayees(p);
+        _validatePayees(p, maxOwnShareBps);
     }
 
     /// @dev The rules of a payment plan. Every need has one: its vault pays nobody that is not in it.
-    function _validatePayees(CreateNeedParams calldata p) internal view {
+    function _validatePayees(CreateNeedParams calldata p, uint16 maxOwnShareBps) internal view {
         uint256 count = p.payees.length;
         if (count == 0 || count > MAX_PAYEES) revert Errors.InvalidPaymentPlan();
         uint256 tranches = p.trancheBps.length;
         uint256[MAX_TRANCHES] memory sums;
-        uint256 ngoShare; // Σ trancheBps × the NGO's share of that tranche, in bps × bps
-        bool ngoListed;
+        uint256 ownShare; // Σ trancheBps × the owner's own share of that tranche, in bps × bps
+        bool ownListed;
         for (uint256 i; i < count; ++i) {
             Payee calldata payee = p.payees[i];
             if (payee.shareBps.length != tranches) revert Errors.InvalidPaymentPlan();
             address account = payee.account;
             if (account == address(0)) {
-                if (ngoListed) revert Errors.InvalidPaymentPlan();
-                ngoListed = true;
+                if (ownListed) revert Errors.InvalidPaymentPlan();
+                ownListed = true;
             } else {
                 if (!roles.isActiveSupplier(account)) revert Errors.SupplierNotRegistered();
                 for (uint256 j; j < i; ++j) {
@@ -647,7 +708,7 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
                 uint256 share = payee.shareBps[t];
                 sums[t] += share;
                 total += share;
-                if (account == address(0)) ngoShare += share * p.trancheBps[t];
+                if (account == address(0)) ownShare += share * p.trancheBps[t];
             }
             // A payee that is never paid has no place in the plan.
             if (total == 0) revert Errors.InvalidPaymentPlan();
@@ -655,7 +716,7 @@ contract NeedsRegistry is INeedsRegistry, RoleAware {
         for (uint256 t; t < tranches; ++t) {
             if (sums[t] != BPS_DENOMINATOR) revert Errors.InvalidPaymentPlan();
         }
-        if (ngoShare > uint256(MAX_NGO_SHARE_BPS) * BPS_DENOMINATOR) revert Errors.NgoShareTooHigh();
+        if (ownShare > uint256(maxOwnShareBps) * BPS_DENOMINATOR) revert Errors.NgoShareTooHigh();
     }
 
     function _storePayees(uint256 needId, Payee[] calldata payees) internal {

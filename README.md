@@ -26,7 +26,7 @@ lives in the code.
 | R1 — register previously verified needs, with their terms | `NeedsRegistry` (deadlines, minimum funding, cost cap, expected outcome) + `NeedVerified` attestations |
 | R2 — track the path of donations | `AidVault`, soulbound `DonationReceipt`, `Settlement` attestations, on-chain conversions (`ConversionRouter`, `DonationForwarderFactory`), card payments through the Coinbase on-ramp, vaults that pay the need's registered suppliers directly, public tracking links |
 | R3 — evidence of aid delivery | `DeliveryManager`: the NGO files photos, receipts and bank statements by hash (and pinned to IPFS); the rule the need chose — donors, a verifier, or both — approves or rejects it before the next tranche |
-| R4 — protect beneficiaries' data | off-chain PII vault; no beneficiary on chain in any form; evidence photos stripped of metadata |
+| R4 — protect beneficiaries' data | off-chain PII vault; the people an NGO serves are never on chain, and one who posts a need of their own appears only as the wallet their NGO certified; evidence photos stripped of metadata |
 | R5 — verifiable impact | `ImpactReport` attestations, Ponder indexer, public dashboard, PDF audit reports |
 
 ## How it works
@@ -69,6 +69,13 @@ rules and keeps it for life: *donors decide* (the default: donors who gave 30% o
 *a verifier checks*, or *donors and a verifier*. A rejection sends the NGO back once; a second one cancels the need
 and refunds what was not released. Donors vote for free — they sign, and the platform's relayer pays the gas. New
 rules can be approved later without redeploying anything, and never change a need that already exists.
+
+**A beneficiary can post their own need (v10).** An NGO certifies one of the people it supports by signing a
+certificate for their wallet — no transaction, nothing on chain — and sends them a link. With it, that person posts
+a need of their own on `/apply`: independent verifiers still attest it, donors fund it, and its tranches go to the
+beneficiary's own wallet, each after the first only once the donors approve how the last was spent. The NGO's list
+of beneficiaries never reaches the chain; a wallet appears only when its owner posts, next to the NGO that certified
+it. `docs/DECISIONS.md` §23 has the design.
 
 **The admin has to wait.** Every admin action is proposed by a 2-of-3 Safe and waits out a public timelock before
 anyone can execute it; a guardian can only pause. Nobody, including the admin, can take money out of a vault.
@@ -119,14 +126,14 @@ releases stay on-chain and are recorded in `deployments/base-sepolia.v1.json` th
 ## Repository layout
 
 ```
-contracts/    Foundry: needs and their terms, vaults, deliveries judged by release policies, programmes, one EAS
-              resolver, and the Safe + timelock handover
+contracts/    Foundry: needs and their terms, vaults, deliveries judged by release policies, programmes, needs that
+              certified beneficiaries post, one EAS resolver, and the Safe + timelock handover
 services/     pii-vault (envelope-encrypted records), notifier (alerts and signed webhooks)
 indexer/      Ponder: events → tables → the API, donation tracking and RSS feeds
 app/          Next.js dashboard: public needs and tracking pages, embeddable widget, donor, NGO and verifier tools,
               evidence uploads (content-addressed, pinned to IPFS), the free-vote relay, PDF reports
-demo/         runs the five lifecycle scenarios against a live chain (escrow, expiry, conversions, idle capital,
-              rejection)
+demo/         runs the six lifecycle scenarios against a live chain (escrow, expiry, conversions, idle capital,
+              rejection, a certified beneficiary's own need)
 scripts/      deploy (local and Base Sepolia), `pnpm admin` for timelocked admin actions after the handover
 deployments/  addresses + schema UIDs per network, written by the deploy scripts
 docs/         DECISIONS.md, THREAT_MODEL.md, DEMO_SCRIPT.md, ROADMAP.md, GAP_PLAN.md
@@ -191,7 +198,10 @@ pnpm deploy:sepolia
 ## Privacy
 
 No name, ID number, phone number, exact location, photo, or unsalted hash of any of these ever reaches the
-chain. Beneficiaries do not appear on chain at all: a programme is a label and a hash of its eligibility rules.
+chain. The people an NGO serves do not appear on chain at all: a programme is a label and a hash of its eligibility
+rules, and who an NGO has certified stays in its own records. A beneficiary who chooses to post a need of their own
+appears as one thing only — the wallet their NGO certified — and is told so before they post.
+The news a need's page shows about its problem is searched for by the need's category and region alone.
 Delivery evidence is public, for donors to judge: photos are stripped of their location and camera metadata before
 they are stored, and the NGO is told
 to black out names, faces and account numbers first. Impact reports below five people served are refused so a

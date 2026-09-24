@@ -23,7 +23,9 @@ interface INeedsRegistry is IRoleAware {
 
     /// @notice One recipient of a need's money, fixed when the need is created. The vault pays payees directly.
     struct Payee {
-        address account; // a registered supplier, or address(0) for the NGO's own payout Safe (its disclosed share)
+        // A registered supplier, or address(0) for the need owner's own disclosed share: the NGO's payout Safe, or,
+        // on a need a beneficiary posted, the beneficiary's wallet.
+        address account;
         uint16[] shareBps; // share of each tranche, aligned with `trancheBps`; each tranche's shares sum to 10_000
         bytes32 refHash; // event only: hash of the contract or quote agreed with this payee
         string label; // event only: public name of the payee and what it provides
@@ -31,7 +33,7 @@ interface INeedsRegistry is IRoleAware {
 
     /// @notice A payee as stored: who, and its share of each tranche.
     struct PayeeShare {
-        address account; // zero = the NGO's payout Safe
+        address account; // zero = the owner's own share (see `ownPayoutOf`)
         uint16[] shareBps;
     }
 
@@ -104,7 +106,9 @@ interface INeedsRegistry is IRoleAware {
         uint256 indexed needId, address indexed verifier, bytes32 attestationUID, uint8 verificationCount
     );
     event VerificationRevokedAfterFunding(uint256 indexed needId, address indexed verifier, bytes32 attestationUID);
-    event Wired(address vaultFactory, address programs, address deliveryManager, address resolver);
+    event Wired(
+        address vaultFactory, address programs, address deliveryManager, address resolver, address beneficiaries
+    );
     /// @notice The platform approved (or withdrew) a release policy new needs may choose.
     event ReleasePolicySet(address indexed policy, bool allowed);
     /// @notice The policy a need gets when it names none.
@@ -131,6 +135,23 @@ interface INeedsRegistry is IRoleAware {
     /// @notice Creates a need in `Pending` status. Caller must be an active NGO that owns `p.programId`, which must be
     ///         open, and `p.releasePolicy` (or the default, when zero) must be an approved policy.
     function createNeed(CreateNeedParams calldata p) external returns (uint256 needId);
+
+    /// @notice Creates a need owned by `beneficiary` under `ngo`'s programme `p.programId`. Callable only by the
+    ///         BeneficiaryRegistry, once it has checked the NGO's certificate. Same rules as `createNeed`, except that
+    ///         the owner's own share (the zero-address payee, paid to the beneficiary) is not capped.
+    function createBeneficiaryNeed(CreateNeedParams calldata p, address ngo, address beneficiary)
+        external
+        returns (uint256 needId);
+
+    /// @notice The beneficiary who posted the need, or zero for a need an NGO created.
+    function beneficiaryOf(uint256 needId) external view returns (address);
+
+    /// @notice Who runs the need — files its evidence, closes its funding, answers for its payment plan: the
+    ///         beneficiary who posted it, otherwise its NGO.
+    function ownerOf(uint256 needId) external view returns (address);
+
+    /// @notice Where the owner's own share goes: the beneficiary's wallet, otherwise the NGO's payout Safe.
+    function ownPayoutOf(uint256 needId) external view returns (address);
 
     /// @notice Records a NeedVerified attestation. Callable only by the resolver.
     function onVerificationAttested(uint256 needId, address verifier, bool approved, bytes32 attestationUID) external;

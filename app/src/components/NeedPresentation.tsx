@@ -8,14 +8,21 @@ import { imageSrc } from '@/lib/format'
  * can see who wrote it — and it sits above the terms panel, never inside it, because the terms are what was
  * verified and this is what was claimed.
  */
-export function NeedPresentation({ presentation }: { presentation: NeedPresentationView | null }) {
+export function NeedPresentation({
+  presentation,
+  withCover = true,
+}: {
+  presentation: NeedPresentationView | null
+  /** Off where the page already shows the cover at the top. */
+  withCover?: boolean
+}) {
   const t = useTranslations('need')
 
   if (!presentation || (!presentation.coverImage && !presentation.summary)) return null
 
   return (
     <section className="card overflow-hidden p-0" aria-labelledby="presentation">
-      {presentation.coverImage ? (
+      {withCover && presentation.coverImage ? (
         // biome-ignore lint/performance/noImgElement: the NGO hosts its own images; there is no loader for them
         <img
           src={imageSrc(presentation.coverImage)}

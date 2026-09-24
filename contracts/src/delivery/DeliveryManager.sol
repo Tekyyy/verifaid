@@ -240,10 +240,11 @@ contract DeliveryManager is IDeliveryManager, RoleAware, EIP712 {
 
     // ─── internal: evidence ────────────────────────────────────────────────────
 
-    /// @dev Reverts unless the caller is the need's active NGO and the need is in delivery; returns the tranche.
+    /// @dev Reverts unless the caller runs the need (its NGO, or the beneficiary who posted it), the need's NGO is
+    ///      active and the need is in delivery; returns the tranche.
     function _trancheForSubmitter(uint256 needId) internal view returns (uint256) {
         (address ngo, address vault,, INeedsRegistry.NeedStatus status) = registry.coreOf(needId);
-        if (msg.sender != ngo) revert Errors.Unauthorized();
+        if (msg.sender != registry.ownerOf(needId)) revert Errors.Unauthorized();
         if (!roles.isActiveNgo(ngo)) revert Errors.NgoInactive();
         if (status != INeedsRegistry.NeedStatus.InDelivery) revert Errors.InvalidNeedStatus();
         return _nextToUnlock(ITrancheLedger(vault));
