@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {AidVault} from "../../src/funds/AidVault.sol";
 import {DonationForwarder} from "../../src/funds/DonationForwarder.sol";
 import {IAidVault} from "../../src/interfaces/IAidVault.sol";
+import {IDeliveryManager} from "../../src/interfaces/IDeliveryManager.sol";
 import {IDonationForwarder} from "../../src/interfaces/IDonationForwarder.sol";
 import {IDonationForwarderFactory} from "../../src/interfaces/IDonationForwarderFactory.sol";
 import {INeedsRegistry} from "../../src/interfaces/INeedsRegistry.sol";
@@ -188,6 +189,7 @@ contract DonationForwarderTest is PoATest {
         vm.prank(keeper);
         IDonationForwarder(forwarder).sweep(address(usdc));
         assertEq(vault.donatedByRef(key), deposited + 99_949_999);
+        assertEq(vault.donatedByRefTotal(), deposited + 99_949_999, "the running total of voiceless money");
         assertVaultInvariant(vault);
     }
 
@@ -337,10 +339,33 @@ contract DonationForwarderTest is PoATest {
         vm.prank(ngo);
         registry.cancelNeed(needId);
         vm.prank(outsider); // anyone can trigger it; it only ever pays refundTo
+        assertEq(vault.donatedByRefTotal(), deposited);
         uint256 amount = IDonationForwarder(depositAddress).claimVaultRefund();
         assertEq(amount, deposited);
         assertEq(token.balanceOf(donor), deposited);
+        assertEq(vault.donatedByRefTotal(), 0, "refunded, so no longer counted");
         assertVaultInvariant(vault);
+    }
+
+    /// @dev Money a deposit address credited to itself has no voice, so it counts for no threshold: here it is about
+    ///      71% of the target, and "30% approve" means 30% of what the one wallet gave, not a bar it could never reach.
+    function test_depositAddressMoneyCountsForNoThreshold_soTheWalletThatGaveCanStillDecide() public {
+        IDonationForwarder.Intent memory it = _intent(address(0), donor, address(0), keccak256("anon"));
+        address depositAddress = forwarderFactory.forwarderAddress(it);
+        usdc.mint(depositAddress, 3834e6); // about 71% of the target once converted
+        vm.prank(keeper);
+        (, uint256 unattributed) = forwarderFactory.sweep(it, address(usdc));
+        assertGt(unattributed, (TARGET * 70) / 100);
+
+        uint256 voting = TARGET - unattributed;
+        _donate(donor1, needId, voting); // reaches the target: funding closes
+        vault.releaseTranche(0);
+
+        assertEq(deliveryManager.rulesOf(needId).donorApproval, (voting * 3000 + 9999) / 10_000);
+        uint256 deliveryId = _submitEvidence(needId);
+        vm.prank(donor1);
+        deliveryManager.approve(deliveryId);
+        assertEq(uint8(deliveryManager.getDelivery(deliveryId).status), uint8(IDeliveryManager.DeliveryStatus.Approved));
     }
 
     function test_claimVaultRefundWithSignature_andReceiptHoldersClaimDirectly() public {

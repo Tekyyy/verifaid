@@ -217,6 +217,9 @@ interface INeedsRegistry is IRoleAware {
     /// @notice The need's payment plan: every payee and its share of each tranche.
     function payeesOf(uint256 needId) external view returns (PayeeShare[] memory);
 
+    /// @notice Target above which a need takes two verifiers to open; also the most a beneficiary's own need may raise.
+    function HIGH_VALUE_THRESHOLD() external view returns (uint256);
+
     /// @notice Who a tranche pays and how it is split, with the NGO's share resolved to its payout Safe and zero
     ///         shares left out. Reverts `SupplierInactive` while a supplier with a share has lost its role, so money
     ///         never reaches a de-registered supplier: the NGO must replace it first.

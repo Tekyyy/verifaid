@@ -91,6 +91,10 @@ library Errors {
     error ProofLimitReached();
     /// @dev A need a person posted for themselves publishes no impact report.
     error ImpactReportNotApplicable();
+    /// @dev A beneficiary's own need may raise at most the high-value threshold.
+    error BeneficiaryNeedTooLarge();
+    /// @dev The NGO's certificates already have as many beneficiary needs open as one NGO may.
+    error TooManyOpenNeeds();
     /// @dev Filed after the pot's deadline, which is what the NGO promised to pay for.
     error ProofAfterDeadline();
 

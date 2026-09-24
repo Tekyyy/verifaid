@@ -44,6 +44,9 @@ interface IBeneficiaryRegistry is IRoleAware {
     ///         escrowed under the terms donors saw, and the NGO may still cancel them before funding closes.
     function revoke(address beneficiary) external;
 
+    /// @notice Beneficiary needs posted under `ngo`'s certificates that are still open.
+    function openNeedsOf(address ngo) external view returns (uint256);
+
     /// @notice True if `certification` would be accepted now, with `signature`, by `createNeed`.
     function isCertified(Certification calldata certification, bytes calldata signature) external view returns (bool);
 

@@ -74,6 +74,9 @@ interface IAidVault is ITrancheLedger {
     ///         the weight of that donor's say on how the money was spent.
     function donatedBy(address donor) external view returns (uint256);
 
+    /// @notice What deposit addresses credited to themselves (no wallet named): money no one can vote with.
+    function donatedByRefTotal() external view returns (uint256);
+
     /// @notice Pro-rata refund of the unreleased balance to a direct donor of a cancelled or expired need.
     function claimRefund() external returns (uint256 amount);
 

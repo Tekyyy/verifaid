@@ -626,7 +626,8 @@
     "stepBack": "Atrás",
     "stepNext": "Continuar",
     "coverLater": "Podrás añadir una foto de portada y una historia desde su panel, una vez publicada la necesidad.",
-    "errorBeneficiaryTranches": "Divide tu necesidad en al menos dos tramos, el primero de como mucho el {max} %: es el único dinero que se paga antes de que muestres cómo se gastó."
+    "errorBeneficiaryTranches": "Divide tu necesidad en al menos dos tramos, el primero de como mucho el {max} %: es el único dinero que se paga antes de que muestres cómo se gastó.",
+    "errorBeneficiaryTarget": "Una necesidad propia puede recaudar como máximo {max} {unit}. Para más, pide a tu ONG que publique ella la necesidad, con sus proveedores."
   },
   "verifier": {
     "title": "Cola del verificador",

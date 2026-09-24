@@ -19,9 +19,12 @@ import {Errors} from "../libraries/Errors.sol";
 ///         its payout address, the need's payees and the beneficiary who posted it have no say, however much they
 ///         gave: they would be judging their own accounts. A verifier counts as a verifier, never also as a donor.
 ///
-///         Reward credit (v10) is given in the CommunityProofs contract's name, which never votes: an NGO's reward buys
-///         no say. It is also left out of the amount the donor thresholds are shares of, so it cannot stand in the way
-///         of the donors who do have one — money that can never vote would otherwise make "30% approve" unreachable.
+///         Money that can never vote is left out of the amount the donor thresholds are shares of: what the NGO, its
+///         payout address, the need's payees, whoever is paid its owner's share and the beneficiary who posted it
+///         gave; reward credit (v10), given in the CommunityProofs contract's name, which never votes; and what deposit
+///         addresses credited to themselves. Counted, it would stand in the way of the donors who do have a say: a
+///         need 71% funded by money without a voice could never reach "30% approve", and anyone willing to lock money
+///         in it until its deadline could freeze it that way.
 contract ReleasePolicy is IReleasePolicy {
     uint16 public constant BPS_DENOMINATOR = 10_000;
 
@@ -80,15 +83,18 @@ contract ReleasePolicy is IReleasePolicy {
     }
 
     /// @inheritdoc IReleasePolicy
-    /// @dev Donor thresholds are shares of what was raised, which is fixed once funding closes, rounded up so "30%"
-    ///      never means a hair less. What was raised as reward credit is left out: it has no voice to count. Verifier thresholds follow the need's own verification requirement, so a
-    ///      high-value need that took two verifiers to open also takes two to release.
+    /// @dev Donor thresholds are shares of what was raised by those who can vote, which is fixed once funding closes,
+    ///      rounded up so "30%" never means a hair less. Verifier thresholds follow the need's own verification
+    ///      requirement, so a high-value need that took two verifiers to open also takes two to release.
     function rulesOf(uint256 needId) external view returns (Rules memory r) {
         r.retries = retries;
         if (donorApprovalBps != 0) {
-            address vault = registry.vaultOf(needId);
+            (address ngo, address vault,,) = registry.coreOf(needId);
             uint256 raised = vault == address(0) ? 0 : ITrancheLedger(vault).totalDonated();
-            if (raised != 0 && rewardCredit != address(0)) raised -= IAidVault(vault).donatedBy(rewardCredit);
+            if (raised != 0) {
+                uint256 voiceless = _voiceless(needId, ngo, vault);
+                raised = voiceless < raised ? raised - voiceless : 0;
+            }
             r.donorApproval = _share(raised, donorApprovalBps);
             r.donorRejection = _share(raised, donorRejectionBps);
         }
@@ -106,13 +112,43 @@ contract ReleasePolicy is IReleasePolicy {
         (address ngo, address vault,,) = registry.coreOf(needId);
         if (verifiers && roles.isIndependent(voter, ngo)) return (Voice.Verifier, 1);
         if (donorApprovalBps == 0 || vault == address(0)) return (Voice.None, 0);
-        if (voter == ngo || voter == roles.payoutOf(ngo)) return (Voice.None, 0);
+        if (voter == ngo || voter == roles.payoutOf(ngo) || voter == registry.ownPayoutOf(needId)) {
+            return (Voice.None, 0);
+        }
         INeedsRegistry.PayeeShare[] memory payees = registry.payeesOf(needId);
         for (uint256 i; i < payees.length; ++i) {
             if (payees[i].account == voter) return (Voice.None, 0);
         }
         uint256 given = IAidVault(vault).donatedBy(voter);
         return given == 0 ? (Voice.None, 0) : (Voice.Donor, given);
+    }
+
+    /// @dev What was raised by those `voiceOf` gives no say, whatever they gave, plus reward credit and deposit
+    ///      addresses that credited themselves. Each address counts once, whatever roles it holds.
+    function _voiceless(uint256 needId, address ngo, address vault) internal view returns (uint256 sum) {
+        INeedsRegistry.PayeeShare[] memory payees = registry.payeesOf(needId);
+        address[] memory parties = new address[](payees.length + 5);
+        parties[0] = ngo;
+        parties[1] = roles.payoutOf(ngo);
+        parties[2] = registry.ownPayoutOf(needId);
+        parties[3] = registry.beneficiaryOf(needId);
+        parties[4] = rewardCredit;
+        for (uint256 i; i < payees.length; ++i) {
+            parties[5 + i] = payees[i].account;
+        }
+        for (uint256 i; i < parties.length; ++i) {
+            address party = parties[i];
+            if (party == address(0) || _seen(parties, i, party)) continue;
+            sum += IAidVault(vault).donatedBy(party);
+        }
+        sum += IAidVault(vault).donatedByRefTotal();
+    }
+
+    function _seen(address[] memory parties, uint256 before, address party) internal pure returns (bool) {
+        for (uint256 j; j < before; ++j) {
+            if (parties[j] == party) return true;
+        }
+        return false;
     }
 
     function _share(uint256 amount, uint16 bps) internal pure returns (uint256) {

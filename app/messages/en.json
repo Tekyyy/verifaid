@@ -626,7 +626,8 @@
     "stepBack": "Back",
     "stepNext": "Continue",
     "coverLater": "You can add a cover photo and a story once the need is posted, from its dashboard.",
-    "errorBeneficiaryTranches": "Split your need into at least two tranches, the first at most {max}%: it is the only money paid before you show how it was spent."
+    "errorBeneficiaryTranches": "Split your need into at least two tranches, the first at most {max}%: it is the only money paid before you show how it was spent.",
+    "errorBeneficiaryTarget": "A need of your own can raise at most {max} {unit}. For more, ask your NGO to post the need itself, with its suppliers."
   },
   "verifier": {
     "title": "Verifier queue",

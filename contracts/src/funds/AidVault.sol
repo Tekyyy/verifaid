@@ -64,6 +64,8 @@ contract AidVault is TrancheLedger, IAidVault {
     mapping(bytes32 => uint256) public donatedByRef;
     /// @notice The forwarder that owns a reference: only it may claim that reference's refund.
     mapping(bytes32 => address) public refPartner;
+    /// @inheritdoc IAidVault
+    uint256 public donatedByRefTotal;
 
     constructor(
         IRoleRegistry roles_,
@@ -132,6 +134,7 @@ contract AidVault is TrancheLedger, IAidVault {
             address owner = refPartner[key];
             if (owner != address(0) && owner != msg.sender) revert Errors.DonorRefPartnerMismatch();
             donatedByRef[key] += amount;
+            donatedByRefTotal += amount;
             refPartner[key] = msg.sender;
         }
 
@@ -363,6 +366,7 @@ contract AidVault is TrancheLedger, IAidVault {
 
         amount = _refundAmount(donated);
         delete donatedByRef[donorRefHash];
+        donatedByRefTotal -= donated;
         _totalRefunded += uint128(amount);
 
         _ensureLiquid(amount);

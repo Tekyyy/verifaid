@@ -549,11 +549,45 @@ contract BeneficiaryNeedsTest is PoATest {
         );
     }
 
-    function test_lifecycle_aHighValueNeedTakesTwoVerifiers() public {
-        uint256 needId = _postBeneficiaryNeed(beneficiary, programId, 12_000e6);
+    /// @dev Bigger than what one verifier may attest is the NGO's own need to post, with vetted suppliers and the
+    ///      25% cap on its own share; a person's need is refused above it.
+    function test_createNeed_aPersonsNeedRaisesAtMostTheHighValueThreshold() public {
+        IBeneficiaryRegistry.Certification memory c = _certification(beneficiary, ngo, programId);
+        bytes memory signature = _signCertification(c, _keyOf(ngo));
+        INeedsRegistry.CreateNeedParams memory tooBig = _beneficiaryNeedParams(programId, HIGH_VALUE_THRESHOLD + 1);
+        vm.prank(beneficiary);
+        vm.expectRevert(Errors.BeneficiaryNeedTooLarge.selector);
+        beneficiaries.createNeed(tooBig, c, signature);
+
+        uint256 needId = _postBeneficiaryNeed(beneficiary, programId, HIGH_VALUE_THRESHOLD);
         _attestNeedVerified(verifier1, needId, true);
-        assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Pending, "one of two");
-        _attestNeedVerified(verifier2, needId, true);
-        assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Funding);
+        assertEq(registry.statusOf(needId), INeedsRegistry.NeedStatus.Funding, "at the threshold, one verifier");
+    }
+
+    /// @dev One NGO's certificates have at most MAX_OPEN_NEEDS_PER_NGO needs open: an NGO certifying wallets it
+    ///      controls cannot open an unbounded number of needs paid in full to them. A need that ends frees its slot.
+    function test_createNeed_oneNgosCertificatesOpenOnlySoManyNeedsAtOnce() public {
+        uint256 limit = beneficiaries.MAX_OPEN_NEEDS_PER_NGO();
+        uint256 first;
+        for (uint256 i; i < limit; ++i) {
+            uint256 id = _postBeneficiaryNeed(makeAddr(string.concat("person", vm.toString(i))), programId, TARGET);
+            if (i == 0) first = id;
+        }
+        assertEq(beneficiaries.openNeedsOf(ngo), limit);
+
+        address late = makeAddr("latecomer");
+        IBeneficiaryRegistry.Certification memory c = _certification(late, ngo, programId);
+        bytes memory signature = _signCertification(c, _keyOf(ngo));
+        assertFalse(beneficiaries.isCertified(c, signature), "the app is told before the form is filled in");
+        INeedsRegistry.CreateNeedParams memory p = _beneficiaryNeedParams(programId, TARGET);
+        vm.prank(late);
+        vm.expectRevert(Errors.TooManyOpenNeeds.selector);
+        beneficiaries.createNeed(p, c, signature);
+
+        vm.prank(ngo);
+        registry.cancelNeed(first);
+        assertEq(beneficiaries.openNeedsOf(ngo), limit - 1);
+        _postBeneficiaryNeed(late, programId, TARGET);
+        assertEq(beneficiaries.openNeedsOf(ngo), limit);
     }
 }

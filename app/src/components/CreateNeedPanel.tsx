@@ -30,6 +30,7 @@ import { TxStatus } from '@/components/TxStatus'
 import { Link } from '@/i18n/navigation'
 import { deployment } from '@/lib/config'
 import {
+  amount,
   bpsPercent,
   categoryIcon,
   dateInputToUnix,
@@ -235,6 +236,16 @@ export function CreateNeedPanel({ certificate }: { certificate?: SignedCertifica
     if (!outcome.trim()) add(0, t('errorOutcome'))
     if (!parsedTarget || !region.trim()) add(0, tErrors('required'))
     else if (new TextEncoder().encode(region.trim()).length > 31) add(0, t('errorRegion'))
+    // Mirrors BeneficiaryRegistry: a person's own need raises at most what one verifier may attest.
+    if (asBeneficiary && highValue) {
+      add(
+        0,
+        t('errorBeneficiaryTarget', {
+          max: amount(String(deployment?.params.highValueThreshold ?? 0)),
+          unit: tCommon('amountUnit'),
+        }),
+      )
+    }
     if (!/^\d+$/.test(programId)) add(0, t('errorProgram'))
 
     // 2 · timeline

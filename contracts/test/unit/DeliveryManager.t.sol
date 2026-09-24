@@ -110,6 +110,21 @@ contract DeliveryManagerTest is PoATest {
         assertEq(donorPolicy.name(), "Donors decide");
     }
 
+    /// @dev The NGO has no say on its own evidence, so what it gave counts for no threshold either: 710 of 1,000 here.
+    function test_rules_moneyFromThoseWithNoSayCountsForNoThreshold() public {
+        (uint256 id,, AidVault vault) = _verifiedNeed(1000e6);
+        _donate(ngo, id, 710e6);
+        _donate(donor1, id, 290e6);
+        vault.releaseTranche(0);
+
+        assertEq(deliveryManager.rulesOf(id).donorApproval, 87e6, "30% of the 290 that can vote");
+        assertEq(deliveryManager.rulesOf(id).donorRejection, 145e6, "50% of it to reject");
+        uint256 deliveryId = _submitEvidence(id);
+        vm.prank(donor1);
+        deliveryManager.approve(deliveryId);
+        assertEq(uint8(deliveryManager.getDelivery(deliveryId).status), uint8(IDeliveryManager.DeliveryStatus.Approved));
+    }
+
     function test_rules_areZeroBeforeFundingCloses() public {
         (uint256 open,,) = _verifiedNeed(TARGET);
         IReleasePolicy.Rules memory r = deliveryManager.rulesOf(open);
