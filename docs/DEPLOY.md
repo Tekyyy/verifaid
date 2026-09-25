@@ -90,11 +90,45 @@ Once the Vercel address is known (e.g. `https://verifaid.vercel.app`):
    pnpm admin base-sepolia run DonationReceipt "setDashboardBaseURI(string)" https://<vercel-address>/needs/
    ```
 
-## 4. Later, if you want them
+## 4. Donation alerts: the notifier
 
-- **Alerts (notifier)** and **NGO records (vault)**: two more Railway services from their Dockerfiles
-  (`services/notifier/Dockerfile`, `services/pii-vault/Dockerfile`), on the same Postgres, with their secrets set
-  in Railway. Then give the app `NOTIFIER_URL` and `NEXT_PUBLIC_PII_VAULT_URL`.
+The "alert me" form on every donation's tracking page needs the notifier. Until `NOTIFIER_URL` is set in Vercel the
+site hides the form instead of showing one that fails.
+
+1. **Railway → your project → + Create → GitHub Repo →** the same repo again. This makes a second service beside the
+   indexer.
+2. **Settings** of the new service:
+   - **Branch:** `main`
+   - **Config-as-code → Railway config file:** **`/services/notifier/railway.json`** (not the indexer's).
+   - Leave **Root Directory** empty.
+3. **Variables:**
+
+   | Name | Value |
+   |---|---|
+   | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}?schema=verifaid` (its own schema, apart from the indexer's) |
+   | `NOTIFIER_KEK` | 64 hex characters (32 bytes) that encrypt stored email addresses. Generate them with `openssl rand -hex 32`. **Keep a copy**: losing it makes every stored address unreadable |
+   | `INDEXER_URL` | `https://hackathon-blockchainforgood-production.up.railway.app` |
+   | `APP_BASE_URL` | `https://www.verifaid.org` |
+   | `PUBLIC_BASE_URL` | this service's own domain, once generated (step 4), for unsubscribe links |
+   | `PORT` | `4004` |
+
+4. **Settings → Networking → Generate Domain**, port **4004**. Put that address in `PUBLIC_BASE_URL`.
+5. **Deploy.** At start the container creates its tables (`prisma db push`), and `/health` answers once it is up.
+6. **Vercel → Settings → Environment Variables:** add `NOTIFIER_URL` = the notifier's domain (`https://…up.railway.app`,
+   no trailing slash). Then **redeploy**. The alerts form appears on tracking pages.
+
+**Webhooks work at once. Emails are queued until an email service is set.** To send them, create a free account
+at **resend.com**, verify `verifaid.org` there (it gives DNS records to add at name.com), and add to the notifier:
+
+- `EMAIL_API_URL=https://api.resend.com/emails`
+- `EMAIL_API_KEY=` your Resend key
+- `EMAIL_FROM=VerifAid <alerts@verifaid.org>`
+
+## 5. Later, if you want them
+
+- **NGO records (vault)**: one more Railway service from `services/pii-vault/Dockerfile`, on the same Postgres. The
+  site then gets `NEXT_PUBLIC_PII_VAULT_URL`. Until then an NGO creating a need pastes its dossier's hash instead of
+  storing the dossier.
 - **A custom domain**: add it in Vercel; then redo step 3 with it.
 - **Free transactions for smart wallets**: a Coinbase Developer Platform paymaster URL as
   `NEXT_PUBLIC_PAYMASTER_URL`.

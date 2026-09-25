@@ -126,7 +126,10 @@ describe('stage diffing', () => {
   })
 
   it("marks Impact confirmed not applicable on a person's own need, which completes without a report", () => {
-    const own = needFixture('5', { status: 'Completed', beneficiary: '0x00000000000000000000000000000000000000b1' })
+    const own = needFixture('5', {
+      status: 'Completed',
+      beneficiary: '0x00000000000000000000000000000000000000b1',
+    })
     const progress = needProgress(own)
     const impact = progress.stages.find((view) => view.stage === 'ImpactConfirmed')
     expect(impact).toMatchObject({ reached: false, notApplicable: true })

@@ -134,9 +134,10 @@ To leave evidence waiting for a live vote: `pnpm demo:run base-sepolia review`.
 
 | Service | Where | Notes |
 |---|---|---|
-| Website | https://www.verifaid.org | Vercel project `hackathon-blockchainforgood`, builds `main` from `app/`; env: `NEXT_PUBLIC_INDEXER_URL`, `UPLOAD_DIR`, `RELAYER_PRIVATE_KEY` (`PINATA_JWT` still to add) |
+| Website | https://www.verifaid.org | Vercel project `hackathon-blockchainforgood`, builds `main` from `app/`; env: `NEXT_PUBLIC_INDEXER_URL`, `UPLOAD_DIR`, `RELAYER_PRIVATE_KEY`, `PINATA_JWT`; `NOTIFIER_URL` once the notifier is up |
 | Indexer | https://hackathon-blockchainforgood-production.up.railway.app | Railway service from `indexer/railway.json`; env: `DATABASE_URL`, `PONDER_RPC_URL`, `PORT=42069`, `APP_BASE_URL`; 30-day trial, then the $5 Hobby plan |
-| Database | Railway Postgres | one schema per indexer deployment |
+| Database | Railway Postgres | one schema per indexer deployment; the notifier's tables in schema `verifaid` |
+| Notifier (donation alerts) | to create: Railway service from `services/notifier/railway.json` | steps in `docs/DEPLOY.md` §4; webhooks at once, emails once a Resend key is set |
 
 **On this machine:**
 
