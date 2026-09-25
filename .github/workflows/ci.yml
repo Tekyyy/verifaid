@@ -9,6 +9,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only token: CI builds and tests, it never writes to the repository.
+permissions:
+  contents: read
+
 env:
   FOUNDRY_PROFILE: ci
 

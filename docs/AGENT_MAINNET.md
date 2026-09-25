@@ -56,10 +56,9 @@ detail. The human-facing version is `docs/MAINNET.md`.
   - typecheck, Biome lint and `forge lint` all clean
   - `pnpm rehearse:mainnet` passes end to end
 
-## 3. Environment (this Windows machine)
+## 3. Environment
 
-- **Tools on the PATH:** pnpm is in `~/.npm-global` and Foundry in `$HOME/.foundry/bin`. Prepend
-  both in every shell.
+- **Tools on the PATH:** pnpm and Foundry (`$HOME/.foundry/bin`) must both be on the PATH of every shell.
 - **Ad-hoc Node scripts:** write them to a file. Inline `node -e` breaks on quotes and backticks.
 - **Ponder locally:** it needs stdin kept open: `tail -f /dev/null | npx ponder dev`. Delete `indexer/.ponder/<dir>`
   after any redeploy.

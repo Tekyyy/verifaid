@@ -53,3 +53,6 @@ deployments/rehearsal/
 
 # Safe Transaction Builder files written by `pnpm admin base prepare`
 admin-proposals/
+
+# Local tool settings (paths differ per machine)
+.claude/

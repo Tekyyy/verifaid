@@ -19,7 +19,7 @@
  * `run` schedules, waits out the delay and executes. On anvil (`pnpm deploy:local --handover`) the proposer is an
  * ordinary account standing in for the Safe, and the script schedules from it directly.
  *
- * On Base mainnet no owner key is on this machine: each owner signs in the Safe app. `prepare` writes the two
+ * On Base mainnet no owner key sits with the operator: each owner signs in the Safe app. `prepare` writes the two
  * transactions as Safe Transaction Builder files — schedule now, execute once the delay is over — to import there:
  *
  *   pnpm admin base status

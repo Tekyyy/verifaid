@@ -230,6 +230,11 @@ receipt id or a deposit address, never by name; alert emails are encrypted and d
 Right to erasure is handled by destroying the record's data key (crypto-shredding); nothing on chain refers to the
 person. See `docs/THREAT_MODEL.md` for what this does **not** protect against.
 
+## Security
+
+Built for a hackathon and **not audited**. How to report a vulnerability privately, where the keys go (never in
+git) and which dependency advisories remain: [`SECURITY.md`](SECURITY.md).
+
 ## Documentation
 
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — every open choice and how it was resolved, including v2, v3 conversions and all three adversarial reviews

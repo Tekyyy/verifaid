@@ -24,7 +24,7 @@ without `indexer/railway.json` makes Railway fall back to guessing the build ("R
 
 1. Go to **railway.com** and sign in with GitHub. That starts the 30-day trial ($5 of credit, no card).
 2. **New Project → Deploy PostgreSQL** (it may be under *Database*). Wait until it is running.
-3. In the same project: **+ Create → GitHub Repo → `Tekyyy/hackathon-blockchainforgood`**. Railway starts a first
+3. In the same project: **+ Create → GitHub Repo →** your copy of this repository. Railway starts a first
    build; it will fail or build the wrong thing until the next step, which is fine.
 4. Open the new service → **Settings**:
    - **Source → Branch**: the branch above.
@@ -56,7 +56,7 @@ the same deployment resumes where it stopped.
 ## 2. Vercel: the web app
 
 1. Go to **vercel.com** and sign up with GitHub (the free Hobby plan is for non-commercial use, fine for this).
-2. **Add New → Project → Import** `Tekyyy/hackathon-blockchainforgood`.
+2. **Add New → Project → Import** your copy of this repository.
 3. **Root Directory**: `app`. Framework: Next.js (detected). Leave the build and install commands alone:
    `app/vercel.json` sets them (install the app and `@poa/shared`, build shared, then the app).
 4. **Environment Variables** (all environments):
@@ -84,7 +84,7 @@ Once the Vercel address is known (e.g. `https://verifaid.vercel.app`):
 
 1. **Railway → indexer → Variables**: `APP_BASE_URL` = the Vercel address. (Links in the RSS feeds.)
 2. **Receipt NFTs** point at `http://localhost:3000/needs/` on chain. Changing it is one timelocked admin action,
-   run from this machine (it signs with the deployer and council keys of the Safe, then waits 10 minutes):
+   run where the deployer and council keys of the Safe are (it signs with both, then waits 10 minutes):
 
    ```bash
    pnpm admin base-sepolia run DonationReceipt "setDashboardBaseURI(string)" https://<vercel-address>/needs/

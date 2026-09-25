@@ -1,7 +1,7 @@
 # VerifAid — project status
 
-A snapshot of everything this machine and the working session hold: what is live, what is running, where the
-keys are (names only, never values), how to operate it, and what is still open.
+A snapshot of the project: what is live, what runs where, which settings it needs (names only, never values), how
+to operate it, and what is still open.
 
 *Last updated: 2026-09-25 · v10 live on Base Sepolia; Base mainnet deployed for the hackathon (§2d), hosting pending*
 
@@ -16,9 +16,10 @@ keys are (names only, never values), how to operate it, and what is still open.
 | Release | **v10**, live on **Base Sepolia** (chain 84532), indexed from block 47,256,760 |
 | Source | every contract source-verified on Basescan (20 system contracts + the timelock) |
 | Admin | a **TimelockController** (10-minute delay), proposed by your existing **2-of-3 Safe**; the deployer is only the guardian (pause) |
-| Tests | 391 Foundry, 26 shared, 74 notifier, 11 PII vault, 96 app — all passing; typecheck and Biome lint clean |
+| Tests | 395 Foundry, 26 shared, 74 notifier, 11 PII vault, 102 app — all passing; typecheck and Biome lint clean |
+| App stack | Next.js 15.5 and React 19 (Next 14 had unpatched critical advisories); `pnpm audit --prod`: no critical, the rest explained in `SECURITY.md` |
 | Demo | all 7 scenarios passed on anvil and on Base Sepolia |
-| Your wallets | `0xa087…42Da` and `0x4C2d…3636` registered as NGOs; 1,000,000 test USDC each in `0xa087…42Da`, `0x4C2d…3636`, `0x28EA…F708` |
+| Test wallets | two operator wallets registered as NGOs and funded with test USDC |
 | Branch | `main` holds v10 (fast-forwarded from `feature/beneficiary-needs`) |
 | Open | threshold counts other money that cannot vote (item #1, reward credit already excluded); Pinata key; paymaster URL |
 
@@ -42,8 +43,8 @@ Design record: `docs/DECISIONS.md` §22. Threats: `docs/THREAT_MODEL.md` §3.4, 
 
 ## 2b. What v10 changed
 
-Your v10 work (needs a certified person posts for themselves, news on a need's page, community proof and reward
-pots) plus, from this machine:
+The team's v10 work (needs a certified person posts for themselves, news on a need's page, community proof and
+reward pots) plus:
 
 - **Rewards are credit, not cash.** `CommunityProofs.rewardProof` credits `creditOf[filer]`; the filer can only
   spend it with `giveCredit` on a need or a basket. The donor of record is the CommunityProofs contract, so a reward
@@ -136,7 +137,7 @@ Kept apart from `main`, so the live testnet site is untouched. The full checklis
 |---|---|
 | TimelockController (the admin, 600 s delay) | `0xbB8AD7b251CD4e37B75eac300b571618a1a38368` |
 | Safe (the only proposer, 2-of-3, kept from v9) | `0xd9575509cE883456185C458b5dD778aD2341b898` |
-| Safe owner — you | `0xa08747Ef92c817C7c9cF7170d22CeD148b7742Da` |
+| Safe owner — operator | `0xa08747Ef92c817C7c9cF7170d22CeD148b7742Da` |
 | Safe owner — deployer (also the guardian) | `0x7642C9178a738Dd623Aac1F943bAFB81589E9050` |
 | Safe owner — "council", demo mnemonic index 6 | `0x95DE870810E8c362571D2098423464d841f20adE` |
 
@@ -191,7 +192,7 @@ To leave evidence waiting for a live vote: `pnpm demo:run base-sepolia review`.
 | Notifier (donation alerts) | to create: Railway service from `services/notifier/railway.json` | steps in `docs/DEPLOY.md` §4; webhooks at once, emails once a Resend key is set |
 | Records vault (NGO needs assessments) | to create: Railway service from `services/pii-vault/railway.json` | steps in `docs/DEPLOY.md` §5; needs `NGO_KEK` set, since Railway disks do not survive a deploy |
 
-**On this machine:**
+**Locally** (for development):
 
 | Service | Where | Notes |
 |---|---|---|
@@ -199,8 +200,7 @@ To leave evidence waiting for a live vote: `pnpm demo:run base-sepolia review`.
 | Indexer (Ponder) | http://localhost:42069 | preview server "indexer" (Base Sepolia, v10); state in `indexer/.ponder/pglite` |
 | Local test stack | anvil :8545, indexer :42070, app :3001 | `app-anvil` / `indexer-anvil`; a throwaway chain for checks |
 
-Start/stop from the Claude app's preview panel (`.claude/launch.json`: `app`, `indexer`, `app-anvil` on port 3001
-for a local chain). After any redeploy: delete `indexer/.ponder/pglite` and `app/.next/cache/fetch-cache`.
+After any redeploy: delete `indexer/.ponder/pglite` and `app/.next/cache/fetch-cache`.
 
 ---
 
@@ -211,7 +211,7 @@ for a local chain). After any redeploy: delete `indexer/.ponder/pglite` and `app
 | `.env` (repo root) | `DEPLOYER_PRIVATE_KEY`, `BASESCAN_API_KEY`, `DEMO_MNEMONIC` (wrapped in quotes), `ADMIN_SAFE_OWNERS`, `ADMIN_SAFE_THRESHOLD`, `ADMIN_TIMELOCK_DELAY`, `EXTRA_NGOS`, RPC and indexer settings | `GUARDIAN_ADDRESS` (deployer by default) |
 | `app/.env.local` | chain, indexer URL, `RELAYER_PRIVATE_KEY` (pays for relayed votes, sweeps, sandbox mints) | **`PINATA_JWT`** (turns IPFS pinning on), **`NEXT_PUBLIC_PAYMASTER_URL`** (gas-free Smart Wallet transactions) |
 
-Both files are committed to the **private** GitHub repo, as agreed. Never paste their values anywhere public.
+Neither file is committed (both are in `.gitignore`): start from `.env.example` and `app/.env.example`.
 Restart the app after editing `app/.env.local`.
 
 ---
@@ -261,22 +261,19 @@ A 2-of-3 Safe action can also be co-signed by you in the Safe web app (app.safe.
 
 ---
 
-## 9. Things this machine needs to remember
+## 9. Operator notes
 
-- **pnpm** is in `~/.npm-global` and **Foundry** in `%USERPROFILE%\.foundry\bin` — neither is on
-  the default PATH; prepend both.
+- **pnpm** and **Foundry** (`~/.foundry/bin`) must both be on the PATH.
 - **Ponder** exits when stdin is not a terminal on Windows: run it as `tail -f /dev/null | npx ponder dev`.
 - **forge** deploys need `--slow`; verification after the fact needs `--resume --broadcast --verify` (and a
   `forge clean` if artifacts are stale).
 - **Public RPC** (`sepolia.base.org`) is load-balanced: reads right after a transaction can lag, and parallel
   deployer transactions race on the nonce — send them one at a time.
-- **`DEMO_MNEMONIC` is quoted** in `.env`: strip the quotes before deriving accounts (a helper that did not produced
-  a wrong Safe owner once; fixed with a `swapOwner`).
-- **After every redeploy**: register `0xa087…42Da` and `0x4C2d…3636` as NGOs (the deploy does it through
-  `EXTRA_NGOS` before the handover; `.env` lists only `0x4C2d…`, so pass both, as the v10 deploy did) and reuse the
-  Safe with `ADMIN_SAFE_ADDRESS=0xd9575509cE883456185C458b5dD778aD2341b898` (otherwise a new Safe is created); then
-  mint 1M mUSDC each to `0xa087…42Da`, `0x4C2d7cD2669B46f49889fFe97B48E15467F03636`,
-  `0x28EAb867F1570f00145DC7c65430b7Cd59c3F708` (mUSDC `mint(address,uint256)` is open to anyone).
+- **`DEMO_MNEMONIC` may be quoted** in `.env`: strip the quotes before deriving accounts (a helper that did not
+  produced a wrong Safe owner once; fixed with a `swapOwner`).
+- **After every testnet redeploy**: register the operator's NGO wallets through `EXTRA_NGOS` before the handover,
+  reuse the Safe with `ADMIN_SAFE_ADDRESS=0xd9575509cE883456185C458b5dD778aD2341b898` (otherwise a new Safe is
+  created), then mint test mUSDC to the wallets you test with (mUSDC `mint(address,uint256)` is open to anyone).
 - The app keeps uploaded evidence in `app/.uploads/`; the PII vault's tests need a private Postgres on port 5434.
 
 ---
