@@ -28,7 +28,7 @@ import { ProgramPicker } from '@/components/ProgramPicker'
 import { ReleasePolicyNote } from '@/components/ReleasePolicyNote'
 import { TxStatus } from '@/components/TxStatus'
 import { Link } from '@/i18n/navigation'
-import { deployment } from '@/lib/config'
+import { deployment, piiVaultUrl, vaultEnabled } from '@/lib/config'
 import {
   bpsPercent,
   categoryIcon,
@@ -42,7 +42,8 @@ import {
 import { useTx } from '@/lib/hooks'
 import { getSuppliers } from '@/lib/indexer'
 import { builtInPolicies } from '@/lib/policies'
-import { storeDossier } from '@/lib/services'
+import { useVaultSession } from '@/lib/useVaultSession'
+import { storeDossier } from '@/lib/vault'
 
 /** Contract bounds (NeedsRegistry): at most 5 tranches, cost cap at most 20%. */
 const MAX_TRANCHES = 5
@@ -214,9 +215,14 @@ export function CreateNeedPanel({ certificate }: { certificate?: SignedCertifica
   const maxOwnShareBps = asBeneficiary ? NO_OWN_SHARE_CAP : MAX_NGO_SHARE_BPS
   const planCheck = checkPlan(plan, trancheBps, maxOwnShareBps)
 
+  // Storing the assessment in the vault lets verifiers read it; it takes a wallet signature to sign in (no gas).
+  const vault = useVaultSession()
   const store = async () => {
     setServiceError(null)
-    const result = await storeDossier(dossierText)
+    if (!dossierText.trim()) return setServiceError(t('errorDossier'))
+    const token = await vault.getToken()
+    if (!token.ok) return setServiceError(tErrors('serviceUnavailable', { detail: token.error }))
+    const result = await storeDossier({ baseUrl: piiVaultUrl }, token.data, dossierText)
     if (result.ok) setDossierHash(result.data.hash)
     else setServiceError(tErrors('serviceUnavailable', { detail: result.error }))
   }
@@ -754,9 +760,11 @@ export function CreateNeedPanel({ certificate }: { certificate?: SignedCertifica
               placeholder="0x…"
               hint={t('dossierHashHint')}
             />
-            <button type="button" className="btn-secondary mt-2 text-xs" onClick={store}>
-              {t('dossierStore')}
-            </button>
+            {vaultEnabled ? (
+              <button type="button" className="btn-secondary mt-2 text-xs" onClick={store}>
+                {t('dossierStore')}
+              </button>
+            ) : null}
             <FormError message={serviceError} />
           </div>
         </Advanced>

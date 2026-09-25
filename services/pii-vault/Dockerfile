@@ -29,9 +29,13 @@ RUN mkdir -p /run/secrets && chown -R node:node /run/secrets
 ENV NODE_ENV=production \
     PORT=4002 \
     HOST=0.0.0.0 \
-    NGO_KEK_PATH=/run/secrets/ngo-kek.key
+    NGO_KEK_PATH=/run/secrets/ngo-kek.key \
+    CHECKPOINT_DISABLE=1
 USER node
 EXPOSE 4002
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:4002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-CMD ["node", "services/pii-vault/dist/server.js"]
+# Tables first: `prisma db push` creates or extends them and never drops data (a destructive change stops the
+# start instead). On a host without a lasting disk, set NGO_KEK instead of relying on the key file, or every record
+# becomes unreadable on the next deploy.
+CMD ["sh", "-c", "services/shared/node_modules/.bin/prisma db push --schema services/shared/prisma/schema.prisma --skip-generate && exec node services/pii-vault/dist/server.js"]

@@ -1,10 +1,6 @@
-import type { Hex } from 'viem'
-import { piiVaultUrl } from './config'
-
 /**
- * Clients for the off-chain pieces the operator routes talk to: this app's evidence uploads and the PII vault
- * (spec §9). Either may be offline; every call returns a result the caller renders, and neither ever receives
- * beneficiary personal data from this app.
+ * Client for this app's evidence uploads. It may be offline; every call returns a result the caller renders. The
+ * PII vault's client is `lib/vault.ts`.
  */
 
 export type ServiceResult<T> = { ok: true; data: T } | { ok: false; error: string }
@@ -48,30 +44,6 @@ export const uploadEvidenceFiles = async (files: File[]): Promise<ServiceResult<
       return { ok: false, error: data?.message ?? `${response.status} ${response.statusText}` }
     if (!data?.files) return { ok: false, error: 'malformed response' }
     return { ok: true, data: data.files }
-  } catch (error) {
-    return failure(error)
-  }
-}
-
-/** Where a verifier goes to read a needs assessment dossier. */
-export const dossierViewUrl = (hash: string): string => `${piiVaultUrl}/dossiers/${encodeURIComponent(hash)}`
-
-/**
- * `POST /dossiers`: the NGO's needs assessment is stored encrypted and only its hash reaches the chain.
- * The assessment text is sent to the NGO's own vault service and nowhere else.
- */
-export const storeDossier = async (content: string): Promise<ServiceResult<{ hash: Hex }>> => {
-  try {
-    const response = await fetch(`${piiVaultUrl}/dossiers`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ content }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    })
-    if (!response.ok) return { ok: false, error: `${response.status} ${response.statusText}` }
-    const data = (await response.json()) as { hash?: Hex }
-    if (!data?.hash) return { ok: false, error: 'malformed response' }
-    return { ok: true, data: { hash: data.hash } }
   } catch (error) {
     return failure(error)
   }

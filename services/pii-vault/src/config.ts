@@ -38,6 +38,8 @@ const EnvSchema = z.object({
   SIWE_DOMAIN: z.string().optional(),
   CORS_ORIGIN: z.string().default('*'),
   NGO_KEK_PATH: z.string().default('./secrets/ngo-kek.key'),
+  /** 32-byte hex key. Takes precedence over the key file. */
+  NGO_KEK: z.string().optional(),
 })
 
 export interface VaultConfig {
@@ -53,6 +55,7 @@ export interface VaultConfig {
   siweDomain: string
   corsOrigin: string
   kekPath: string
+  kekHex?: string
 }
 
 const randomSecret = (): string => Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('hex')
@@ -76,5 +79,6 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): VaultConfig =>
     siweDomain: value.SIWE_DOMAIN ?? `localhost:${value.PORT}`,
     corsOrigin: value.CORS_ORIGIN,
     kekPath: resolve(repoRoot, value.NGO_KEK_PATH),
+    kekHex: value.NGO_KEK?.trim() || undefined,
   }
 }

@@ -10,7 +10,7 @@ The contracts are already on Base Sepolia. What goes online is the rest:
 | Web app (`app/`) | **Vercel** | Next.js pages and API routes; Vercel's home ground |
 | Indexer (`indexer/`) | **Railway** | Follows the chain around the clock, which a serverless host cannot do |
 | Its database | **Railway Postgres** | A container's disk does not outlive a redeploy |
-| Notifier, records vault | Railway, later | Only the Alerts page and the NGO records need them |
+| Notifier, records vault | Railway, §4 and §5 | Only donation alerts and the NGO records need them |
 
 The repo is set up for both: `indexer/Dockerfile` and `indexer/railway.json` for Railway, `app/vercel.json` for
 Vercel. Nothing needs to be typed as a build command.
@@ -125,11 +125,35 @@ the notifier's `/outbox` page, which is meant for demos. To send them, create a 
 - `EMAIL_API_KEY=` your Resend key
 - `EMAIL_FROM=VerifAid <alerts@verifaid.org>`
 
-## 5. Later, if you want them
+## 5. NGO records: the vault
 
-- **NGO records (vault)**: one more Railway service from `services/pii-vault/Dockerfile`, on the same Postgres. The
-  site then gets `NEXT_PUBLIC_PII_VAULT_URL`. Until then an NGO creating a need pastes its dossier's hash instead of
-  storing the dossier.
+An NGO can store its needs assessment encrypted in the vault, and a registered verifier reads it there and sees
+whether it matches the hash the need committed to on chain. Signing in takes one wallet signature, which costs no gas. Until
+`NEXT_PUBLIC_PII_VAULT_URL` is set in Vercel the site hides the store button: a need then commits the assessment's
+hash only, and the NGO shares the text with verifiers itself.
+
+1. **+ Create → GitHub Repo →** the same repo, for a third service.
+2. **Settings:** branch `main`; **Railway config file** **`/services/pii-vault/railway.json`**; Root Directory empty.
+3. **Variables:**
+
+   | Name | Value |
+   |---|---|
+   | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}?schema=verifaid` (shared with the notifier: one set of tables) |
+   | `NGO_KEK` | 64 hex characters (`openssl rand -hex 32`) that encrypt every record. **Required on Railway**: without it the vault creates a key file on a disk that each deploy wipes. **Keep a copy** |
+   | `SESSION_SECRET` | another `openssl rand -hex 32`; replacing it only signs everyone out |
+   | `SIWE_DOMAIN` | `www.verifaid.org`, the site's host as the browser shows it. Wallets warn when the sign-in message names another site |
+   | `CORS_ORIGIN` | `https://www.verifaid.org` (comma-separate more origins if the bare domain serves the site too) |
+   | `POA_NETWORK` | `base-sepolia` |
+   | `RPC_URL` | `https://sepolia.base.org` |
+   | `PORT` | `4002` |
+
+4. **Settings → Networking → Generate Domain**, port **4002**.
+5. **Deploy.** The container creates its tables at start, like the notifier; `/health` names the network.
+6. **Vercel:** add `NEXT_PUBLIC_PII_VAULT_URL` = the vault's domain (no trailing slash) and **redeploy**. It is baked
+   in at build time.
+
+## 6. Later, if you want them
+
 - **A custom domain**: add it in Vercel; then redo step 3 with it.
 - **Free transactions for smart wallets**: a Coinbase Developer Platform paymaster URL as
   `NEXT_PUBLIC_PAYMASTER_URL`.
@@ -152,4 +176,8 @@ the notifier's `/outbox` page, which is meant for demos. To send them, create a 
 | The site says the indexer is unreachable | `NEXT_PUBLIC_INDEXER_URL` missing or has a trailing slash; redeploy after changing it (it is baked in at build time) |
 | The site shows old needs or errors on new ones | Vercel is building a branch with the v9 code |
 | Uploading evidence fails | `UPLOAD_DIR` not set to `/tmp/verifaid-uploads` |
+| The alerts form or the vault's store button stays hidden | `NOTIFIER_URL` or `NEXT_PUBLIC_PII_VAULT_URL` not set in Vercel, or no redeploy since |
+| The notifier or vault domain answers 502 | `PORT` is not `4004` (notifier) or `4002` (vault) |
+| "Failed to fetch" when storing or reading an assessment | the vault's `CORS_ORIGIN` lacks the site's exact origin |
+| Assessments stored earlier no longer open after a redeploy | the vault's `NGO_KEK` changed or is unset; put the original back |
 | Vercel build cannot find `@poa/shared` or `pnpm-lock.yaml` | **Settings → Build → Include files outside the Root Directory** must stay on (the default) |

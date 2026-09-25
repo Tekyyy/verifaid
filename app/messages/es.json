@@ -375,7 +375,7 @@
     "targetAmount": "Importe objetivo en {unit}",
     "region": "Código de región (aproximado, p. ej. ES-CM)",
     "dossier": "Evaluación de necesidades",
-    "dossierStore": "Guardarla y hashearla",
+    "dossierStore": "Guárdala cifrada para los verificadores (inicia sesión con tu cartera)",
     "dossierHash": "Hash del expediente (obligatorio)",
     "verificationsRequired": "Verificaciones necesarias",
     "tranchePlan": "Plan de tramos, en porcentaje, separados por comas",
@@ -632,7 +632,7 @@
     "title": "Cola del verificador",
     "subtitle": "Necesidades pendientes de verificar, cambios de proveedor pendientes de aprobar y —en las necesidades cuya regla da voto a los verificadores— justificaciones pendientes de un verificador. Debes ser independiente de la ONG.",
     "needsQueue": "Necesidades pendientes de verificación",
-    "openDossier": "Abrir el expediente cifrado",
+    "openDossier": "Leer la evaluación de necesidades",
     "reportHash": "Hash de tu informe",
     "approve": "Atestar: aprobar",
     "reject": "Atestar: rechazar",
@@ -649,7 +649,14 @@
     "evidenceQueueNote": "En estas necesidades el siguiente tramo también espera a un verificador independiente. Abre la necesidad, lee la justificación y vota a su lado.",
     "emptyEvidence": "No hay justificaciones pendientes de un verificador.",
     "evidenceRow": "Necesidad n.º {need}: en qué se gastó el tramo {spent}",
-    "evidenceOpen": "Revisarla"
+    "evidenceOpen": "Revisarla",
+    "dossierLoading": "Abriendo…",
+    "dossierNoVault": "La ONG te comparte su evaluación directamente; la necesidad se compromete con su hash:",
+    "dossierNotStored": "Esta evaluación no se guardó en la bóveda. Pídesela a la ONG: su hash está arriba.",
+    "dossierForbidden": "Solo la ONG que la guardó o un verificador registrado puede leerla.",
+    "dossierMatches": "Coincide con el hash que la necesidad registró en la cadena ✓",
+    "dossierMismatch": "NO coincide con el hash que la necesidad registró en la cadena: no te fíes de ella.",
+    "dossierError": "No se pudo abrir la evaluación: {detail}"
   },
   "impact": {
     "title": "Impacto",

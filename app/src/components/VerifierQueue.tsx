@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { type Address, type Hex, keccak256, toHex } from 'viem'
 import { useReadContract } from 'wagmi'
 import { Deadline } from '@/components/Deadline'
+import { DossierViewer } from '@/components/DossierViewer'
 import { FormError, TextField } from '@/components/form'
 import { EmptyState, MissingDeployment } from '@/components/Notice'
 import { ApprovePayeeChangePanel } from '@/components/PayeeChangePanel'
@@ -14,9 +15,8 @@ import { TxStatus } from '@/components/TxStatus'
 import { Link } from '@/i18n/navigation'
 import { deployment } from '@/lib/config'
 import { attestationRequest, schemaRecipient } from '@/lib/eas'
-import { amount, bpsPercent, shorten } from '@/lib/format'
+import { amount, bpsPercent } from '@/lib/format'
 import { useTx } from '@/lib/hooks'
-import { dossierViewUrl } from '@/lib/services'
 
 const ZERO_BYTES32 = `0x${'00'.repeat(32)}` as Hex
 const hashOf = (text: string): Hex => (text ? keccak256(toHex(text)) : ZERO_BYTES32)
@@ -123,17 +123,7 @@ function NeedRow({ need }: { need: NeedSummary }) {
       <NeedTerms need={need} />
       {deadlinePassed ? <FormError message={t('deadlinePassed')} /> : null}
 
-      <p className="text-xs">
-        <a
-          className="link"
-          href={dossierViewUrl((dossierHash as string) ?? '')}
-          target="_blank"
-          rel="noreferrer noopener"
-        >
-          {t('openDossier')}
-        </a>{' '}
-        <span className="mono">{dossierHash ? shorten(dossierHash as string, 10, 6) : '—'}</span>
-      </p>
+      <DossierViewer dossierHash={dossierHash as string | undefined} />
 
       <TextField label={t('reportHash')} value={report} onChange={setReport} placeholder="…" />
 
