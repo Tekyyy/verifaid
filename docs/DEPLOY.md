@@ -117,8 +117,9 @@ site hides the form instead of showing one that fails.
 6. **Vercel → Settings → Environment Variables:** add `NOTIFIER_URL` = the notifier's domain (`https://…up.railway.app`,
    no trailing slash). Then **redeploy**. The alerts form appears on tracking pages.
 
-**Webhooks work at once. Emails are queued until an email service is set.** To send them, create a free account
-at **resend.com**, verify `verifaid.org` there (it gives DNS records to add at name.com), and add to the notifier:
+**Webhooks work at once. Emails need an email service.** Without one, alert emails are not sent; they only show on
+the notifier's `/outbox` page, which is meant for demos. To send them, create a free account at **resend.com**, verify
+`verifaid.org` there (it gives DNS records to add at name.com), and add to the notifier:
 
 - `EMAIL_API_URL=https://api.resend.com/emails`
 - `EMAIL_API_KEY=` your Resend key
