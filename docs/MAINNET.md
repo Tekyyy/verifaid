@@ -2,7 +2,7 @@
 
 Everything needed to put VerifAid on Base mainnet with real money, what is already done on the `mainnet-prep`
 branch, and how the deployment runs. The deployment itself costs well under a dollar in gas at today's prices; the
-real costs are the audit and running it properly afterwards.
+real costs are the audit and running it properly afterwards. An agent picking this up starts at `AGENT_MAINNET.md`.
 
 ---
 
