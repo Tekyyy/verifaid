@@ -16,7 +16,7 @@ keys are (names only, never values), how to operate it, and what is still open.
 | Release | **v10**, live on **Base Sepolia** (chain 84532), indexed from block 47,256,760 |
 | Source | every contract source-verified on Basescan (20 system contracts + the timelock) |
 | Admin | a **TimelockController** (10-minute delay), proposed by your existing **2-of-3 Safe**; the deployer is only the guardian (pause) |
-| Tests | 391 Foundry, 26 shared, 64 notifier, 91 app — all passing; typecheck and Biome lint clean |
+| Tests | 391 Foundry, 26 shared, 74 notifier, 11 PII vault, 96 app — all passing; typecheck and Biome lint clean |
 | Demo | all 7 scenarios passed on anvil and on Base Sepolia |
 | Your wallets | `0xa087…42Da` and `0x4C2d…3636` registered as NGOs; 1,000,000 test USDC each in `0xa087…42Da`, `0x4C2d…3636`, `0x28EA…F708` |
 | Branch | `main` holds v10 (fast-forwarded from `feature/beneficiary-needs`) |
@@ -157,10 +157,11 @@ To leave evidence waiting for a live vote: `pnpm demo:run base-sepolia review`.
 
 | Service | Where | Notes |
 |---|---|---|
-| Website | https://www.verifaid.org | Vercel project `hackathon-blockchainforgood`, builds `main` from `app/`; env: `NEXT_PUBLIC_INDEXER_URL`, `UPLOAD_DIR`, `RELAYER_PRIVATE_KEY`, `PINATA_JWT`; `NOTIFIER_URL` once the notifier is up |
+| Website | https://www.verifaid.org | Vercel project `hackathon-blockchainforgood`, builds `main` from `app/`; env: `NEXT_PUBLIC_INDEXER_URL`, `UPLOAD_DIR`, `RELAYER_PRIVATE_KEY`, `PINATA_JWT`; `NOTIFIER_URL` and `NEXT_PUBLIC_PII_VAULT_URL` once the notifier and vault are up |
 | Indexer | https://hackathon-blockchainforgood-production.up.railway.app | Railway service from `indexer/railway.json`; env: `DATABASE_URL`, `PONDER_RPC_URL`, `PORT=42069`, `APP_BASE_URL`; 30-day trial, then the $5 Hobby plan |
-| Database | Railway Postgres | one schema per indexer deployment; the notifier's tables in schema `verifaid` |
+| Database | Railway Postgres | one schema per indexer deployment; the notifier's and vault's tables in schema `verifaid` |
 | Notifier (donation alerts) | to create: Railway service from `services/notifier/railway.json` | steps in `docs/DEPLOY.md` §4; webhooks at once, emails once a Resend key is set |
+| Records vault (NGO needs assessments) | to create: Railway service from `services/pii-vault/railway.json` | steps in `docs/DEPLOY.md` §5; needs `NGO_KEK` set, since Railway disks do not survive a deploy |
 
 **On this machine:**
 

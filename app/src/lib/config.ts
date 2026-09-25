@@ -46,6 +46,13 @@ export const piiVaultUrl: string = (process.env.NEXT_PUBLIC_PII_VAULT_URL ?? 'ht
 )
 
 /**
+ * Whether the NGO records vault is offered (storing a needs assessment for verifiers to read). In production a
+ * deployment without one (NEXT_PUBLIC_PII_VAULT_URL unset) hides it: the need then commits the assessment's hash only.
+ */
+export const vaultEnabled: boolean =
+  Boolean(process.env.NEXT_PUBLIC_PII_VAULT_URL?.trim()) || process.env.NODE_ENV !== 'production'
+
+/**
  * Whether donation alerts are offered. In production a deployment without a notifier (NOTIFIER_URL unset) hides the
  * form instead of showing one that can only fail; in development the local default is assumed to be running.
  */

@@ -1,7 +1,12 @@
+import { randomBytes } from 'node:crypto'
+import { existsSync, mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { prisma } from '@poa/shared/db'
 import type { FastifyInstance } from 'fastify'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { buildApp } from '../src/app.js'
+import { loadMasterKey } from '../src/keys.js'
 import { createHarness, ensureSecondNgo, type Harness, roleAccount } from './helpers/chain.js'
 import { CHAIN_SKIP, chainAvailable, POSTGRES_SKIP, postgresAvailable, testConfig } from './helpers/env.js'
 import { bearer, login } from './helpers/http.js'
@@ -281,4 +286,17 @@ describe('health and docs', () => {
       await app.close()
     }
   }, 30_000)
+})
+
+describe('the master key', () => {
+  it('comes from NGO_KEK when set, so a host without a lasting disk keeps it across deploys', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'poa-kek-'))
+    const path = join(dir, 'ngo-kek.key')
+    const hex = randomBytes(32).toString('hex')
+    const loaded = loadMasterKey(path, hex)
+    expect(loaded.key.toString('hex')).toBe(hex)
+    expect(loaded.created).toBe(false)
+    expect(existsSync(path)).toBe(false)
+    expect(() => loadMasterKey(path, 'too-short')).toThrow('32-byte')
+  })
 })

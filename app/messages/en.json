@@ -375,7 +375,7 @@
     "targetAmount": "Target amount in {unit}",
     "region": "Region code (coarse, e.g. ES-CM)",
     "dossier": "Needs assessment",
-    "dossierStore": "Store and hash it",
+    "dossierStore": "Store it encrypted for verifiers (sign in with your wallet)",
     "dossierHash": "Dossier hash (required)",
     "verificationsRequired": "Verifications required",
     "tranchePlan": "Tranche plan, in percent, comma separated",
@@ -633,7 +633,7 @@
     "title": "Verifier queue",
     "subtitle": "Needs waiting for verification, supplier changes waiting for approval, and — on needs whose rule gives verifiers a vote — evidence waiting for a verifier. You must be independent of the NGO.",
     "needsQueue": "Needs pending verification",
-    "openDossier": "Open the encrypted dossier",
+    "openDossier": "Read the needs assessment",
     "reportHash": "Your report hash",
     "approve": "Attest: approve",
     "reject": "Attest: reject",
@@ -650,7 +650,14 @@
     "evidenceQueueNote": "On these needs the next tranche also waits for an independent verifier. Open the need, read the evidence and vote beside it.",
     "emptyEvidence": "No evidence is waiting for a verifier.",
     "evidenceRow": "Need #{need}: how tranche {spent} was spent",
-    "evidenceOpen": "Review it"
+    "evidenceOpen": "Review it",
+    "dossierLoading": "Opening…",
+    "dossierNoVault": "The NGO shares its needs assessment with you directly; the need commits to its hash:",
+    "dossierNotStored": "This assessment was not stored in the vault. Ask the NGO for it: its hash is above.",
+    "dossierForbidden": "Only the NGO that stored it or a registered verifier may read it.",
+    "dossierMatches": "Matches the hash the need committed to on chain ✓",
+    "dossierMismatch": "Does NOT match the hash the need committed to on chain: do not rely on it.",
+    "dossierError": "Could not open the assessment: {detail}"
   },
   "impact": {
     "title": "Impact",

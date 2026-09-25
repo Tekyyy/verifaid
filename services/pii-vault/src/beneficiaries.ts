@@ -53,7 +53,7 @@ export const registerBeneficiaryRoutes = (app: FastifyInstance, deps: RouteDeps)
         tags: ['beneficiaries'],
         summary: 'Enrol a beneficiary (owning NGO)',
         description:
-          'Encrypts the profile under the NGO key and stores it under the NGO\'s own reference for the household. ' +
+          "Encrypts the profile under the NGO key and stores it under the NGO's own reference for the household. " +
           'The profile is never returned by any list endpoint.',
         security: [{ bearerAuth: [] }],
         body: z.object({

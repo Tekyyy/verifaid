@@ -53,7 +53,7 @@ export const buildApp = async (config: VaultConfig = loadConfig()): Promise<Fast
   await app.register(swaggerUi, { routePrefix: '/docs' })
 
   const chain = createChain(config)
-  const { key: masterKey, created } = loadMasterKey(config.kekPath)
+  const { key: masterKey, created } = loadMasterKey(config.kekPath, config.kekHex)
   if (created) {
     app.log.warn(
       { path: config.kekPath },

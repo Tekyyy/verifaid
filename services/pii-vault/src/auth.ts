@@ -50,7 +50,8 @@ export const sessionAddress = (request: FastifyRequest): Address => {
 
 export const registerAuthRoutes = (app: FastifyInstance, config: VaultConfig, chain: Chain): void => {
   const typed = app.withTypeProvider<ZodTypeProvider>()
-  const uri = `http://${config.siweDomain}`
+  const local = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(config.siweDomain)
+  const uri = `${local ? 'http' : 'https'}://${config.siweDomain}`
 
   typed.post(
     '/auth/nonce',
