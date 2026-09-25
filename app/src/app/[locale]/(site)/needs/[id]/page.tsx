@@ -40,11 +40,10 @@ import { newsTopic } from '@/lib/server/news'
 
 export const dynamic = 'force-dynamic'
 
-export async function generateMetadata({
-  params,
-}: {
-  params: { locale: string; id: string }
+export async function generateMetadata(props: {
+  params: Promise<{ locale: string; id: string }>
 }): Promise<Metadata> {
+  const params = await props.params
   const t = await getTranslations({ locale: params.locale, namespace: 'need' })
   return { title: t('title', { id: params.id }) }
 }
@@ -58,7 +57,8 @@ const BEFORE_CLOSE: NeedStatus[] = ['Pending', 'Verified', 'Funding']
  * got, then the detail — the tranches and the evidence behind each, the terms, who is paid, and the full history.
  * Addresses and identifiers are all still here, in one "on-chain details" card, instead of in the way at the top.
  */
-export default async function NeedPage({ params }: { params: { id: string } }) {
+export default async function NeedPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const t = await getTranslations('need')
   const tCommon = await getTranslations('common')
   const tTimeline = await getTranslations('timeline')

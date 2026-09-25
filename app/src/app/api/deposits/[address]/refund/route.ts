@@ -43,7 +43,8 @@ const MAX_DEADLINE_AHEAD_SECONDS = 24 * 3600
 const perAddress = createRateLimiter({ name: 'deposit-refund:perAddress', windowMs: 10 * 60_000, max: 6 })
 const perIp = createRateLimiter({ name: 'deposit-refund:perIp', windowMs: 10 * 60_000, max: 12 })
 
-async function handle(request: NextRequest, { params }: { params: { address: string } }) {
+async function handle(request: NextRequest, props: { params: Promise<{ address: string }> }) {
+  const params = await props.params
   const context = forwarderContext()
   if (!context) {
     return NextResponse.json(

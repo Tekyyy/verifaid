@@ -11,7 +11,8 @@ import { renderNeedReport } from '@/lib/server/report'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function GET(_request: Request, { params }: { params: { needId: string } }) {
+export async function GET(_request: Request, props: { params: Promise<{ needId: string }> }) {
+  const params = await props.params
   const { needId } = params
   if (!/^[1-9]\d{0,18}$/.test(needId)) {
     return NextResponse.json({ error: 'not_found', message: `No need with id ${needId}.` }, { status: 404 })

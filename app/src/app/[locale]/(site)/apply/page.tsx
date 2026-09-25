@@ -6,11 +6,11 @@ import { ImagePlaceholder } from '@/components/ImagePlaceholder'
 import { MissingDeployment } from '@/components/Notice'
 import { deployment } from '@/lib/config'
 
-export async function generateMetadata({
-  params: { locale },
-}: {
-  params: { locale: string }
-}): Promise<Metadata> {
+export async function generateMetadata(props: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const params = await props.params
+
+  const { locale } = params
+
   const t = await getTranslations({ locale, namespace: 'apply' })
   // A certificate link is for its beneficiary alone: keep the page out of search results.
   return { title: t('title'), robots: { index: false, follow: false } }

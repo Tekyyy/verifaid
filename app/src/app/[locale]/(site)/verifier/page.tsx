@@ -6,11 +6,11 @@ import { getDeliveries, getNeeds } from '@/lib/indexer'
 
 export const dynamic = 'force-dynamic'
 
-export async function generateMetadata({
-  params: { locale },
-}: {
-  params: { locale: string }
-}): Promise<Metadata> {
+export async function generateMetadata(props: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const params = await props.params
+
+  const { locale } = params
+
   const t = await getTranslations({ locale, namespace: 'verifier' })
   return { title: t('title') }
 }

@@ -7,7 +7,8 @@ import { getDonationTrack } from '@/lib/indexer'
 
 export const dynamic = 'force-dynamic'
 
-export async function generateMetadata({ params }: { params: { locale: string } }): Promise<Metadata> {
+export async function generateMetadata(props: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const params = await props.params
   const t = await getTranslations({ locale: params.locale, namespace: 'track' })
   return { title: t('widgetTitle') }
 }
@@ -39,7 +40,8 @@ function WidgetMessage({
   )
 }
 
-export default async function EmbedTrackPage({ params }: { params: { locale: string; ref: string } }) {
+export default async function EmbedTrackPage(props: { params: Promise<{ locale: string; ref: string }> }) {
+  const params = await props.params
   const t = await getTranslations('track')
   const tErrors = await getTranslations('errors')
   const ref = params.ref

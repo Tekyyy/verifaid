@@ -10,7 +10,8 @@ export const dynamic = 'force-dynamic'
 const ID = /^[A-Za-z0-9_-]{1,128}$/
 const BEARER = /^Bearer ([A-Za-z0-9._~+/=-]{8,512})$/
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   if (!ID.test(params.id)) return badRequest('Malformed subscription id.')
   const token = BEARER.exec(request.headers.get('authorization') ?? '')?.[1]
   if (!token) {

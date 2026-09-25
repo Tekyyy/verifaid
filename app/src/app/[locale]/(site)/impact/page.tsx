@@ -13,11 +13,11 @@ export const dynamic = 'force-dynamic'
 /** Drill-down is capped: enough to show the evidence chain without turning the page into an N+1 fan-out. */
 const MAX_REPORT_LOOKUPS = 12
 
-export async function generateMetadata({
-  params: { locale },
-}: {
-  params: { locale: string }
-}): Promise<Metadata> {
+export async function generateMetadata(props: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const params = await props.params
+
+  const { locale } = params
+
   const t = await getTranslations({ locale, namespace: 'impact' })
   return { title: t('title') }
 }

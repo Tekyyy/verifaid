@@ -11,13 +11,16 @@ export const metadata: Metadata = { robots: { index: false, follow: false } }
  * namespaces the widgets use. These routes are the only ones allowed inside a third-party iframe
  * (`frame-ancestors *`, set in next.config.mjs).
  */
-export default async function EmbedLayout({
-  children,
-  params: { locale },
-}: {
+export default async function EmbedLayout(props: {
   children: ReactNode
-  params: { locale: string }
+  params: Promise<{ locale: string }>
 }) {
+  const params = await props.params
+
+  const { locale } = params
+
+  const { children } = props
+
   if (isLocale(locale)) setRequestLocale(locale)
   const messages = await getMessages()
 

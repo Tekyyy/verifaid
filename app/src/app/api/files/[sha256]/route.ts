@@ -50,7 +50,8 @@ const recoverFromIpfs = async (path: string, sha256: string, cid: string) => {
   return { bytes, meta }
 }
 
-export async function GET(request: Request, { params }: { params: { sha256: string } }) {
+export async function GET(request: Request, props: { params: Promise<{ sha256: string }> }) {
+  const params = await props.params
   const sha256 = params.sha256.toLowerCase()
   if (!isSha256(sha256)) return NextResponse.json({ error: 'not_found' }, { status: 404 })
 

@@ -10,17 +10,17 @@ import { loadDepositView } from '@/lib/server/depositView'
 
 export const dynamic = 'force-dynamic'
 
-export async function generateMetadata({
-  params,
-}: {
-  params: { locale: string; ref: string }
+export async function generateMetadata(props: {
+  params: Promise<{ locale: string; ref: string }>
 }): Promise<Metadata> {
+  const params = await props.params
   const t = await getTranslations({ locale: params.locale, namespace: 'track' })
   // A tracking link is shared on purpose, but it should not turn up in search results.
   return { title: t('title'), robots: { index: false, follow: false } }
 }
 
-export default async function TrackPage({ params }: { params: { ref: string } }) {
+export default async function TrackPage(props: { params: Promise<{ ref: string }> }) {
+  const params = await props.params
   const t = await getTranslations('track')
   const ref = params.ref
 

@@ -8,11 +8,13 @@ import { getSupplier } from '@/lib/indexer'
 
 export const dynamic = 'force-dynamic'
 
-export async function generateMetadata({
-  params: { locale, address },
-}: {
-  params: { locale: string; address: string }
+export async function generateMetadata(props: {
+  params: Promise<{ locale: string; address: string }>
 }): Promise<Metadata> {
+  const params = await props.params
+
+  const { locale, address } = params
+
   const t = await getTranslations({ locale, namespace: 'suppliers' })
   return { title: `${t('one')} ${shorten(address, 8, 6)}` }
 }
@@ -21,7 +23,8 @@ export async function generateMetadata({
  * One registered supplier: its credential, the needs whose payment plan names it, and every payment a vault
  * made to it. Each row is a vault event with its transaction, so a donor can check the money themselves.
  */
-export default async function SupplierPage({ params }: { params: { address: string } }) {
+export default async function SupplierPage(props: { params: Promise<{ address: string }> }) {
+  const params = await props.params
   const t = await getTranslations('suppliers')
   const tCommon = await getTranslations('common')
   const tErrors = await getTranslations('errors')

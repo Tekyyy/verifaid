@@ -9,11 +9,11 @@ import { type NeedFilters as Filters, getNeeds } from '@/lib/indexer'
 
 export const dynamic = 'force-dynamic'
 
-export async function generateMetadata({
-  params: { locale },
-}: {
-  params: { locale: string }
-}): Promise<Metadata> {
+export async function generateMetadata(props: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const params = await props.params
+
+  const { locale } = params
+
   const t = await getTranslations({ locale, namespace: 'needs' })
   return { title: t('title') }
 }
@@ -24,11 +24,10 @@ const single = (value: string | string[] | undefined): string | undefined =>
 const oneOf = <T extends string>(options: readonly T[], value: string | undefined): T | undefined =>
   options.find((option) => option === value)
 
-export default async function NeedsPage({
-  searchParams,
-}: {
-  searchParams: Record<string, string | string[] | undefined>
+export default async function NeedsPage(props: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
+  const searchParams = await props.searchParams
   const t = await getTranslations('needs')
   const country = single(searchParams.country)?.trim().toUpperCase()
 

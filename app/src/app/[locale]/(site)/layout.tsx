@@ -6,13 +6,16 @@ import { SiteHeader } from '@/components/SiteHeader'
 import { isLocale } from '@/i18n/routing'
 
 /** Everything with a wallet and a navigation bar. `/confirm` deliberately sits outside this group. */
-export default async function SiteLayout({
-  children,
-  params: { locale },
-}: {
+export default async function SiteLayout(props: {
   children: ReactNode
-  params: { locale: string }
+  params: Promise<{ locale: string }>
 }) {
+  const params = await props.params
+
+  const { locale } = params
+
+  const { children } = props
+
   if (isLocale(locale)) setRequestLocale(locale)
   const messages = await getMessages()
   const t = await getTranslations({ locale, namespace: 'common' })

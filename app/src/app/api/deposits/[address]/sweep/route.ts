@@ -51,7 +51,8 @@ const OUTCOME_OF: Record<string, Outcome> = {
   Unauthorized: 'notKeeper',
 }
 
-async function handle(request: NextRequest, { params }: { params: { address: string } }) {
+async function handle(request: NextRequest, props: { params: Promise<{ address: string }> }) {
+  const params = await props.params
   const context = forwarderContext()
   if (!context) {
     return NextResponse.json(

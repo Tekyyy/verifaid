@@ -7,11 +7,11 @@ import { MissingDeployment } from '@/components/Notice'
 import { Link } from '@/i18n/navigation'
 import { deployment } from '@/lib/config'
 
-export async function generateMetadata({
-  params: { locale },
-}: {
-  params: { locale: string }
-}): Promise<Metadata> {
+export async function generateMetadata(props: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const params = await props.params
+
+  const { locale } = params
+
   const t = await getTranslations({ locale, namespace: 'ngo' })
   return { title: t('manageTitle') }
 }

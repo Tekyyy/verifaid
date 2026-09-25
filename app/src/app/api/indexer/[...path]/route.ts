@@ -29,7 +29,8 @@ const ALLOWED = [
   /^credits\/0x[a-fA-F0-9]{40}$/,
 ]
 
-export async function GET(request: NextRequest, { params }: { params: { path: string[] } }) {
+export async function GET(request: NextRequest, props: { params: Promise<{ path: string[] }> }) {
+  const params = await props.params
   const path = params.path.join('/')
   if (!ALLOWED.some((pattern) => pattern.test(path))) {
     return NextResponse.json({ error: 'not a proxied endpoint' }, { status: 404 })

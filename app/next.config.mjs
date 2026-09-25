@@ -10,10 +10,8 @@ const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
   // Biome lints the whole monorepo from the root; Next's own ESLint pass is not configured here.
   eslint: { ignoreDuringBuilds: true },
-  experimental: {
-    // A monorepo: @poa/shared lives outside this folder, and a serverless deployment (Vercel) must ship it too.
-    outputFileTracingRoot: fileURLToPath(new URL('..', import.meta.url)),
-  },
+  // A monorepo: @poa/shared lives outside this folder, and a serverless deployment (Vercel) must ship it too.
+  outputFileTracingRoot: fileURLToPath(new URL('..', import.meta.url)),
   // The tracking widget is meant to be embedded on NGO and donor sites, so only its routes may be framed.
   // Every other page refuses framing (clickjacking on the wallet-connected consoles). The two sources must not
   // overlap: two frame-ancestors policies on one response are intersected, which would block the widget too.

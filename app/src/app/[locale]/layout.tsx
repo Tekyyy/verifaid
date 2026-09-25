@@ -15,11 +15,11 @@ export function generateStaticParams() {
   return locales.map((locale) => ({ locale }))
 }
 
-export async function generateMetadata({
-  params: { locale },
-}: {
-  params: { locale: string }
-}): Promise<Metadata> {
+export async function generateMetadata(props: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const params = await props.params
+
+  const { locale } = params
+
   const t = await getTranslations({ locale, namespace: 'common' })
   return {
     title: { default: t('appName'), template: `%s · ${t('appName')}` },
@@ -31,13 +31,16 @@ export async function generateMetadata({
  * Root layout. It deliberately does not mount `NextIntlClientProvider`: each route group decides which
  * message namespaces reach the browser, which is how `/confirm` stays small on a low-end phone.
  */
-export default function LocaleLayout({
-  children,
-  params: { locale },
-}: {
+export default async function LocaleLayout(props: {
   children: ReactNode
-  params: { locale: string }
+  params: Promise<{ locale: string }>
 }) {
+  const params = await props.params
+
+  const { locale } = params
+
+  const { children } = props
+
   if (!isLocale(locale)) notFound()
   setRequestLocale(locale)
 

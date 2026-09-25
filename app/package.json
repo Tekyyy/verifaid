@@ -13,22 +13,22 @@
   },
   "dependencies": {
     "@poa/shared": "workspace:*",
-    "@tanstack/react-query": "5.102.8",
+    "@tanstack/react-query": "5.103.2",
     "clsx": "2.1.1",
-    "next": "14.2.35",
-    "next-intl": "4.14.5",
+    "next": "15.5.26",
+    "next-intl": "4.14.7",
     "pdf-lib": "1.17.1",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "viem": "2.56.5",
     "wagmi": "2.19.5"
   },
   "devDependencies": {
     "@types/node": "22.19.1",
-    "@types/react": "18.3.28",
-    "@types/react-dom": "18.3.7",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
     "autoprefixer": "10.4.21",
-    "postcss": "8.5.6",
+    "postcss": "8.5.28",
     "tailwindcss": "3.4.19",
     "typescript": "5.9.3"
   }

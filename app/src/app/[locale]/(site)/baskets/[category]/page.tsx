@@ -12,17 +12,17 @@ import { getBasket } from '@/lib/indexer'
 
 export const dynamic = 'force-dynamic'
 
-export async function generateMetadata({
-  params,
-}: {
-  params: { locale: string; category: string }
+export async function generateMetadata(props: {
+  params: Promise<{ locale: string; category: string }>
 }): Promise<Metadata> {
+  const params = await props.params
   const t = await getTranslations({ locale: params.locale, namespace: 'baskets' })
   return { title: t('donateTitle', { name: basketName(t, params.category) }) }
 }
 
 /** One basket: the needs a gift to it would be split between, the form to give, and the gifts it has had. */
-export default async function BasketPage({ params }: { params: { category: string } }) {
+export default async function BasketPage(props: { params: Promise<{ category: string }> }) {
+  const params = await props.params
   const t = await getTranslations('baskets')
   const tCommon = await getTranslations('common')
   const tErrors = await getTranslations('errors')
