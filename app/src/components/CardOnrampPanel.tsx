@@ -146,6 +146,15 @@ export function CardOnrampPanel({
       ? balance.data - BigInt(active.baseline)
       : 0n
 
+  // An approval left from an attempt that stopped halfway still counts: the donation then needs one signature, not two.
+  const allowance = useReadContract({
+    address: usdc,
+    abi: mockEURCAbi,
+    functionName: 'allowance',
+    args: address && factory ? [address, factory] : undefined,
+    query: { enabled: Boolean(usdc && address && factory) },
+  })
+
   const { fairValue, returned } = useConversionQuote(usdc, arrived > 0n ? arrived : null, BigInt(remaining))
 
   // Coinbase's own view of the purchase, while the USDC has not shown up in the wallet yet.
@@ -215,8 +224,13 @@ export function CardOnrampPanel({
     const check = await preflight({ needId, token: usdc, amount: arrived })
     setBusy(false)
     if (!check.ok) return setError(explain(check.reason))
+    const approved = (await allowance.refetch()).data ?? 0n
     const result = await tx.runBatch([
-      batchCall({ address: usdc, abi: mockEURCAbi, functionName: 'approve', args: [factory, arrived] }),
+      ...(approved >= arrived
+        ? []
+        : [
+            batchCall({ address: usdc, abi: mockEURCAbi, functionName: 'approve', args: [factory, arrived] }),
+          ]),
       batchCall({
         address: factory,
         abi: donationForwarderFactoryAbi,

@@ -70,9 +70,29 @@ export const batchCall = <
 ): BatchCall => request as unknown as BatchCall
 
 const CALLS_TIMEOUT_MS = 180_000
+/** How long a dependent call waits for the node to see the call before it: about fifteen blocks on Base. */
+const SETTLE_ATTEMPTS = 10
+const SETTLE_DELAY_MS = 1_500
+/** Retries of a dependent call the wallet refused as failing, in case its own node was still behind. */
+const RESEND_ATTEMPTS = 2
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const firstLine = (error: unknown): string =>
   (error instanceof Error ? error.message.split('\n')[0] : String(error)) || 'failed'
+
+/** The donor said no in the wallet (EIP-1193 code 4001), as opposed to the wallet predicting a failure. */
+const declinedByUser = (error: unknown): boolean => {
+  let declined = false
+  const visit = (e: unknown, depth = 0) => {
+    if (!e || typeof e !== 'object' || depth > 5) return
+    const { code, name, cause } = e as { code?: unknown; name?: unknown; cause?: unknown }
+    if (code === 4001 || name === 'UserRejectedRequestError') declined = true
+    visit(cause, depth + 1)
+  }
+  visit(error)
+  return declined || /user (rejected|denied)|rejected the request/i.test(firstLine(error))
+}
 
 /** One `wallet_getCapabilities` query for the connected account on this chain, shared by the hooks below. */
 const useWalletCapabilities = () => {
@@ -121,8 +141,44 @@ export const useTx = () => {
   const sponsored = useSponsoredGas()
   const atomic = useAtomicBatch()
   const [state, setState] = useState<TxState>(INITIAL)
+  const { address: account } = useAccount()
 
   const reset = useCallback(() => setState(INITIAL), [])
+
+  /**
+   * A call that depends on the one before it (a donation after its approval) waits until a node sees that call's
+   * effect. The wallet checks every transaction against its own node before sending it, and that node can trail the
+   * receipt by a block or two: it would report "exceeds allowance" for a donation that is fine, and send nothing.
+   */
+  const untilItWouldPass = useCallback(
+    async (request: BatchCall) => {
+      if (!publicClient || !account) return
+      for (let attempt = 0; attempt < SETTLE_ATTEMPTS; attempt++) {
+        try {
+          await publicClient.simulateContract({ ...request, account } as never)
+          return
+        } catch {
+          await sleep(SETTLE_DELAY_MS)
+        }
+      }
+    },
+    [account, publicClient],
+  )
+
+  /** Sends a call; a later step the wallet refused as failing (not the donor declining) is tried again shortly. */
+  const sendDependentStep = useCallback(
+    async (request: BatchCall, index: number): Promise<Hex> => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await writeContractAsync(request as never)
+        } catch (error) {
+          if (index === 0 || attempt >= RESEND_ATTEMPTS || declinedByUser(error)) throw error
+          await sleep(SETTLE_DELAY_MS)
+        }
+      }
+    },
+    [writeContractAsync],
+  )
 
   const runCalls = useCallback(
     async (calls: readonly BatchCall[]): Promise<TxResult | null> => {
@@ -159,7 +215,8 @@ export const useTx = () => {
       for (const [index, request] of calls.entries()) {
         const step = calls.length > 1 ? { current: index + 1, total: calls.length } : null
         setState({ phase: 'signing', hash, error: null, sponsored: false, step })
-        hash = await writeContractAsync(request as never)
+        if (index > 0) await untilItWouldPass(request)
+        hash = await sendDependentStep(request, index)
         setState({ phase: 'pending', hash, error: null, sponsored: false, step })
         const receipt = await publicClient?.waitForTransactionReceipt({ hash })
         if (receipt && receipt.status === 'reverted') {
@@ -172,7 +229,7 @@ export const useTx = () => {
       setState({ phase: 'success', hash, error: null, sponsored: false, step: null })
       return { hash, logs }
     },
-    [publicClient, writeContractAsync],
+    [publicClient, sendDependentStep, untilItWouldPass],
   )
 
   const runBatch = useCallback(
