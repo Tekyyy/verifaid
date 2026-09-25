@@ -23,6 +23,7 @@ Do the steps in order. The live site keeps working throughout, and the last step
 | A Base mainnet RPC URL | Alchemy or QuickNode, a Base mainnet app (the free tier is fine to start) |
 | A new relayer key, funded with ~0.01 ETH on Base | a fresh wallet; never the testnet one, never in git |
 | A new `NOTIFIER_KEK` (64 hex characters) | `openssl rand -hex 32`. Keep a copy: losing it makes stored email addresses unreadable |
+| A new `NGO_KEK` and `SESSION_SECRET` (64 hex characters each) | `openssl rand -hex 32`, twice. Keep a copy of `NGO_KEK`: losing it makes stored NGO records unreadable |
 | Coinbase Onramp keys `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` | portal.cdp.coinbase.com → project → Onramp, with `www.verifaid.org` on its domain allowlist |
 | Resend key (for alert emails) | resend.com, with `verifaid.org` verified (DNS records at name.com) |
 
@@ -45,6 +46,7 @@ Do this first, so the testnet never goes dark.
    | `UPLOAD_DIR` | `/tmp/verifaid-uploads` |
    | `PINATA_JWT` | your Pinata key |
    | `NOTIFIER_URL` | the testnet notifier's domain, if you created it |
+   | `NEXT_PUBLIC_PII_VAULT_URL` | the testnet records vault's domain, if you created it (with `https://`) |
 
    Leave `NEXT_PUBLIC_CHAIN_ID` unset: unset means Base Sepolia.
 3. **Settings → Domains → Add** `testnet.verifaid.org`. At name.com, add the **CNAME** record Vercel shows, with host
@@ -52,6 +54,8 @@ Do this first, so the testnet never goes dark.
 
 **Railway (the existing testnet project)**
 - Set `APP_BASE_URL=https://testnet.verifaid.org` on the indexer, and on the notifier if it exists.
+- On the records vault, if it exists: `SIWE_DOMAIN=testnet.verifaid.org` and `CORS_ORIGIN=https://testnet.verifaid.org`.
+  The vault only answers the site it names, so without this the staging site cannot store or read assessments.
 
 **Optional:** point the testnet's receipt NFTs at the staging site. It's a 10-minute timelocked action:
 
@@ -97,11 +101,30 @@ A separate project keeps mainnet's database and settings apart from the testnet'
      | `EMAIL_API_URL` | `https://api.resend.com/emails` |
      | `EMAIL_API_KEY` | the Resend key |
      | `EMAIL_FROM` | `VerifAid <alerts@verifaid.org>` |
+     | `RAILWAY_DOCKERFILE_PATH` | `services/notifier/Dockerfile` (without it Railway may guess the build: "Railpack failed") |
 
    - **Networking → Generate Domain**, port **4004**, then set `PUBLIC_BASE_URL` to it.
    - **Check:** `https://<notifier>/health` → `"status":"ok"`, `"production":true`, and `"emailDriver":"api"` once the
      Resend key is in.
-4. **Plan:** the Hobby plan ($5 a month) or above. The Free plan cannot keep an indexer running.
+4. **Records vault: + Create → GitHub Repo →** the repo once more.
+   - **Settings:** branch `main`; Config-as-code `/services/pii-vault/railway.json`; Root Directory empty.
+   - **Variables:**
+
+     | Name | Value |
+     |---|---|
+     | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}?schema=verifaid` (shared with the notifier) |
+     | `NGO_KEK` | the new 64-hex key (not the testnet's). **Required**: without it every stored record is lost on the next deploy |
+     | `SESSION_SECRET` | the new 64-hex secret |
+     | `SIWE_DOMAIN` | `www.verifaid.org` |
+     | `CORS_ORIGIN` | `https://www.verifaid.org` |
+     | `POA_NETWORK` | **`base`** |
+     | `RPC_URL` | the Base mainnet RPC URL |
+     | `PORT` | `4002` |
+     | `RAILWAY_DOCKERFILE_PATH` | `services/pii-vault/Dockerfile` |
+
+   - **Networking → Generate Domain**, port **4002**.
+   - **Check:** `https://<vault>/health` → `"status":"ok"` and `"network":"base"`.
+5. **Plan:** the Hobby plan ($5 a month) or above. The Free plan cannot keep an indexer running.
 
 ---
 
@@ -116,6 +139,7 @@ In the **existing** project (the one serving www.verifaid.org), go to **Settings
 | `NEXT_PUBLIC_INDEXER_URL` | the testnet indexer | the mainnet indexer (or `https://api.verifaid.org`) |
 | `RELAYER_PRIVATE_KEY` | testnet relayer | **the new mainnet relayer key** |
 | `NOTIFIER_URL` | testnet notifier | the mainnet notifier |
+| `NEXT_PUBLIC_PII_VAULT_URL` | testnet vault | the mainnet records vault, with `https://` (type **Config**, not Secret) |
 | `UPLOAD_DIR` | `/tmp/verifaid-uploads` | same |
 | `PINATA_JWT` | your key | same key (or a separate Pinata key for mainnet) |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | — | Vercel → **Storage / Marketplace → Upstash Redis → Connect**. It adds `KV_REST_API_URL` / `KV_REST_API_TOKEN`, which work as they are |
@@ -136,15 +160,16 @@ If an organisation runs the site, move to **Vercel Pro**: Hobby is for non-comme
 ## 4. Right after the switch
 
 - **Look at the site:** www.verifaid.org shows Base, not Base Sepolia. Check `/needs`, `/baskets` and a tracking page.
-- **Make the relayer a keeper**, so "Sweep now" works on deposit addresses. It goes through the Safe and the
-  two-day timelock:
+- **Make the relayer a keeper**, so "Sweep now" works on deposit addresses. Skip this if its address was in
+  `KEEPERS` at deploy time. Otherwise it goes through the Safe and the timelock:
 
   ```bash
   pnpm admin base prepare DonationForwarderFactory "setKeeper(address,bool)" <relayer address> true
   ```
 
-  Import the schedule file in the Safe app, and the execute file two days later.
-- **Register the first vetted NGOs, verifiers and suppliers** the same way, with `prepare`.
+  Import the schedule file in the Safe app, and the execute file once the delay has passed.
+- **Register any further NGOs, verifiers and suppliers** the same way, with `prepare`. The ones listed in
+  `.env.mainnet` at deploy time are already registered.
 - **Make one small real donation** (1 USDC). Check the receipt, the tracking page, and an alert subscription
   (webhook or email).
 - **Watch the relayer's balance.** Keep ~0.01 ETH. It pays for free votes, sweeps and refunds.

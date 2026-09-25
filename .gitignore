@@ -28,6 +28,7 @@ services/shared/src/generated/
 # next
 app/.next/
 app/.next-anvil/
+app/.next-mainnet/
 app/next-env.d.ts
 
 # ponder

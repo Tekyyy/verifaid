@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Deploys VerifAid to Base mainnet:
- *   Deploy → RegisterSchemas → RegisterCommunitySchemas → RegisterNgos (EXTRA_NGOS) → Handover
+ *   Deploy → RegisterSchemas → RegisterCommunitySchemas → RegisterNgos (EXTRA_NGOS)
+ *   → RegisterRoles (EXTRA_VERIFIERS, EXTRA_SUPPLIERS, KEEPERS) → Handover
  *
  * No demo needs, no mocks, no test liquidity: SystemDeployer refuses to deploy a mock anywhere but anvil and Base
  * Sepolia, and this script never runs the seeding steps.
@@ -14,7 +15,11 @@
  * (with --fork, from the shell only),
  * never from the testnet `.env`: real money needs keys that were never in git. The script refuses to go on if the
  * deployer is the testnet deployer, if the Safe owners are not independent of it, if the timelock is shorter than
- * two days or if there is no separate guardian. The private key is never printed and never put on a command line.
+ * ten minutes or if there is no separate guardian. The private key is never printed and never put on a command line.
+ *
+ * The timelock defaults to ten minutes, the hackathon setting: admin changes (a new NGO or verifier) land the same
+ * day. A deployment that handles serious money should set ADMIN_TIMELOCK_DELAY=172800 (two days), so donors can see
+ * a change coming and leave before it applies.
  */
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
@@ -83,7 +88,7 @@ const BASE_MAINNET = {
   EUR_USD_HEARTBEAT: String(3 * 24 * 3600),
   ETH_USD_HEARTBEAT: String(3600),
   DASHBOARD_BASE_URI: 'https://www.verifaid.org/needs/',
-  ADMIN_TIMELOCK_DELAY: String(2 * 24 * 3600),
+  ADMIN_TIMELOCK_DELAY: String(10 * 60),
   ADMIN_SAFE_THRESHOLD: '2',
 }
 
@@ -142,14 +147,30 @@ if (!guardian || !isAddress(guardian))
 if (getAddress(guardian) === deployer)
   fail('The guardian must not be the deployer: after the handover it keeps nothing.')
 const delay = Number(env.ADMIN_TIMELOCK_DELAY)
-if (!Number.isInteger(delay) || delay < 2 * 24 * 3600)
-  fail('ADMIN_TIMELOCK_DELAY must be at least two days (172800).')
+if (!Number.isInteger(delay) || delay < 10 * 60)
+  fail('ADMIN_TIMELOCK_DELAY must be at least ten minutes (600).')
 const verify = !fork && Boolean(env.BASESCAN_API_KEY?.trim())
 if (!fork && !verify)
   fail('BASESCAN_API_KEY is required: every contract is source-verified as it is deployed.')
 if (verify) env.ETHERSCAN_API_KEY = env.BASESCAN_API_KEY
-for (const ngo of addressList(env.EXTRA_NGOS))
-  if (!isAddress(ngo)) fail(`EXTRA_NGOS: ${ngo} is not an address.`)
+// Registered before the handover, so a launch does not wait out the timelock for its first verifier.
+const roleLists = {
+  EXTRA_NGOS: addressList(env.EXTRA_NGOS),
+  EXTRA_VERIFIERS: addressList(env.EXTRA_VERIFIERS),
+  EXTRA_SUPPLIERS: addressList(env.EXTRA_SUPPLIERS),
+  KEEPERS: addressList(env.KEEPERS),
+}
+for (const [name, list] of Object.entries(roleLists))
+  for (const address of list) if (!isAddress(address)) fail(`${name}: ${address} is not an address.`)
+// One address, one role: RoleRegistry would revert halfway through the registrations, after the deployment.
+const holder = new Map()
+for (const name of ['EXTRA_NGOS', 'EXTRA_VERIFIERS', 'EXTRA_SUPPLIERS'])
+  for (const address of roleLists[name]) {
+    const seen = holder.get(getAddress(address))
+    if (seen) fail(`${address} is in both ${seen} and ${name}: an address may hold one role only.`)
+    holder.set(getAddress(address), name)
+  }
+const needsRoles = roleLists.EXTRA_VERIFIERS.length + roleLists.EXTRA_SUPPLIERS.length + roleLists.KEEPERS.length > 0
 if (existsSync(join(root, 'deployments', 'base.json'))) {
   fail(
     'deployments/base.json exists: Base mainnet is already deployed. Archive it first if this is a new release.',
@@ -186,10 +207,15 @@ console.log(`  idle capital       ${env.YIELD_VENUE_ADDRESS ? env.YIELD_VENUE_AD
 console.log(
   `  admin after        ${existingSafe ? `the Safe ${existingSafe}` : `a ${env.ADMIN_SAFE_THRESHOLD}-of-${owners.length} Safe: ${owners.join(', ')}`}`,
 )
-console.log(`                     through a timelock of ${delay / 3600} hours; guardian ${guardian}`)
-console.log(
-  `  NGOs registered    ${addressList(env.EXTRA_NGOS).join(', ') || 'none now (the admin registers them later)'}`,
-)
+const delayText = delay % 3600 === 0 ? `${delay / 3600} hours` : `${Math.round(delay / 60)} minutes`
+console.log(`                     through a timelock of ${delayText}; guardian ${guardian}`)
+const listed = (list) => list.join(', ') || 'none now (the admin registers them later)'
+console.log(`  NGOs registered    ${listed(roleLists.EXTRA_NGOS)}`)
+console.log(`  verifiers          ${listed(roleLists.EXTRA_VERIFIERS)}`)
+console.log(`  suppliers          ${listed(roleLists.EXTRA_SUPPLIERS)}`)
+console.log(`  keepers            ${listed(roleLists.KEEPERS)}`)
+if (roleLists.EXTRA_VERIFIERS.length === 0)
+  console.warn('\n  ⚠ No verifier: no need can be verified, so none can take money, until the Safe registers one.')
 console.log(`  verification       ${verify ? 'Basescan' : 'none (fork)'}`)
 if (balance < 3n * 10n ** 15n)
   console.warn('\n  ⚠ Less than 0.003 ETH: enough at today’s gas prices, not on a busy day.')
@@ -219,7 +245,8 @@ const run = (script, extra = []) => {
 run('Deploy.s.sol', verify ? ['--verify'] : [])
 run('RegisterSchemas.s.sol')
 run('RegisterCommunitySchemas.s.sol')
-if (addressList(env.EXTRA_NGOS).length > 0) run('RegisterNgos.s.sol')
+if (roleLists.EXTRA_NGOS.length > 0) run('RegisterNgos.s.sol')
+if (needsRoles) run('RegisterRoles.s.sol')
 run('Handover.s.sol')
 
 const deployment = JSON.parse(readFileSync(join(root, 'deployments', 'base.json'), 'utf8'))

@@ -1,0 +1,72 @@
+{
+  "admin": "0xE10Cda42847D0AEe14AaC6D0F0A34C5bEeD14890",
+  "chainId": 8453,
+  "communitySchemas": {
+    "DonationAcknowledged": "0xb0238f10b1e25f1f1ea1b9e3fe3836e7e1b74821619156274f541a40a2fbecb1",
+    "NeedPresentation": "0x811fda6dea28935a49127774da6f617589c306c99049c68617c8e62418f2df84",
+    "OrgTaxStatus": "0x270388d26307fe2438309f7019a0b3e0380d10245b4e3b3d4c0dac0e40042e02",
+    "SupplierApplication": "0x5132ffaa7311d63e5cbfeea90075c4ecdaeb061bbce301ea9c81097ed6c8bb9c",
+    "WorkPhotos": "0x7f9f55f9579e964ddb61a70457b3bd3cee16bda465bda02204c9579a7ef1c46a"
+  },
+  "contracts": {
+    "AidVaultFactory": "0xD172FF6A7f85B551fD5d248B13CE52A8Ae230Aaa",
+    "AidVaultImplementation": "0x0CFCAe422121847D769cd185ec9eDa2b81DbCd2f",
+    "BeneficiaryRegistry": "0xF5Cd469B9D834182D6A09309573E2520d660c76b",
+    "CommunityProofs": "0x4289B812E681842Ee866661fD7fdd052504Ee885",
+    "ConversionRouter": "0xAa3dae588989ab99b1FB400381627D38B12F2865",
+    "DeliveryManager": "0xE5111F6634064E87e9D5Eb37359fB22B7B7E8091",
+    "DonationForwarderFactory": "0xd587687D1cBeb09923df21D3b8fC092f2474aa65",
+    "DonationForwarderImplementation": "0x5b49dc07C2b819587BEd318520a25127655772C1",
+    "DonationReceipt": "0x5B95ab5d2c2563F747024C0eBB79002b219b7c2A",
+    "NeedsRegistry": "0xB6e3c37725DD0a9d796f1cb8943227ADF4a09120",
+    "ProgramRegistry": "0x47feF3FCa21401E54f6672a224de0A26Ab6108ff",
+    "ProofOfAidResolver": "0x6A1382CaAe7918EA3512A3215B1c2AF7bEFc41dA",
+    "ReleasePolicyDonors": "0x4d32EaaDfA3d5Bd040C360a2e312167CFAcf5De3",
+    "ReleasePolicyDonorsAndVerifier": "0x16ee263F24A4333c494200624623A8197B371C82",
+    "ReleasePolicyVerifier": "0x34eE06075A384BfA9b55641c5C4f95116C305F6C",
+    "RoleRegistry": "0xa6cFddB98d5565c1da10120F4fC20552986C4Ca1"
+  },
+  "deployer": "0xa08747Ef92c817C7c9cF7170d22CeD148b7742Da",
+  "external": {
+    "EAS": "0x4200000000000000000000000000000000000021",
+    "EURC": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
+    "EthUsdFeed": "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70",
+    "EurUsdFeed": "0xc91D87E81faB8f93699ECf7Ee9B44D11e1D53F0F",
+    "SchemaRegistry": "0x4200000000000000000000000000000000000020",
+    "SequencerUptimeFeed": "0xBCF85224fc0756B9Fa45aA7892530B47e10b6433",
+    "SwapRouter": "0x2626664c2603336E57B271c5C0b26F421741e481",
+    "Token": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "USDC": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "UsdcUsdFeed": "0x7e860098F58bBFC8648a4311b374B1D669a2bc6B",
+    "WETH": "0x4200000000000000000000000000000000000006",
+    "YieldVenue": "0x0000000000000000000000000000000000000000"
+  },
+  "governance": {
+    "Guardian": "0xeb6ed056533EE138640a6C37312c8e337De61Cf1",
+    "Safe": "0xE1F6fa85B4C8924E8b556c8e58affc9412e3443b",
+    "Timelock": "0xE10Cda42847D0AEe14AaC6D0F0A34C5bEeD14890",
+    "delay": 600,
+    "threshold": 2
+  },
+  "network": "base",
+  "params": {
+    "dashboardBaseURI": "https://www.verifaid.org/needs/",
+    "donorApprovalBps": 3000,
+    "donorRejectionBps": 5000,
+    "ethDonations": true,
+    "ethMaxSlippageBps": 150,
+    "highValueThreshold": 10000000000,
+    "maxSlippageBps": 100,
+    "minBeneficiariesServed": 5,
+    "mockSwapRouter": false,
+    "rejectionRetries": 1,
+    "usdcPoolFee": 500
+  },
+  "schemas": {
+    "ImpactReport": "0xcec84e1947908c875d2fb00ddd46b392417d1ee0691832bd49af50022e5d20af",
+    "NeedVerified": "0x7d8b3c36272d15e00b39bc5a9a4de24dc0caa88e89459b36e99d2d41fd135c96",
+    "Settlement": "0x4da564ba582b08afa4f335529b2b7d717d18ff5ff98517335e5b5d882504d7db"
+  },
+  "startBlock": 51768388,
+  "version": 10
+}

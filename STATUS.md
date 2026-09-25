@@ -3,7 +3,7 @@
 A snapshot of everything this machine and the working session hold: what is live, what is running, where the
 keys are (names only, never values), how to operate it, and what is still open.
 
-*Last updated: 2026-09-24 · v10 live; `main` and `feature/beneficiary-needs` both at the same code on GitHub*
+*Last updated: 2026-09-25 · v10 live on Base Sepolia; Base mainnet deployed for the hackathon (§2d), hosting pending*
 
 ---
 
@@ -58,7 +58,34 @@ pots) plus, from this machine:
   `/baskets/[category]`, credit panel on `/earn`. Demo scenario 7 (`baskets`).
 - Design record: DECISIONS §23, §25, §26. Threats: THREAT_MODEL §3.23, §3.25, §3.26.
 
-## 2c. Branch `mainnet-prep` (getting ready for Base mainnet; not deployed anywhere)
+## 2d. Base mainnet (hackathon deployment, 2026-09-25)
+
+Deployed from `mainnet-prep` with `pnpm deploy:mainnet --yes` (hackathon settings: a ten-minute timelock, no audit).
+43 transactions, about 0.0002 ETH of gas; start block 51,768,388. All 17 contracts are source-verified on Basescan.
+The full record is `deployments/base.json`; the broadcasts are in `contracts/broadcast/*/8453/`.
+
+| | Address |
+|---|---|
+| NeedsRegistry | `0xB6e3c37725DD0a9d796f1cb8943227ADF4a09120` |
+| RoleRegistry | `0xa6cFddB98d5565c1da10120F4fC20552986C4Ca1` |
+| DeliveryManager | `0xE5111F6634064E87e9D5Eb37359fB22B7B7E8091` |
+| CommunityProofs | `0x4289B812E681842Ee866661fD7fdd052504Ee885` |
+| DonationForwarderFactory | `0xd587687D1cBeb09923df21D3b8fC092f2474aa65` |
+| TimelockController (the admin, 600 s) | `0xE10Cda42847D0AEe14AaC6D0F0A34C5bEeD14890` |
+| Safe (the only proposer, 2-of-3) | `0xE1F6fa85B4C8924E8b556c8e58affc9412e3443b` |
+
+- **Safe owners:** `0xeb6e…1Cf1` (A, also the guardian), `0x5a37…9cf2` (B, also the verifier), `0x0A21…BCb3`
+  (C, also a supplier). The deployer `0xa087…42Da` kept no admin power and is the first NGO.
+- **Roles:** NGO `0xa087…42Da`, verifier `0x5a37…9cf2` and keeper `0x1A11…03bD` (the relayer) were registered
+  before the handover; supplier `0x0A21…BCb3` through the Safe and the timelock, the first admin action.
+- **Vault currency:** Circle USDC `0x8335…2913`; EURC and ETH convert through Uniswap v3 on needs whose cost cap
+  allows it.
+- **First need:** #1 (SHELTER, ES-CM, 200 USDC, minimum 100%, cost cap 0%: USDC only), verified and funding.
+- **Hosting:** not yet. The site and indexer have only run locally against mainnet (`app-mainnet` on :3002,
+  `indexer-mainnet` on :42071); `docs/MAINNET_HOSTING.md` is the plan. Card payments need `CDP_API_KEY_ID` /
+  `CDP_API_KEY_SECRET` (Coinbase Developer Platform).
+
+## 2c. Branch `mainnet-prep` (getting ready for Base mainnet)
 
 Kept apart from `main`, so the live testnet site is untouched. The full checklist and procedure: `docs/MAINNET.md`.
 
@@ -73,10 +100,11 @@ Kept apart from `main`, so the live testnet site is untouched. The full checklis
 - **`pnpm deploy:mainnet`** checks and prints the plan; with `--yes` it deploys. It refuses:
   - a key that was ever in git
   - Safe owners that include the deployer
-  - a timelock under two days
+  - a timelock under ten minutes (the hackathon default; two days for serious money)
+  - one address in two roles
   - no separate guardian
 - **`pnpm rehearse:mainnet`** runs the whole deployment on a local fork of Base mainnet, with the real USDC, EURC,
-  Uniswap, Chainlink, EAS and Safe. It covers the governance checks, admin work through the Safe and the 2-day
+  Uniswap, Chainlink, EAS and Safe. It covers the governance checks, launch roles registered before the handover, admin work through the Safe and the
   timelock, all six demo scenarios, and the guardian pause. **It passes.**
 - **`pnpm admin base prepare …`** writes Safe Transaction Builder files, so the mainnet owners sign in the Safe app.
 - Checked: 395 contract, 26 shared, 97 app and 64 notifier tests; typecheck and lint are clean.

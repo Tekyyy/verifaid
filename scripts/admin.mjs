@@ -281,7 +281,8 @@ const prepare = async (contract, signature, target, data, salt) => {
   console.log(
     '     Create the batch; the owners sign; the last signer executes it. That only schedules the call.',
   )
-  console.log(`  2. After ${Number(delay) / 3600} hours, the same with`)
+  const wait = Number(delay) % 3600 === 0 ? `${Number(delay) / 3600} hours` : `${Math.round(Number(delay) / 60)} minutes`
+  console.log(`  2. After ${wait}, the same with`)
   console.log(`       ${second}`)
   console.log(
     `     or from any funded key: pnpm admin ${network} execute ${contract} "${signature}" … --salt ${salt}`,

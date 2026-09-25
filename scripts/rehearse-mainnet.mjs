@@ -6,9 +6,11 @@
  *
  *   1. forks Base mainnet with anvil (port 8546);
  *   2. runs scripts/deploy-mainnet.mjs against the fork, exactly as it would run for real: a 2-of-3 Safe of fresh
- *      owners, a two-day timelock and a separate guardian;
- *   3. does the first admin work the real admin would, through the timelock: schedules the demo NGO, verifiers,
- *      suppliers and keeper from the Safe, checks that executing early is refused, lets two days pass, executes;
+ *      owners, a ten-minute timelock, a separate guardian, and a verifier, a supplier and the keeper registered
+ *      before the handover (RegisterRoles);
+ *   3. does the rest of the first admin work the real admin would, through the timelock: schedules the demo NGO,
+ *      the second verifier and the other suppliers from the Safe, checks that executing early is refused, lets the
+ *      delay pass, executes;
  *   4. gives the demo wallets real USDC, EURC and ETH on the fork, and runs the demo scenarios through it;
  *   5. checks the guardian can pause at once;
  *   6. cleans up: the fork's deployment record and broadcast logs move to deployments/rehearsal/ (git-ignored), so
@@ -45,7 +47,7 @@ const OWNERS = [16, 17, 18].map(at)
 const GUARDIAN = at(19)
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 const EURC = '0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42'
-const DELAY = 2 * 24 * 3600
+const DELAY = 10 * 60
 
 const ALL_SCENARIOS = ['conversion', 'onchain', 'expiry', 'rejection', 'beneficiary', 'baskets']
 const requested = process.argv.slice(2).filter((arg) => ALL_SCENARIOS.includes(arg))
@@ -129,6 +131,10 @@ try {
     GUARDIAN_ADDRESS: GUARDIAN,
     ADMIN_SAFE_ADDRESS: '',
     EXTRA_NGOS: '',
+    // Registered by the deployer before the handover: a launch's first verifier must not wait for the timelock.
+    EXTRA_VERIFIERS: at(ROLES.verifier1),
+    EXTRA_SUPPLIERS: at(SUPPLIERS[0]),
+    KEEPERS: at(ROLES.relayer),
   })
   const deployment = JSON.parse(readFileSync(deploymentFile, 'utf8'))
   const { contracts, governance } = deployment
@@ -147,6 +153,8 @@ try {
     'function isAdmin(address) view returns (bool)',
     'function hasRole(bytes32 role, address account) view returns (bool)',
     'function GUARDIAN_ROLE() view returns (bytes32)',
+    'function VERIFIER_ROLE() view returns (bytes32)',
+    'function SUPPLIER_ROLE() view returns (bytes32)',
     'function registerNgo(address ngo, address payout, bytes32 credentialHash, string metadataURI)',
     'function registerVerifier(address verifier)',
     'function registerSupplier(address supplier, bytes32 credentialHash, string metadataURI)',
@@ -171,8 +179,25 @@ try {
   if (!timelockIsAdmin || deployerIsAdmin || !guardianOk)
     fail('the handover did not take the admin role away')
 
+  const keeperAbi = viem.parseAbi([
+    'function setKeeper(address keeper, bool active)',
+    'function isKeeper(address) view returns (bool)',
+  ])
+  const verifierRole = await read(contracts.RoleRegistry, rolesAbi, 'VERIFIER_ROLE')
+  const supplierRole = await read(contracts.RoleRegistry, rolesAbi, 'SUPPLIER_ROLE')
+  const launch = {
+    verifier: await read(contracts.RoleRegistry, rolesAbi, 'hasRole', [verifierRole, at(ROLES.verifier1)]),
+    supplier: await read(contracts.RoleRegistry, rolesAbi, 'hasRole', [supplierRole, at(SUPPLIERS[0])]),
+    keeper: await read(contracts.DonationForwarderFactory, keeperAbi, 'isKeeper', [at(ROLES.relayer)]),
+  }
+  console.log(
+    `  before the handover: verifier ${launch.verifier}, supplier ${launch.supplier}, keeper ${launch.keeper}`,
+  )
+  if (!launch.verifier || !launch.supplier || !launch.keeper)
+    fail('RegisterRoles did not register the launch roles before the handover')
+
   // ── 3. the first admin work, through the timelock ─────────────────────────
-  step('Registering the demo organisations through the Safe and the two-day timelock')
+  step(`Registering the other demo organisations through the Safe and the ${DELAY / 60}-minute timelock`)
   const calls = [
     [
       contracts.RoleRegistry,
@@ -184,9 +209,8 @@ try {
         'ipfs://rehearsal-ngo',
       ],
     ],
-    [contracts.RoleRegistry, 'registerVerifier', [at(ROLES.verifier1)]],
     [contracts.RoleRegistry, 'registerVerifier', [at(ROLES.verifier2)]],
-    ...SUPPLIERS.map((index) => [
+    ...SUPPLIERS.slice(1).map((index) => [
       contracts.RoleRegistry,
       'registerSupplier',
       [
@@ -196,11 +220,9 @@ try {
       ],
     ]),
   ]
-  const keeperAbi = viem.parseAbi(['function setKeeper(address keeper, bool active)'])
-  const targets = [...calls.map(([target]) => target), contracts.DonationForwarderFactory]
+  const targets = calls.map(([target]) => target)
   const payloads = [
     ...calls.map(([, functionName, args]) => viem.encodeFunctionData({ abi: rolesAbi, functionName, args })),
-    viem.encodeFunctionData({ abi: keeperAbi, functionName: 'setKeeper', args: [at(ROLES.relayer), true] }),
   ]
   const values = targets.map(() => 0n)
   const salt = viem.keccak256(viem.toHex(`rehearsal-${stamp}`))
@@ -236,11 +258,11 @@ try {
     functionName: 'executeBatch',
     args: [targets, values, payloads, zero, salt],
   })
-  console.log('  two days later: executed by an ordinary account ✓')
+  console.log('  after the delay: executed by an ordinary account ✓')
 
-  // The fork's clock just moved two days, and a fork's Chainlink feeds never update, so every price would now be
-  // refused as stale. On mainnet they keep updating; here each feed's code is swapped for a settable one that
-  // republishes its own last real answer at the fork's current time.
+  // The fork's clock has moved and will move again (the expiry scenario jumps days), and a fork's Chainlink feeds
+  // never update, so every price would soon be refused as stale. On mainnet they keep updating; here each feed's
+  // code is swapped for a settable one that republishes its own last real answer at the fork's current time.
   step('Keeping the Chainlink feeds live on the fork')
   const feedAbi = viem.parseAbi([
     'function latestRoundData() view returns (uint80, int256, uint256, uint256, uint80)',

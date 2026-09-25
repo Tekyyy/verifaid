@@ -103,7 +103,7 @@ Items marked **(human)** need a person; the agent prepares them and checks them 
      ```bash
      forge verify-contract <Timelock> node_modules/@openzeppelin/contracts/governance/TimelockController.sol:TimelockController \
        --chain base --watch --constructor-args $(cast abi-encode "constructor(uint256,address[],address[],address)" \
-       172800 "[<Safe>]" "[0x0000000000000000000000000000000000000000]" 0x0000000000000000000000000000000000000000)
+       <delay in seconds, e.g. 600> "[<Safe>]" "[0x0000000000000000000000000000000000000000]" 0x0000000000000000000000000000000000000000)
      ```
      Run it from `contracts/`, with `ETHERSCAN_API_KEY` set in the environment only.
    - Commit `deployments/base.json` and `contracts/broadcast/*/8453/`.
@@ -134,7 +134,7 @@ Items marked **(human)** need a person; the agent prepares them and checks them 
 11. **First admin actions:** registering NGOs, verifiers and suppliers, and setting the relayer as keeper on
     `DonationForwarderFactory`. For each one:
     - run `pnpm admin base prepare <Contract> "<fn(types)>" args…`
-    - hand the human the two files in `admin-proposals/`: schedule now in the Safe app, execute after 2 days
+    - hand the human the two files in `admin-proposals/`: schedule now in the Safe app, execute once the delay has passed (ten minutes by default)
     - the agent may run `pnpm admin base execute … --salt 0x…` from a funded key once the delay has passed
 12. **Soft launch:** a few vetted NGOs with low targets. Watch the relayer's balance and the indexer's health.
 

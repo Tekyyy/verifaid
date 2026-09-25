@@ -15,7 +15,8 @@ the Railway and Vercel changes are in `MAINNET_HOSTING.md`.
 | ✅ | A beneficiary's own need raises at most the high-value threshold, and one NGO's certificates open at most 20 at a time: an NGO certifying wallets it controls cannot use them to bypass its 25% cap at scale | `BeneficiaryRegistry` |
 | ✅ | Secrets out of git: `.env` and `app/.env.local` are no longer tracked; every setting is in the `.example` templates | `.env.example`, `app/.env.example` |
 | ✅ | Rate limits shared by every server instance (Upstash Redis), and a daily ceiling on relayed votes | `app/src/lib/server/rateLimit.ts` |
-| ✅ | A mainnet deploy script that refuses unsafe setups: a key that was ever in git, Safe owners that include the deployer, a timelock under two days, no separate guardian, no source verification | `scripts/deploy-mainnet.mjs` |
+| ✅ | A mainnet deploy script that refuses unsafe setups: a key that was ever in git, Safe owners that include the deployer, a timelock under ten minutes, no separate guardian, no source verification, one address in two roles | `scripts/deploy-mainnet.mjs` |
+| ✅ | Launch roles registered before the handover: NGOs, verifiers, suppliers and the relayer as keeper, so the first need can be verified on day one | `RegisterNgos.s.sol`, `RegisterRoles.s.sol` |
 | ✅ | A full rehearsal on a local fork of Base mainnet, against the real USDC, EURC, Uniswap pools, Chainlink feeds, EAS and Safe factory | `scripts/rehearse-mainnet.mjs` |
 | ✅ | Wallets that delegated their code (EIP-7702, live on Base) still sign votes, certificates and refunds with their own key; OpenZeppelin's check sent them to ERC-1271 alone. Found by the rehearsal | `libraries/Signatures.sol` |
 | ✅ | Mainnet admin without owner keys on any server: `pnpm admin base prepare …` writes Safe Transaction Builder files for the owners to sign in the Safe app | `scripts/admin.mjs` |
@@ -60,9 +61,13 @@ BASESCAN_API_KEY=…                   # source verification
 BASE_MAINNET_RPC_URL=https://…       # an Alchemy / QuickNode Base mainnet URL
 ADMIN_SAFE_OWNERS=0xYou,0xFriend1,0xFriend2
 ADMIN_SAFE_THRESHOLD=2
-ADMIN_TIMELOCK_DELAY=172800          # two days (the minimum the script accepts)
+ADMIN_TIMELOCK_DELAY=600             # ten minutes, the hackathon setting (the minimum); 172800 = two days for serious money
 GUARDIAN_ADDRESS=0x…                 # may pause at once, and do nothing else
-EXTRA_NGOS=                          # optional: vetted NGO wallets to register before the handover
+# Registered by the deployer before the handover, so none of them waits for the timelock. One role per address.
+EXTRA_NGOS=                          # NGO wallets (each pays out to itself)
+EXTRA_VERIFIERS=                     # at least one, or no need can be verified; two for needs above 10,000 USDC
+EXTRA_SUPPLIERS=                     # optional: suppliers NGO needs can pay
+KEEPERS=                             # the relayer's address, so "Sweep now" works on deposit addresses
 # DASHBOARD_BASE_URI defaults to https://www.verifaid.org/needs/
 ```
 
@@ -81,8 +86,8 @@ pnpm rehearse:mainnet
 It forks Base mainnet locally and runs `deploy-mainnet.mjs` against the copy, just as it would run for real, with its
 own throwaway keys. Then it:
 - checks the governance
-- registers the demo organisations through the Safe and the two-day timelock, and confirms that executing early is
-  refused
+- registers a verifier, a supplier and the keeper before the handover, then the other demo organisations through
+  the Safe and the ten-minute timelock, and confirms that executing early is refused
 - gives the demo wallets real USDC and EURC on the copy
 - runs the demo scenarios: conversions, escrow, expiry, rejection, a beneficiary's own need, and baskets with reward
   credit
@@ -95,7 +100,7 @@ deployment.
 
 ```bash
 pnpm deploy:mainnet          # runs every check and prints the plan; deploys nothing
-pnpm deploy:mainnet --yes    # deploys: Deploy → schemas → community schemas → NGOs → handover to the Safe
+pnpm deploy:mainnet --yes    # deploys: Deploy → schemas → community schemas → NGOs → other roles → handover to the Safe
 ```
 
 ### 4. Right after
@@ -131,7 +136,7 @@ pnpm admin base prepare RoleRegistry "registerVerifier(address)" 0xVERIFIER
 
 `prepare` writes two Safe Transaction Builder files to `admin-proposals/`:
 1. **Schedule:** import it in the Safe app (Apps → Transaction Builder). The owners sign it.
-2. **Execute:** use it two days later, once the delay has passed. Anyone may execute; so can
+2. **Execute:** use it once the timelock's delay (ten minutes by default) has passed. Anyone may execute; so can
    `pnpm admin base execute … --salt 0x…` from any funded key.
 
 Until the execute step, the Safe can still cancel the change.
