@@ -108,7 +108,10 @@ Items marked **(human)** need a person; the agent prepares them and checks them 
      Run it from `contracts/`, with `ETHERSCAN_API_KEY` set in the environment only.
    - Commit `deployments/base.json` and `contracts/broadcast/*/8453/`.
    - Run `pnpm sync:deployments && pnpm --filter @poa/shared build`.
-9. **Mainnet indexer (human clicks, agent checks).** A second Railway service from `indexer/railway.json`, with its own
+9. **Hosting:** follow `docs/MAINNET_HOSTING.md`: testnet staging first, then a Railway mainnet project (indexer and
+   notifier), then Vercel's production switch. Summary:
+
+   **Mainnet indexer (human clicks, agent checks).** A second Railway service from `indexer/railway.json`, with its own
    Postgres. Variables:
    - `DATABASE_URL=${{Postgres.DATABASE_URL}}`
    - `PONDER_NETWORK=base`

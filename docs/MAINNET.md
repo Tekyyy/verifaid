@@ -2,7 +2,8 @@
 
 Everything needed to put VerifAid on Base mainnet with real money, what is already done on the `mainnet-prep`
 branch, and how the deployment runs. The deployment itself costs well under a dollar in gas at today's prices; the
-real costs are the audit and running it properly afterwards. An agent picking this up starts at `AGENT_MAINNET.md`.
+real costs are the audit and running it properly afterwards. An agent picking this up starts at `AGENT_MAINNET.md`;
+the Railway and Vercel changes are in `MAINNET_HOSTING.md`.
 
 ---
 
@@ -103,7 +104,7 @@ pnpm deploy:mainnet --yes    # deploys: Deploy → schemas → community schemas
   command as for the testnet, with `--chain base`.
 - **Commit** `deployments/base.json` and `contracts/broadcast/*/8453/`.
 - Then run `pnpm sync:deployments && pnpm --filter @poa/shared build`.
-- **Indexer:** a new Railway service from `indexer/railway.json`, with its own Postgres, and:
+- **Hosting:** every Railway and Vercel change, in order, is in `MAINNET_HOSTING.md`. In short:
   - `PONDER_NETWORK=base`
   - `PONDER_RPC_URL=` a dedicated Base mainnet RPC
   - `PORT=42069`
