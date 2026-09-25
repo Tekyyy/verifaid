@@ -17,6 +17,7 @@ import { NeedStatusBadge } from '@/components/StatusBadge'
 import { TaxReceiptPanel } from '@/components/TaxReceiptPanel'
 import { TrancheBar } from '@/components/TrancheBar'
 import { Link } from '@/i18n/navigation'
+import { alertsEnabled } from '@/lib/config'
 import { amount, bpsPercent, shorten, timestamp } from '@/lib/format'
 import { donationFeedPath } from '@/lib/indexer'
 
@@ -248,13 +249,15 @@ export function DonationTrackView({ track }: { track: DonationTrack }) {
             </div>
           </section>
 
-          <section id="alerts" className="card scroll-mt-4 space-y-3" aria-labelledby="alerts-title">
-            <h2 id="alerts-title" className="section-title">
-              {t('alertsTitle')}
-            </h2>
-            <p className="text-sm text-slate-700">{t('alertsBody')}</p>
-            <AlertsForm trackingRef={track.ref} />
-          </section>
+          {alertsEnabled ? (
+            <section id="alerts" className="card scroll-mt-4 space-y-3" aria-labelledby="alerts-title">
+              <h2 id="alerts-title" className="section-title">
+                {t('alertsTitle')}
+              </h2>
+              <p className="text-sm text-slate-700">{t('alertsBody')}</p>
+              <AlertsForm trackingRef={track.ref} />
+            </section>
+          ) : null}
 
           <section className="card space-y-3" aria-labelledby="embed">
             <h2 id="embed" className="section-title">

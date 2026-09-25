@@ -26,10 +26,14 @@ COPY --from=build /repo /repo
 # NODE_ENV=production turns on the webhook SSRF guard: https only, no private or link-local addresses.
 ENV NODE_ENV=production \
     PORT=4004 \
-    HOST=0.0.0.0
+    HOST=0.0.0.0 \
+    CHECKPOINT_DISABLE=1
 USER node
 EXPOSE 4004
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:4004/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+# Tables first: `prisma db push` creates or extends them and never drops data (a destructive change stops the
+# start instead), so a fresh database needs no manual step. When the Postgres is shared with the indexer, give this
+# service a schema of its own: DATABASE_URL=…?schema=verifaid.
 # The worker runs in the same process; SIGTERM stops it after the in-flight batch.
-CMD ["node", "services/notifier/dist/server.js"]
+CMD ["sh", "-c", "services/shared/node_modules/.bin/prisma db push --schema services/shared/prisma/schema.prisma --skip-generate && exec node services/notifier/dist/server.js"]

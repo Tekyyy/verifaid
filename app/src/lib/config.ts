@@ -46,6 +46,14 @@ export const piiVaultUrl: string = (process.env.NEXT_PUBLIC_PII_VAULT_URL ?? 'ht
 )
 
 /**
+ * Whether donation alerts are offered. In production a deployment without a notifier (NOTIFIER_URL unset) hides the
+ * form instead of showing one that can only fail; in development the local default is assumed to be running.
+ */
+export const alertsEnabled: boolean =
+  Boolean((process.env.NOTIFIER_URL ?? process.env.NEXT_PUBLIC_NOTIFIER_URL)?.trim()) ||
+  process.env.NODE_ENV !== 'production'
+
+/**
  * An upstream reached only through this app's route handler (`/api/alerts`), never from the browser: the
  * handler validates input first, and the service does not have to serve CORS headers.
  */
