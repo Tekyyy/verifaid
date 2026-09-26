@@ -3,7 +3,7 @@
 A snapshot of the project: what is live, what runs where, which settings it needs (names only, never values), how
 to operate it, and what is still open.
 
-*Last updated: 2026-09-25 · v10 live on Base Sepolia; Base mainnet deployed for the hackathon (§2d), hosting pending*
+*Last updated: 2026-09-26 · v10 on Base Sepolia; the Base mainnet deployment was retired after the hackathon (§2d)*
 
 ---
 
@@ -59,7 +59,10 @@ reward pots) plus:
   `/baskets/[category]`, credit panel on `/earn`. Demo scenario 7 (`baskets`).
 - Design record: DECISIONS §23, §25, §26. Threats: THREAT_MODEL §3.23, §3.25, §3.26.
 
-## 2d. Base mainnet (hackathon deployment, 2026-09-25)
+## 2d. Base mainnet (hackathon deployment, 2026-09-25; retired 2026-09-26)
+
+**Retired.** After the hackathon need #1 was cancelled, its only donation refunded, and the guardian paused the
+system (`RoleRegistry.paused()` is true). No contract holds money. Unpausing would take the Safe and the timelock.
 
 Deployed from `mainnet-prep` with `pnpm deploy:mainnet --yes` (hackathon settings: a ten-minute timelock, no audit).
 43 transactions, about 0.0002 ETH of gas; start block 51,768,388. All 17 contracts are source-verified on Basescan.
@@ -187,7 +190,7 @@ To leave evidence waiting for a live vote: `pnpm demo:run base-sepolia review`.
 | Service | Where | Notes |
 |---|---|---|
 | Website | https://www.verifaid.org | Vercel project `hackathon-blockchainforgood`, builds `main` from `app/`; env: `NEXT_PUBLIC_INDEXER_URL`, `UPLOAD_DIR`, `RELAYER_PRIVATE_KEY`, `PINATA_JWT`; `NOTIFIER_URL` and `NEXT_PUBLIC_PII_VAULT_URL` once the notifier and vault are up |
-| Indexer | https://hackathon-blockchainforgood-production.up.railway.app | Railway service from `indexer/railway.json`; env: `DATABASE_URL`, `PONDER_RPC_URL`, `PORT=42069`, `APP_BASE_URL`; 30-day trial, then the $5 Hobby plan |
+| Indexer | Railway (taken down after the hackathon, so the site shows no data) | Railway service from `indexer/railway.json`; env: `DATABASE_URL`, `PONDER_RPC_URL`, `PORT=42069`, `APP_BASE_URL`; 30-day trial, then the $5 Hobby plan |
 | Database | Railway Postgres | one schema per indexer deployment; the notifier's and vault's tables in schema `verifaid` |
 | Notifier (donation alerts) | to create: Railway service from `services/notifier/railway.json` | steps in `docs/DEPLOY.md` §4; webhooks at once, emails once a Resend key is set |
 | Records vault (NGO needs assessments) | to create: Railway service from `services/pii-vault/railway.json` | steps in `docs/DEPLOY.md` §5; needs `NGO_KEK` set, since Railway disks do not survive a deploy |

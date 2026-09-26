@@ -97,6 +97,9 @@ withdrawal to a deposit address); idle capital earning while it waits; and a nee
 twice, cancelled and refunded. A donor who changes their mind while a
 need is still raising can take their donation back, up to two days before its funding deadline.
 
+A Base mainnet deployment made for the hackathon has been retired: it is paused, its one need was cancelled and
+refunded, and it holds no money. Do not send funds to it.
+
 | | |
 |---|---|
 | `NeedsRegistry` | [`0xDDf49b52728edc38eB662Fdb934CB19Ec037997a`](https://sepolia.basescan.org/address/0xDDf49b52728edc38eB662Fdb934CB19Ec037997a) |
@@ -234,6 +237,10 @@ person. See `docs/THREAT_MODEL.md` for what this does **not** protect against.
 
 Built for a hackathon and **not audited**. How to report a vulnerability privately, where the keys go (never in
 git) and which dependency advisories remain: [`SECURITY.md`](SECURITY.md).
+
+## License
+
+[MIT](LICENSE).
 
 ## Documentation
 

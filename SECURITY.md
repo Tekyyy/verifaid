@@ -3,6 +3,9 @@
 VerifAid was built for a hackathon. **The contracts have not been audited.** Run it on a testnet, or read
 [docs/MAINNET.md](docs/MAINNET.md) and get an audit before any deployment that holds real money.
 
+The Base mainnet deployment made for the hackathon (`deployments/base.json`) is retired: it is paused and holds no
+money. Do not send funds to it.
+
 ## Reporting a vulnerability
 
 Please report it privately, not in a public issue: use **Security → Report a vulnerability** on this repository's

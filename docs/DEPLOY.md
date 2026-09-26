@@ -1,7 +1,7 @@
 # Putting VerifAid online
 
-**Live now:** the site at https://www.verifaid.org (Vercel, domain at name.com) and the indexer at
-https://hackathon-blockchainforgood-production.up.railway.app (Railway). This guide is how they were set up.
+During the hackathon the site ran on Vercel and the indexer on Railway; this guide is how they were set up, and how
+to put your own copy online.
 
 The contracts are already on Base Sepolia. What goes online is the rest:
 
