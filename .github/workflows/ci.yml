@@ -124,6 +124,10 @@ jobs:
           done
           pnpm deploy:local
 
+      # The indexer's `ponder:*` module types live in ponder-env.d.ts, which Ponder generates and git ignores.
+      - name: Generate the indexer's types
+        run: pnpm --filter @poa/indexer codegen
+
       - name: Prepare the database schema
         run: pnpm --filter @poa/shared db:push
 
